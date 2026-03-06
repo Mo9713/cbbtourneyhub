@@ -1,14 +1,3 @@
-// ============================================================
-// COLLEGE BASKETBALL CONFERENCE PREDICTOR HUB — V6
-// App.tsx · React + Supabase + Tailwind CSS + lucide-react
-//
-// .env.local:
-//   VITE_SUPABASE_URL=https://xxxx.supabase.co
-//   VITE_SUPABASE_ANON_KEY=eyJ...
-//
-// DB: Requires `sort_order INT` column on games table
-// ============================================================
-
 import { createClient, User } from '@supabase/supabase-js'
 import {
   useState, useEffect, useCallback, useMemo,
@@ -18,12 +7,12 @@ import {
   Trophy, Plus, Lock, Globe, AlertTriangle, LogOut,
   Edit3, Link2, CheckCircle, Circle, Crown, Target, X,
   Zap, Settings, Shield, RefreshCw, BarChart2, Home,
-  User as UserIcon, Palette, Key, Image, ChevronRight,
+  User as UserIcon, Palette, Key, ChevronRight,
   TrendingUp, EyeOff, Check, ExternalLink, Trash2,
   Unlink, AlertCircle, Eye, GripVertical,
+  PanelLeftOpen, PanelLeftClose, Menu,
 } from 'lucide-react'
 
-// ── Supabase ──────────────────────────────────────────────────
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL ?? '',
   import.meta.env.VITE_SUPABASE_ANON_KEY ?? ''
@@ -39,7 +28,10 @@ interface Profile {
   id: string; display_name: string; is_admin: boolean
   theme: ThemeKey; avatar_url: string | null; favorite_team: string | null
 }
-interface Tournament { id: string; name: string; status: TournamentStatus }
+interface Tournament {
+  id: string; name: string; status: TournamentStatus
+  unlocks_at: string | null; locks_at: string | null
+}
 interface Game {
   id: string; tournament_id: string; round_num: number
   team1_name: string; team2_name: string; actual_winner: string | null
@@ -61,6 +53,8 @@ interface ThemeConfig {
   border: string; borderB: string; bg: string; bgMd: string
   dot: string; ring: string; bar: string; glow: string
   tabActive: string; headerBg: string; logo: string
+  // Full-UI styling: these give each theme a distinct visual character
+  appBg: string; sidebarBg: string; panelBg: string; inputBg: string
 }
 
 const THEMES: Record<ThemeKey, ThemeConfig> = {
@@ -75,6 +69,7 @@ const THEMES: Record<ThemeKey, ThemeConfig> = {
     bar: 'bg-orange-500', glow: 'shadow-orange-500/20',
     tabActive: 'border-orange-500 text-orange-400',
     headerBg: 'bg-orange-500/5 border-orange-500/20', logo: 'bg-orange-600',
+    appBg: 'bg-[#0e0905]', sidebarBg: 'bg-[#120c07]', panelBg: 'bg-[#150e08]', inputBg: 'bg-[#1c140a]',
   },
   ice: {
     key: 'ice', label: 'Ice', emoji: '🧊',
@@ -87,6 +82,7 @@ const THEMES: Record<ThemeKey, ThemeConfig> = {
     bar: 'bg-cyan-500', glow: 'shadow-cyan-500/20',
     tabActive: 'border-cyan-500 text-cyan-400',
     headerBg: 'bg-cyan-500/5 border-cyan-500/20', logo: 'bg-cyan-600',
+    appBg: 'bg-[#040b10]', sidebarBg: 'bg-[#060e14]', panelBg: 'bg-[#081118]', inputBg: 'bg-[#0c1820]',
   },
   plasma: {
     key: 'plasma', label: 'Plasma', emoji: '⚡',
@@ -99,6 +95,7 @@ const THEMES: Record<ThemeKey, ThemeConfig> = {
     bar: 'bg-violet-500', glow: 'shadow-violet-500/20',
     tabActive: 'border-violet-500 text-violet-400',
     headerBg: 'bg-violet-500/5 border-violet-500/20', logo: 'bg-violet-600',
+    appBg: 'bg-[#080510]', sidebarBg: 'bg-[#0c0814]', panelBg: 'bg-[#0f0b18]', inputBg: 'bg-[#150f20]',
   },
   forest: {
     key: 'forest', label: 'Forest', emoji: '🌲',
@@ -111,14 +108,59 @@ const THEMES: Record<ThemeKey, ThemeConfig> = {
     bar: 'bg-emerald-500', glow: 'shadow-emerald-500/20',
     tabActive: 'border-emerald-500 text-emerald-400',
     headerBg: 'bg-emerald-500/5 border-emerald-500/20', logo: 'bg-emerald-600',
+    appBg: 'bg-[#04100a]', sidebarBg: 'bg-[#07130c]', panelBg: 'bg-[#091609]', inputBg: 'bg-[#0d1e0d]',
   },
 }
 
 const ThemeCtx = createContext<ThemeConfig>(THEMES.ember)
 const useTheme = () => useContext(ThemeCtx)
 
+// ── CST / Lock Utilities ──────────────────────────────────────
+function getCSTDate(): Date {
+  return new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Chicago' }))
+}
+
+function isPicksLocked(tournament: Tournament, isAdmin = false): boolean {
+  if (isAdmin) return false
+  if (tournament.status === 'draft' || tournament.status === 'locked') return true
+  if (tournament.locks_at) {
+    const now = getCSTDate()
+    const locksAt = new Date(
+      new Date(tournament.locks_at).toLocaleString('en-US', { timeZone: 'America/Chicago' })
+    )
+    if (now >= locksAt) return true
+  }
+  return false
+}
+
+function formatCSTDisplay(iso: string): string {
+  return new Date(iso).toLocaleString('en-US', {
+    timeZone: 'America/Chicago',
+    month: 'short', day: 'numeric',
+    hour: 'numeric', minute: '2-digit', hour12: true,
+  }) + ' CT'
+}
+
+function isoToInputCST(iso: string | null): string {
+  if (!iso) return ''
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Chicago',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  }).formatToParts(new Date(iso))
+  const get = (t: string) => parts.find(p => p.type === t)?.value ?? '00'
+  return `${get('year')}-${get('month')}-${get('day')}T${get('hour')}:${get('minute')}`
+}
+
+function cstInputToISO(local: string): string | null {
+  if (!local) return null
+  const isDST = new Date(local).toLocaleString('en-US', {
+    timeZone: 'America/Chicago', timeZoneName: 'short',
+  }).includes('CDT')
+  return new Date(`${local}:00${isDST ? '-05:00' : '-06:00'}`).toISOString()
+}
+
 // ── Scoring & Helpers ─────────────────────────────────────────
-// FIX: True Fibonacci function — no hardcoded cap; R1=1, R2=2, R3=3, R4=5, R5=8, R6=13, R7=21, R8=34…
 function fibonacci(n: number): number {
   if (n <= 0) return 0
   if (n === 1 || n === 2) return 1
@@ -126,10 +168,8 @@ function fibonacci(n: number): number {
   for (let i = 3; i <= n; i++) { const c = a + b; a = b; b = c }
   return b
 }
-// round r → fib(r + 1): r=1→fib(2)=1, r=2→fib(3)=2, r=3→fib(4)=3, r=4→fib(5)=5 …
 const getScore = (r: number) => fibonacci(r + 1)
 
-// FIX: Correct naming for 2-round tournaments. gap=1 is always "Semifinals".
 function getRoundLabel(roundNum: number, maxRound: number): string {
   const gap = maxRound - roundNum
   if (gap === 0) return 'Championship'
@@ -242,9 +282,7 @@ function ConfirmModal({ title, message, confirmLabel = 'Confirm', dangerous, onC
 }
 
 // ── Add Tournament Modal ──────────────────────────────────────
-function AddTournamentModal({
-  onClose, onCreate,
-}: {
+function AddTournamentModal({ onClose, onCreate }: {
   onClose: () => void
   onCreate: (name: string, template: TemplateKey, teamCount?: number) => void
 }) {
@@ -268,7 +306,7 @@ function AddTournamentModal({
   return (
     <div className="fixed inset-0 z-[250] flex items-center justify-center bg-black/75 backdrop-blur-sm"
       onClick={onClose}>
-      <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 max-w-lg w-full mx-4 shadow-2xl"
+      <div className={`${theme.panelBg} border border-slate-700 rounded-2xl p-6 max-w-lg w-full mx-4 shadow-2xl`}
         onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-5">
           <h3 className="font-display text-xl font-bold text-white uppercase tracking-wide">New Tournament</h3>
@@ -281,7 +319,7 @@ function AddTournamentModal({
           <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase tracking-wider">Tournament Name</label>
           <input value={name} onChange={e => setName(e.target.value)}
             placeholder="2025 Big East Tournament"
-            className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white text-sm placeholder-slate-600 focus:outline-none focus:border-slate-500 transition-colors"
+            className={`w-full ${theme.inputBg} border border-slate-700 rounded-xl px-4 py-3 text-white text-sm placeholder-slate-600 focus:outline-none focus:border-slate-500 transition-colors`}
             autoFocus />
         </div>
 
@@ -336,7 +374,7 @@ function AddTournamentModal({
 
 // ── Auth Form ─────────────────────────────────────────────────
 function AuthForm({ onAuth }: { onAuth: () => void }) {
-  const [mode, setMode]       = useState<'signin' | 'signup'>('signin')
+  const [mode, setMode]       = useState<'signin' | 'signup' | 'forgot'>('signin')
   const [email, setEmail]     = useState('')
   const [pass, setPass]       = useState('')
   const [name, setName]       = useState('')
@@ -346,7 +384,13 @@ function AuthForm({ onAuth }: { onAuth: () => void }) {
 
   const handle = async () => {
     setError(''); setSuccess(''); setLoading(true)
-    if (mode === 'signup') {
+    if (mode === 'forgot') {
+      const { error: e } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin,
+      })
+      if (e) setError(e.message)
+      else setSuccess('Password reset email sent. Check your inbox.')
+    } else if (mode === 'signup') {
       const { error: e } = await supabase.auth.signUp({ email, password: pass,
         options: { data: { display_name: name || email.split('@')[0] } } })
       if (e) setError(e.message)
@@ -358,6 +402,8 @@ function AuthForm({ onAuth }: { onAuth: () => void }) {
     }
     setLoading(false)
   }
+
+  const switchMode = (m: typeof mode) => { setMode(m); setError(''); setSuccess('') }
 
   return (
     <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
@@ -371,14 +417,23 @@ function AuthForm({ onAuth }: { onAuth: () => void }) {
         </div>
 
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl">
-          <div className="flex gap-1 mb-5 bg-slate-800 p-1 rounded-xl">
-            {(['signin', 'signup'] as const).map(m => (
-              <button key={m} onClick={() => { setMode(m); setError(''); setSuccess('') }}
-                className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${mode === m ? 'bg-orange-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>
-                {m === 'signin' ? 'Sign In' : 'Sign Up'}
-              </button>
-            ))}
-          </div>
+          {mode !== 'forgot' && (
+            <div className="flex gap-1 mb-5 bg-slate-800 p-1 rounded-xl">
+              {(['signin', 'signup'] as const).map(m => (
+                <button key={m} onClick={() => switchMode(m)}
+                  className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${mode === m ? 'bg-orange-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>
+                  {m === 'signin' ? 'Sign In' : 'Sign Up'}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {mode === 'forgot' && (
+            <div className="mb-5">
+              <h2 className="font-display text-xl font-bold text-white uppercase tracking-wide">Reset Password</h2>
+              <p className="text-xs text-slate-500 mt-1">Enter your email and we'll send a reset link.</p>
+            </div>
+          )}
 
           <div className="space-y-3">
             {mode === 'signup' && (
@@ -389,20 +444,53 @@ function AuthForm({ onAuth }: { onAuth: () => void }) {
             <input type="email" value={email} onChange={e => setEmail(e.target.value)}
               placeholder="Email"
               className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white text-sm placeholder-slate-600 focus:outline-none focus:border-slate-500 transition-colors" />
-            <input type="password" value={pass} onChange={e => setPass(e.target.value)}
-              placeholder="Password" onKeyDown={e => e.key === 'Enter' && handle()}
-              className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white text-sm placeholder-slate-600 focus:outline-none focus:border-slate-500 transition-colors" />
+            {mode !== 'forgot' && (
+              <input type="password" value={pass} onChange={e => setPass(e.target.value)}
+                placeholder="Password" onKeyDown={e => e.key === 'Enter' && handle()}
+                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white text-sm placeholder-slate-600 focus:outline-none focus:border-slate-500 transition-colors" />
+            )}
           </div>
 
           {error   && <p className="mt-3 text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded-lg px-3 py-2">{error}</p>}
           {success && <p className="mt-3 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2">{success}</p>}
 
-          <button onClick={handle} disabled={loading || !email || !pass}
+          <button onClick={handle} disabled={loading || !email || (mode !== 'forgot' && !pass)}
             className="mt-4 w-full py-3 rounded-xl bg-orange-600 hover:bg-orange-500 text-white font-bold text-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-orange-600/25">
-            {loading ? 'Loading…' : mode === 'signin' ? 'Sign In' : 'Create Account'}
+            {loading ? 'Loading…' : mode === 'signin' ? 'Sign In' : mode === 'signup' ? 'Create Account' : 'Send Reset Link'}
           </button>
+
+          <div className="mt-4 text-center">
+            {mode === 'signin' && (
+              <button onClick={() => switchMode('forgot')}
+                className="text-xs text-slate-500 hover:text-slate-300 transition-colors">
+                Forgot password?
+              </button>
+            )}
+            {mode === 'forgot' && (
+              <button onClick={() => switchMode('signin')}
+                className="text-xs text-slate-500 hover:text-slate-300 transition-colors flex items-center gap-1 mx-auto">
+                ← Back to Sign In
+              </button>
+            )}
+          </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+// ── Mobile Header ─────────────────────────────────────────────
+function MobileHeader({ onMenuOpen }: { onMenuOpen: () => void }) {
+  const theme = useTheme()
+  return (
+    <div className={`md:hidden fixed top-0 left-0 right-0 z-40 h-14 flex items-center px-4 gap-3 border-b border-slate-800 ${theme.sidebarBg}`}>
+      <button onClick={onMenuOpen} className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors">
+        <Menu size={20} />
+      </button>
+      <div className={`w-7 h-7 rounded-lg ${theme.logo} flex items-center justify-center flex-shrink-0`}>
+        <Trophy size={13} className="text-white" />
+      </div>
+      <span className="font-display text-lg font-extrabold text-white uppercase tracking-wide">Predictor Hub</span>
     </div>
   )
 }
@@ -430,6 +518,7 @@ function HomeView({ tournaments, profile, allGames, picks, onSelectTournament }:
   const Card = ({ t }: { t: Tournament }) => {
     const games = allGames[t.id] ?? []
     const myPicks = pickMap[t.id] ?? 0
+    const locked = isPicksLocked(t, profile.is_admin)
     const pct = games.length > 0 ? Math.round((myPicks / games.length) * 100) : 0
     return (
       <button onClick={() => onSelectTournament(t)}
@@ -445,7 +534,18 @@ function HomeView({ tournaments, profile, allGames, picks, onSelectTournament }:
           <span className="text-slate-700">·</span>
           <span className="text-xs text-slate-500">{games.length} games</span>
         </div>
-        {t.status === 'open' && (
+        {locked && t.status === 'open' && (
+          <div className="flex items-center gap-1.5 mb-2 text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg px-2.5 py-1.5">
+            <Lock size={10} />
+            <span className="text-[11px] font-semibold">Picks are now locked</span>
+          </div>
+        )}
+        {t.locks_at && !locked && t.status === 'open' && (
+          <div className="flex items-center gap-1.5 mb-2">
+            <span className="text-[11px] text-slate-500">Locks {formatCSTDisplay(t.locks_at)}</span>
+          </div>
+        )}
+        {t.status === 'open' && !locked && (
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <span className="text-[10px] text-slate-500">Your picks</span>
@@ -500,22 +600,25 @@ function HomeView({ tournaments, profile, allGames, picks, onSelectTournament }:
 }
 
 // ── Settings View ─────────────────────────────────────────────
-function SettingsView({ profile, onProfileUpdate, push }: {
-  profile: Profile; onProfileUpdate: (p: Profile) => void; push: (msg: string, type?: ToastMsg['type']) => void
+function SettingsView({ profile, userEmail, onProfileUpdate, push }: {
+  profile: Profile; userEmail: string
+  onProfileUpdate: (p: Profile) => void
+  push: (msg: string, type?: ToastMsg['type']) => void
 }) {
   const theme = useTheme()
   const [displayName,   setDisplayName]   = useState(profile.display_name)
   const [favoriteTeam,  setFavoriteTeam]  = useState(profile.favorite_team ?? '')
-  const [avatarUrl,     setAvatarUrl]     = useState(profile.avatar_url ?? '')
-  const [newPass,       setNewPass]       = useState('')
   const [saving,        setSaving]        = useState(false)
+  const [currentPass,   setCurrentPass]   = useState('')
+  const [newPass,       setNewPass]       = useState('')
+  const [confirmPass,   setConfirmPass]   = useState('')
+  const [changingPass,  setChangingPass]  = useState(false)
 
   const save = async () => {
     setSaving(true)
     const updates: Partial<Profile> = {
       display_name: displayName.trim() || profile.display_name,
       favorite_team: favoriteTeam.trim() || null,
-      avatar_url: avatarUrl.trim() || null,
     }
     const { data } = await supabase.from('profiles').update(updates).eq('id', profile.id).select().single()
     if (data) { onProfileUpdate(data as Profile); push('Profile saved!', 'success') }
@@ -523,10 +626,24 @@ function SettingsView({ profile, onProfileUpdate, push }: {
   }
 
   const changePass = async () => {
-    if (!newPass || newPass.length < 6) { push('Password must be ≥6 chars', 'error'); return }
+    if (!currentPass) { push('Enter your current password', 'error'); return }
+    if (!newPass || newPass.length < 6) { push('New password must be at least 6 characters', 'error'); return }
+    if (newPass !== confirmPass) { push('New passwords do not match', 'error'); return }
+
+    setChangingPass(true)
+    const { error: verifyErr } = await supabase.auth.signInWithPassword({ email: userEmail, password: currentPass })
+    if (verifyErr) {
+      push('Current password is incorrect', 'error')
+      setChangingPass(false)
+      return
+    }
     const { error } = await supabase.auth.updateUser({ password: newPass })
     if (error) push(error.message, 'error')
-    else { push('Password updated!', 'success'); setNewPass('') }
+    else {
+      push('Password updated!', 'success')
+      setCurrentPass(''); setNewPass(''); setConfirmPass('')
+    }
+    setChangingPass(false)
   }
 
   const setTheme = async (t: ThemeKey) => {
@@ -541,8 +658,7 @@ function SettingsView({ profile, onProfileUpdate, push }: {
       </div>
       <div className="flex-1 overflow-auto p-6">
         <div className="max-w-lg space-y-6">
-          {/* Profile */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+          <div className={`${theme.panelBg} border border-slate-800 rounded-2xl p-5`}>
             <h3 className="font-display text-sm font-bold text-slate-300 uppercase tracking-widest mb-4 flex items-center gap-2">
               <UserIcon size={12} /> Profile
             </h3>
@@ -550,17 +666,12 @@ function SettingsView({ profile, onProfileUpdate, push }: {
               <div>
                 <label className="block text-xs text-slate-500 mb-1">Display Name</label>
                 <input value={displayName} onChange={e => setDisplayName(e.target.value)}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-slate-500 transition-colors" />
+                  className={`w-full ${theme.inputBg} border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-slate-500 transition-colors`} />
               </div>
               <div>
                 <label className="block text-xs text-slate-500 mb-1">Favorite Team</label>
                 <input value={favoriteTeam} onChange={e => setFavoriteTeam(e.target.value)} placeholder="e.g. Duke Blue Devils"
-                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm placeholder-slate-600 focus:outline-none focus:border-slate-500 transition-colors" />
-              </div>
-              <div>
-                <label className="block text-xs text-slate-500 mb-1 flex items-center gap-1"><Image size={9} /> Avatar URL</label>
-                <input value={avatarUrl} onChange={e => setAvatarUrl(e.target.value)} placeholder="https://..."
-                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm placeholder-slate-600 focus:outline-none focus:border-slate-500 transition-colors" />
+                  className={`w-full ${theme.inputBg} border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm placeholder-slate-600 focus:outline-none focus:border-slate-500 transition-colors`} />
               </div>
             </div>
             <button onClick={save} disabled={saving}
@@ -569,8 +680,7 @@ function SettingsView({ profile, onProfileUpdate, push }: {
             </button>
           </div>
 
-          {/* Theme */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+          <div className={`${theme.panelBg} border border-slate-800 rounded-2xl p-5`}>
             <h3 className="font-display text-sm font-bold text-slate-300 uppercase tracking-widest mb-4 flex items-center gap-2">
               <Palette size={12} /> Theme
             </h3>
@@ -580,27 +690,46 @@ function SettingsView({ profile, onProfileUpdate, push }: {
                   className={`p-3 rounded-xl border-2 flex items-center gap-2.5 transition-all text-left
                     ${profile.theme === t.key ? `${t.border} ${t.bg}` : 'border-slate-800 hover:border-slate-700 bg-slate-800/40'}`}>
                   <span className="text-xl">{t.emoji}</span>
-                  <span className={`text-sm font-semibold ${profile.theme === t.key ? t.accentB : 'text-slate-300'}`}>{t.label}</span>
+                  <div>
+                    <span className={`text-sm font-semibold block ${profile.theme === t.key ? t.accentB : 'text-slate-300'}`}>{t.label}</span>
+                    <span className="text-[10px] text-slate-600">
+                      {t.key === 'ember' ? 'Warm dark' : t.key === 'ice' ? 'Cool dark' : t.key === 'plasma' ? 'Deep violet' : 'Rich green'}
+                    </span>
+                  </div>
                   {profile.theme === t.key && <Check size={13} className={`ml-auto ${t.accent}`} />}
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Security */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+          <div className={`${theme.panelBg} border border-slate-800 rounded-2xl p-5`}>
             <h3 className="font-display text-sm font-bold text-slate-300 uppercase tracking-widest mb-4 flex items-center gap-2">
-              <Key size={12} /> Security
+              <Key size={12} /> Change Password
             </h3>
-            <div className="flex gap-2">
-              <input type="password" value={newPass} onChange={e => setNewPass(e.target.value)}
-                placeholder="New password (min 6 chars)"
-                className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm placeholder-slate-600 focus:outline-none focus:border-slate-500 transition-colors" />
-              <button onClick={changePass}
-                className="px-4 py-2.5 rounded-xl bg-slate-700 hover:bg-slate-600 text-white text-sm font-semibold transition-all flex-shrink-0">
-                Update
-              </button>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs text-slate-500 mb-1">Current Password</label>
+                <input type="password" value={currentPass} onChange={e => setCurrentPass(e.target.value)}
+                  placeholder="Your current password"
+                  className={`w-full ${theme.inputBg} border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm placeholder-slate-600 focus:outline-none focus:border-slate-500 transition-colors`} />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-500 mb-1">New Password</label>
+                <input type="password" value={newPass} onChange={e => setNewPass(e.target.value)}
+                  placeholder="Minimum 6 characters"
+                  className={`w-full ${theme.inputBg} border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm placeholder-slate-600 focus:outline-none focus:border-slate-500 transition-colors`} />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-500 mb-1">Confirm New Password</label>
+                <input type="password" value={confirmPass} onChange={e => setConfirmPass(e.target.value)}
+                  placeholder="Repeat new password"
+                  className={`w-full ${theme.inputBg} border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm placeholder-slate-600 focus:outline-none focus:border-slate-500 transition-colors`} />
+              </div>
             </div>
+            <button onClick={changePass} disabled={changingPass || !currentPass || !newPass || !confirmPass}
+              className={`mt-4 px-5 py-2.5 rounded-xl text-white text-sm font-bold transition-all ${theme.btn} disabled:opacity-40`}>
+              {changingPass ? 'Verifying…' : 'Update Password'}
+            </button>
           </div>
         </div>
       </div>
@@ -608,7 +737,7 @@ function SettingsView({ profile, onProfileUpdate, push }: {
   )
 }
 
-// ── Game Card (player-facing) — FIX: scores removed entirely ──
+// ── Game Card (player-facing) ─────────────────────────────────
 function GameCard({ game, userPick, effectiveTeam1, effectiveTeam2, isLocked, onPick, readOnly, ownerName }: {
   game: Game; userPick: Pick | undefined
   effectiveTeam1: string; effectiveTeam2: string
@@ -676,7 +805,8 @@ function BracketView({ tournament, games, picks, profile, onPick, readOnly, owne
   readOnly?: boolean; ownerName?: string
 }) {
   const theme = useTheme()
-  const isLocked = tournament.status === 'locked' || tournament.status === 'draft'
+  const picksLocked = isPicksLocked(tournament, profile.is_admin)
+  const isLocked = picksLocked || tournament.status === 'draft'
   const isBigDance = games.some(g => g.region)
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null)
 
@@ -689,7 +819,6 @@ function BracketView({ tournament, games, picks, profile, onPick, readOnly, owne
     const names: Record<string, { team1: string; team2: string }> = {}
     games.forEach(g => { names[g.id] = { team1: g.team1_name, team2: g.team2_name } })
     const pickMap = new Map(picks.map(p => [p.game_id, p.predicted_winner]))
-    // FIX: compute game numbers so we can look up the actual linked slot by "Winner of Game #N" text
     const gameNums = computeGameNumbers(games)
     const sorted = [...games].sort((a, b) => a.round_num - b.round_num)
     for (const game of sorted) {
@@ -698,15 +827,12 @@ function BracketView({ tournament, games, picks, profile, onPick, readOnly, owne
       if (!winner) continue
       const nextGame = games.find(g => g.id === game.next_game_id)
       if (!nextGame) continue
-      // FIX: determine slot by checking which slot contains "Winner of Game #N" text,
-      // NOT by sort order — sort order was wrong when admin linked to bottom slot with top slot pre-filled
       const gNum = gameNums[game.id]
       const winnerText = `Winner of Game #${gNum}`
       let slot: 'team1' | 'team2'
       if (nextGame.team1_name === winnerText) slot = 'team1'
       else if (nextGame.team2_name === winnerText) slot = 'team2'
       else {
-        // Fallback for games without linkage text (e.g. manually typed or old data)
         const feeders = sorted.filter(g => g.next_game_id === game.next_game_id)
           .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.id.localeCompare(b.id))
         slot = feeders.findIndex(f => f.id === game.id) === 0 ? 'team1' : 'team2'
@@ -729,6 +855,9 @@ function BracketView({ tournament, games, picks, profile, onPick, readOnly, owne
 
   const userPickMap = useMemo(() => new Map(picks.map(p => [p.game_id, p])), [picks])
   const pickedCount = picks.length; const totalGames = games.length
+
+  const lockedByTipOff = !profile.is_admin && tournament.locks_at &&
+    getCSTDate() >= new Date(new Date(tournament.locks_at).toLocaleString('en-US', { timeZone: 'America/Chicago' }))
 
   return (
     <div className="flex flex-col h-full">
@@ -772,7 +901,15 @@ function BracketView({ tournament, games, picks, profile, onPick, readOnly, owne
         </div>
       )}
 
-      {isLocked && !readOnly && (
+      {lockedByTipOff && !readOnly && (
+        <div className="mx-6 mt-4 px-4 py-3 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-center gap-3 flex-shrink-0">
+          <Lock size={13} className="text-amber-400" />
+          <p className="text-sm text-amber-300 font-semibold">Picks are now locked.</p>
+          {tournament.locks_at && <span className="text-xs text-amber-400/60 ml-auto">Locked at {formatCSTDisplay(tournament.locks_at)}</span>}
+        </div>
+      )}
+
+      {isLocked && !lockedByTipOff && !readOnly && (
         <div className="mx-6 mt-4 px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-xl flex items-center gap-3 flex-shrink-0">
           <Lock size={13} className="text-slate-400" />
           <p className="text-sm text-slate-400">{tournament.status === 'draft' ? 'Draft mode — not yet open for picks.' : 'This tournament is locked.'}</p>
@@ -841,13 +978,36 @@ function BracketView({ tournament, games, picks, profile, onPick, readOnly, owne
 }
 
 // ── Leaderboard View ──────────────────────────────────────────
-function LeaderboardView({ allPicks, allGames, allProfiles, allTournaments, currentUserId, onSnoopUser }: {
+function LeaderboardView({ allPicks, allGames, allProfiles, allTournaments, currentUserId, isAdmin, onSnoopUser }: {
   allPicks: Pick[]; allGames: Game[]; allProfiles: Profile[]
   allTournaments: Tournament[]; currentUserId: string
+  isAdmin: boolean
   onSnoopUser: (id: string) => void
 }) {
   const theme = useTheme()
-  const gameMap = useMemo(() => new Map(allGames.map(g => [g.id, g])), [allGames])
+  const [selectedTournaments, setSelectedTournaments] = useState<Set<string>>(
+    () => new Set(allTournaments.map(t => t.id))
+  )
+
+  useEffect(() => {
+    setSelectedTournaments(new Set(allTournaments.map(t => t.id)))
+  }, [allTournaments.length])
+
+  const toggleTournament = (id: string) => {
+    setSelectedTournaments(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const filteredGames = useMemo(() =>
+    isAdmin ? allGames.filter(g => selectedTournaments.has(g.tournament_id)) : allGames,
+    [allGames, selectedTournaments, isAdmin]
+  )
+
+  const gameMap = useMemo(() => new Map(filteredGames.map(g => [g.id, g])), [filteredGames])
 
   const ranked = useMemo(() => {
     const scores: Record<string, { profile: Profile; points: number; correct: number; total: number; maxPossible: number }> = {}
@@ -863,13 +1023,13 @@ function LeaderboardView({ allPicks, allGames, allProfiles, allTournaments, curr
           scores[pick.user_id].correct++
         }
       } else {
-        const eliminated = allGames.some(g => g.actual_winner && g.actual_winner !== pick.predicted_winner && (g.team1_name === pick.predicted_winner || g.team2_name === pick.predicted_winner))
+        const eliminated = filteredGames.some(g => g.actual_winner && g.actual_winner !== pick.predicted_winner && (g.team1_name === pick.predicted_winner || g.team2_name === pick.predicted_winner))
         if (!eliminated) scores[pick.user_id].maxPossible += getScore(game.round_num)
       }
     })
     Object.values(scores).forEach(s => { s.maxPossible += s.points })
     return Object.values(scores).sort((a, b) => b.points - a.points || b.correct - a.correct)
-  }, [allPicks, allGames, allProfiles, gameMap])
+  }, [allPicks, filteredGames, allProfiles, gameMap])
 
   const medals = ['🥇', '🥈', '🥉']
   const maxPoints = ranked[0]?.points ?? 0
@@ -880,6 +1040,30 @@ function LeaderboardView({ allPicks, allGames, allProfiles, allTournaments, curr
         <h2 className="font-display text-4xl font-extrabold text-white uppercase tracking-wide">Global Leaderboard</h2>
         <p className="text-xs text-slate-400 mt-0.5">Fibonacci scoring · Click a name to snoop their bracket</p>
       </div>
+
+      {isAdmin && allTournaments.length > 0 && (
+        <div className="px-6 py-3 border-b border-slate-800 bg-amber-500/5 flex-shrink-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[10px] font-bold text-amber-400 uppercase tracking-widest flex items-center gap-1 mr-1">
+              <Shield size={9} /> Filter:
+            </span>
+            {allTournaments.map(t => (
+              <label key={t.id}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border cursor-pointer text-xs font-medium transition-all select-none
+                  ${selectedTournaments.has(t.id) ? 'bg-amber-500/15 border-amber-500/30 text-amber-300' : 'bg-slate-800/60 border-slate-700 text-slate-500 hover:border-slate-600'}`}>
+                <input
+                  type="checkbox"
+                  checked={selectedTournaments.has(t.id)}
+                  onChange={() => toggleTournament(t.id)}
+                  className="w-3 h-3 accent-amber-500"
+                />
+                {t.name}
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="flex-1 overflow-auto p-6">
         {ranked.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64 text-slate-600"><BarChart2 size={40} className="mb-3 opacity-30" /><p>No scored picks yet.</p></div>
@@ -944,7 +1128,6 @@ function LeaderboardView({ allPicks, allGames, allProfiles, allTournaments, curr
 }
 
 // ── Admin Game Card ───────────────────────────────────────────
-// FIX: scores removed; winner resolution fixed; node dots aligned inline with team rows; gameNumbers prop added
 function AdminGameCard({
   game, allGames, gameNum, gameNumbers, maxRound,
   onUpdate, onSetWinner, onDelete, onStartLink, onCompleteLink, onUnlink,
@@ -971,20 +1154,18 @@ function AdminGameCard({
   const [team2, setTeam2] = useState(game.team2_name)
   const [showWinner, setShowWinner] = useState(false)
 
-  // FIX: Stable sync — only update local state when the game prop actually changes
   useEffect(() => { setTeam1(game.team1_name) }, [game.team1_name])
   useEffect(() => { setTeam2(game.team2_name) }, [game.team2_name])
 
   const handleBlur = (field: 'team1_name' | 'team2_name', val: string) => {
-    if (val.trim() === game[field]) return  // No-op if unchanged — prevents spurious re-renders
+    if (val.trim() === game[field]) return
     onUpdate(game.id, { [field]: val.trim() || field === 'team1_name' ? val : val })
   }
 
-  const isFirstRound    = game.round_num === Math.min(...allGames.map(g => g.round_num))
-  const isChampionship  = game.round_num === maxRound
-  const isLinkingFrom   = linkingFromId === game.id
+  const isFirstRound   = game.round_num === Math.min(...allGames.map(g => g.round_num))
+  const isChampionship = game.round_num === maxRound
+  const isLinkingFrom  = linkingFromId === game.id
 
-  // FIX: Winner propagation — resolve "Winner of Game #N" placeholders to actual winners
   const resolveSlotName = (slotName: string): string => {
     if (!slotName.startsWith('Winner of Game #')) return slotName
     const gNum = parseInt(slotName.replace('Winner of Game #', ''), 10)
@@ -997,7 +1178,7 @@ function AdminGameCard({
 
   const handleOutClick = (e: React.MouseEvent) => {
     e.stopPropagation()
-    if (isLinkingFrom) onStartLink('') // cancel
+    if (isLinkingFrom) onStartLink('')
     else onStartLink(game.id)
   }
 
@@ -1006,11 +1187,9 @@ function AdminGameCard({
     if (linkingFromId && linkingFromId !== game.id) onCompleteLink(game.id, slot)
   }
 
-  // Slot link status
   const slot1IsLinked = game.team1_name.startsWith('Winner of Game')
   const slot2IsLinked = game.team2_name.startsWith('Winner of Game')
 
-  // Dot style helpers
   const inDotBase = 'w-3.5 h-3.5 rounded-full border-2 transition-all flex-shrink-0 z-20'
   const inDot1Class = linkingFromId && linkingFromId !== game.id && isValidLinkTarget
     ? `${inDotBase} border-emerald-400 bg-emerald-400/30 animate-pulse cursor-pointer scale-125`
@@ -1033,7 +1212,6 @@ function AdminGameCard({
       className={`relative transition-all ${isDragOver ? 'opacity-50 scale-95' : ''}`}
       style={{ paddingRight: '18px' }}
     >
-      {/* Output dot — right side, centered vertically on card */}
       {!isChampionship && (
         <button
           data-out={game.id}
@@ -1049,17 +1227,14 @@ function AdminGameCard({
         />
       )}
 
-      {/* Card — overflow-visible allows dots to protrude */}
       <div className={`bg-slate-900 border rounded-xl overflow-visible w-56 flex-shrink-0 shadow-lg transition-all ${
         isLinkingFrom          ? 'border-amber-400 shadow-amber-400/20' :
         isValidLinkTarget && linkingFromId ? 'border-emerald-500/60' :
         isDragOver             ? 'border-slate-500' :
         theme.border
       }`}>
-        {/* Card Header */}
         <div className={`px-2.5 py-1.5 ${theme.bg} border-b ${theme.border} flex items-center justify-between rounded-t-xl`}>
           <div className="flex items-center gap-1.5">
-            {/* Drag handle */}
             <GripVertical size={10} className="text-slate-600 cursor-grab active:cursor-grabbing" />
             <span className={`text-[10px] font-bold ${theme.accent} uppercase tracking-widest`}>
               #{gameNum} · R{game.round_num}
@@ -1085,9 +1260,7 @@ function AdminGameCard({
           </div>
         </div>
 
-        {/* Team Name Inputs — FIX: dots now inline/absolute relative to each row for perfect alignment */}
         <div className="px-2.5 pt-2.5 pb-0 space-y-1">
-          {/* Team 1 row */}
           <div className="relative flex items-center">
             {!isFirstRound && (
               <button
@@ -1109,7 +1282,6 @@ function AdminGameCard({
 
           <div className="text-center text-[9px] text-slate-600 font-bold tracking-widest">VS</div>
 
-          {/* Team 2 row */}
           <div className="relative flex items-center">
             {!isFirstRound && (
               <button
@@ -1131,7 +1303,6 @@ function AdminGameCard({
         </div>
 
         <div className="px-2.5 pb-2.5 mt-2 space-y-2">
-          {/* Link status */}
           <div className="text-[10px] text-slate-600 flex items-center gap-1">
             <Link2 size={8} />
             {game.next_game_id
@@ -1139,7 +1310,6 @@ function AdminGameCard({
               : <span className="text-slate-700">{isChampionship ? 'Championship' : 'Not linked'}</span>}
           </div>
 
-          {/* Set winner */}
           <div>
             <button onClick={() => setShowWinner(v => !v)}
               className={`text-[10px] font-semibold uppercase tracking-wider flex items-center gap-1 transition-colors ${showWinner ? theme.accent : 'text-slate-500 hover:text-slate-300'}`}>
@@ -1186,7 +1356,7 @@ interface SVGLine { x1: number; y1: number; x2: number; y2: number; gameId: stri
 function AdminBuilderView({
   tournament, games, onUpdateGame, onAddGameToRound, onAddNextRound,
   onPublish, onLock, onSetWinner, onDeleteGame, onDeleteTournament, onReload, onLink, onUnlink,
-  onRenameTournament,
+  onRenameTournament, onUpdateTournament,
 }: {
   tournament: Tournament; games: Game[]
   onUpdateGame:         (id: string, updates: Partial<Game>) => void
@@ -1201,6 +1371,7 @@ function AdminBuilderView({
   onLink:               (fromGameId: string, toGameId: string, slot: 'team1_name' | 'team2_name') => void
   onUnlink:             (fromGameId: string) => void
   onRenameTournament:   (newName: string) => void
+  onUpdateTournament:   (updates: Partial<Tournament>) => void
 }) {
   const theme = useTheme()
   const [linkingFromId,  setLinkingFromId]  = useState<string | null>(null)
@@ -1209,9 +1380,14 @@ function AdminBuilderView({
   const [dragOverGameId, setDragOverGameId] = useState<string | null>(null)
   const [editingName,    setEditingName]    = useState(false)
   const [nameInput,      setNameInput]      = useState(tournament.name)
+  const [unlocksAtInput, setUnlocksAtInput] = useState(isoToInputCST(tournament.unlocks_at))
+  const [locksAtInput,   setLocksAtInput]   = useState(isoToInputCST(tournament.locks_at))
   const bracketRef = useRef<HTMLDivElement>(null)
   const [svgLines, setSvgLines] = useState<SVGLine[]>([])
   const [svgDims,  setSvgDims]  = useState({ w: 0, h: 0 })
+
+  useEffect(() => { setUnlocksAtInput(isoToInputCST(tournament.unlocks_at)) }, [tournament.unlocks_at])
+  useEffect(() => { setLocksAtInput(isoToInputCST(tournament.locks_at)) }, [tournament.locks_at])
 
   const gameNumbers = useMemo(() => computeGameNumbers(games), [games])
   const maxRound    = useMemo(() => games.length ? Math.max(...games.map(g => g.round_num)) : 0, [games])
@@ -1222,15 +1398,13 @@ function AdminBuilderView({
     return games.filter(g => g.region === selectedRegion)
   }, [games, isBigDance, selectedRegion])
 
-  // FIX: Sort by sort_order within each round for stable rendering
   const rounds = useMemo(() => {
     const map = new Map<number, Game[]>()
     displayGames.forEach(g => {
       if (!map.has(g.round_num)) map.set(g.round_num, [])
       map.get(g.round_num)!.push(g)
     })
-    // Sort each round's games by sort_order (nulls last), then stable by id
-    map.forEach((roundGames, _r) => {
+    map.forEach(roundGames => {
       roundGames.sort((a, b) => {
         const ao = a.sort_order ?? 999999
         const bo = b.sort_order ?? 999999
@@ -1247,7 +1421,6 @@ function AdminBuilderView({
     return nonChamp.every(g => g.next_game_id !== null)
   }, [games, maxRound])
 
-  // ── SVG connector lines ──
   const recomputeLines = useCallback(() => {
     const container = bracketRef.current
     if (!container) return
@@ -1270,7 +1443,6 @@ function AdminBuilderView({
       if (nextGame.team1_name === winnerText) slot = 'in1'
       else if (nextGame.team2_name === winnerText) slot = 'in2'
       else {
-        // Fallback: determine slot by feeder order
         const feeders = games.filter(g => g.next_game_id === game.next_game_id)
           .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.id.localeCompare(b.id))
         slot = feeders.findIndex(f => f.id === game.id) === 0 ? 'in1' : 'in2'
@@ -1295,7 +1467,6 @@ function AdminBuilderView({
     return () => window.removeEventListener('keydown', handler)
   }, [])
 
-  // ── Link handlers ──
   const handleStartLink = (gameId: string) => {
     setLinkingFromId(prev => (prev === gameId || gameId === '') ? null : gameId)
   }
@@ -1308,7 +1479,6 @@ function AdminBuilderView({
     setLinkingFromId(null)
   }
 
-  // ── Drag-and-drop reorder within a column ──
   const handleDragStart = (id: string) => setDraggedGameId(id)
   const handleDragOver  = (e: React.DragEvent, id: string) => {
     e.preventDefault()
@@ -1317,15 +1487,10 @@ function AdminBuilderView({
   const handleDragEnd = () => { setDraggedGameId(null); setDragOverGameId(null) }
   const handleDrop = async (e: React.DragEvent, targetGameId: string) => {
     e.preventDefault()
-    if (!draggedGameId || draggedGameId === targetGameId) {
-      handleDragEnd(); return
-    }
+    if (!draggedGameId || draggedGameId === targetGameId) { handleDragEnd(); return }
     const dragged = games.find(g => g.id === draggedGameId)
     const target  = games.find(g => g.id === targetGameId)
-    if (!dragged || !target || dragged.round_num !== target.round_num) {
-      handleDragEnd(); return
-    }
-    // Reorder within the round, then persist new sort_order values
+    if (!dragged || !target || dragged.round_num !== target.round_num) { handleDragEnd(); return }
     const roundGames = games
       .filter(g => g.round_num === dragged.round_num)
       .sort((a, b) => (a.sort_order ?? 999999) - (b.sort_order ?? 999999) || a.id.localeCompare(b.id))
@@ -1334,7 +1499,6 @@ function AdminBuilderView({
     const reordered = [...roundGames]
     reordered.splice(dragIdx, 1)
     reordered.splice(targetIdx, 0, dragged)
-
     await Promise.all(
       reordered.map((g, i) => supabase.from('games').update({ sort_order: i }).eq('id', g.id))
     )
@@ -1342,10 +1506,16 @@ function AdminBuilderView({
     handleDragEnd()
   }
 
+  const handleSaveTipOff = () => {
+    onUpdateTournament({
+      unlocks_at: cstInputToISO(unlocksAtInput),
+      locks_at: cstInputToISO(locksAtInput),
+    })
+  }
+
   return (
     <div className="flex flex-col h-full" onClick={() => setLinkingFromId(null)}>
-      {/* Header */}
-      <div className="px-5 py-3 border-b border-amber-500/20 flex items-center justify-between flex-shrink-0 bg-amber-500/5">
+      <div className="px-5 py-3 border-b border-amber-500/20 flex items-center justify-between flex-shrink-0 bg-amber-500/5 flex-wrap gap-3">
         <div>
           <div className="flex items-center gap-2">
             <Shield size={14} className="text-amber-400" />
@@ -1388,42 +1558,70 @@ function AdminBuilderView({
             Click output dot → input dot to link. Drag cards to reorder. <kbd className="text-slate-600 bg-slate-800 px-1 rounded text-[9px]">Esc</kbd> cancels linking.
           </p>
         </div>
-        <div className="flex items-center gap-2 flex-wrap justify-end">
-          <button onClick={onReload} className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-all">
-            <RefreshCw size={12} />
-          </button>
-          <button onClick={onAddNextRound}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-xs font-bold transition-all">
-            <Plus size={11} /> Add Next Round
-          </button>
-          {tournament.status === 'draft' && (
-            <div className="flex items-center gap-1.5">
-              {!publishValid && (
-                <div className="flex items-center gap-1 text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg px-2 py-1.5">
-                  <AlertTriangle size={10} />
-                  <span className="text-[10px] font-semibold">Unlinked games</span>
-                </div>
-              )}
-              <button onClick={onPublish} disabled={!publishValid}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed">
-                <Globe size={11} /> Publish
-              </button>
+
+        <div className="flex items-start gap-4 flex-wrap">
+          {/* Tip-Off Schedule */}
+          <div className="flex items-center gap-3 bg-slate-800/60 border border-slate-700 rounded-xl px-3 py-2">
+            <div>
+              <label className="block text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1">Unlocks At (CT)</label>
+              <input
+                type="datetime-local"
+                value={unlocksAtInput}
+                onChange={e => setUnlocksAtInput(e.target.value)}
+                className="bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-amber-500/50 transition-colors"
+              />
             </div>
-          )}
-          {tournament.status === 'open' && (
-            <button onClick={onLock}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-600 hover:bg-slate-500 text-white rounded-lg text-xs font-bold transition-all">
-              <Lock size={11} /> Lock
+            <div>
+              <label className="block text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1">Locks At (CT)</label>
+              <input
+                type="datetime-local"
+                value={locksAtInput}
+                onChange={e => setLocksAtInput(e.target.value)}
+                className="bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-amber-500/50 transition-colors"
+              />
+            </div>
+            <button onClick={handleSaveTipOff}
+              className="self-end px-2.5 py-1.5 bg-amber-600/80 hover:bg-amber-600 text-white rounded-lg text-[10px] font-bold transition-all">
+              Save
             </button>
-          )}
-          <button onClick={onDeleteTournament}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600/20 hover:bg-rose-600/40 text-rose-400 border border-rose-500/30 rounded-lg text-xs font-bold transition-all">
-            <Trash2 size={11} /> Delete
-          </button>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <button onClick={onReload} className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-all">
+              <RefreshCw size={12} />
+            </button>
+            <button onClick={onAddNextRound}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-xs font-bold transition-all">
+              <Plus size={11} /> Add Next Round
+            </button>
+            {tournament.status === 'draft' && (
+              <div className="flex items-center gap-1.5">
+                {!publishValid && (
+                  <div className="flex items-center gap-1 text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg px-2 py-1.5">
+                    <AlertTriangle size={10} />
+                    <span className="text-[10px] font-semibold">Unlinked games</span>
+                  </div>
+                )}
+                <button onClick={onPublish} disabled={!publishValid}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed">
+                  <Globe size={11} /> Publish
+                </button>
+              </div>
+            )}
+            {tournament.status === 'open' && (
+              <button onClick={onLock}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-600 hover:bg-slate-500 text-white rounded-lg text-xs font-bold transition-all">
+                <Lock size={11} /> Lock
+              </button>
+            )}
+            <button onClick={onDeleteTournament}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600/20 hover:bg-rose-600/40 text-rose-400 border border-rose-500/30 rounded-lg text-xs font-bold transition-all">
+              <Trash2 size={11} /> Delete
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Region tabs for Big Dance */}
       {isBigDance && (
         <div className="flex gap-1 px-4 pt-2 pb-0 border-b border-amber-500/10 flex-shrink-0 overflow-x-auto bg-slate-900/30">
           <button onClick={() => setSelectedRegion(null)}
@@ -1439,7 +1637,6 @@ function AdminBuilderView({
         </div>
       )}
 
-      {/* Linking mode banner */}
       {linkingFromId && (
         <div className="flex items-center gap-2 px-5 py-2 bg-amber-500/10 border-b border-amber-500/20 text-amber-400 text-xs font-semibold flex-shrink-0">
           <Link2 size={12} />
@@ -1448,14 +1645,12 @@ function AdminBuilderView({
         </div>
       )}
 
-      {/* Bracket area */}
       <div
         ref={bracketRef}
         className="flex-1 overflow-auto relative"
         style={{ cursor: linkingFromId ? 'crosshair' : 'default' }}
         onScroll={recomputeLines}
       >
-        {/* SVG overlay */}
         <svg
           style={{ position: 'absolute', top: 0, left: 0, width: svgDims.w || '100%', height: svgDims.h || '100%', pointerEvents: 'none', zIndex: 0 }}
           className="overflow-visible">
@@ -1595,7 +1790,7 @@ function SnoopModal({ targetProfile, tournaments, allGames, allPicks, onClose }:
 
 // ── Sidebar ───────────────────────────────────────────────────
 function Sidebar({ tournaments, selectedId, gamesCache, picks, profile, activeView,
-  onSelectTournament, onAddTournament, onSetView, onHome }: {
+  onSelectTournament, onAddTournament, onSetView, onHome, onClose }: {
   tournaments: Tournament[]; selectedId: string | null
   gamesCache: Record<string, Game[]>; picks: Pick[]; profile: Profile
   activeView: ActiveView
@@ -1603,11 +1798,12 @@ function Sidebar({ tournaments, selectedId, gamesCache, picks, profile, activeVi
   onAddTournament: () => void
   onSetView: (v: ActiveView) => void
   onHome: () => void
+  onClose: () => void
 }) {
   const theme = useTheme()
   const navItems: { id: ActiveView; label: string; icon: React.ReactNode }[] = [
-    { id: 'home',        label: 'Home',        icon: <Home        size={13} /> },
-    { id: 'leaderboard', label: 'Leaderboard', icon: <BarChart2   size={13} /> },
+    { id: 'home',        label: 'Home',        icon: <Home      size={13} /> },
+    { id: 'leaderboard', label: 'Leaderboard', icon: <BarChart2 size={13} /> },
   ]
 
   const missingPicks = useMemo(() => {
@@ -1620,9 +1816,11 @@ function Sidebar({ tournaments, selectedId, gamesCache, picks, profile, activeVi
     return s
   }, [tournaments, gamesCache, picks])
 
+  const nav = (action: () => void) => { action(); onClose() }
+
   return (
-    <aside className="w-56 flex-shrink-0 bg-slate-900 border-r border-slate-800 flex flex-col overflow-hidden">
-      <button onClick={onHome} className="px-4 py-4 border-b border-slate-800 flex items-center gap-3 hover:bg-slate-800/40 transition-colors text-left">
+    <aside className={`w-64 flex-shrink-0 border-r border-slate-800 flex flex-col overflow-hidden h-full ${theme.sidebarBg}`}>
+      <button onClick={() => nav(onHome)} className={`px-4 py-4 border-b border-slate-800 flex items-center gap-3 hover:bg-white/5 transition-colors text-left`}>
         <div className={`w-8 h-8 rounded-lg ${theme.logo} flex items-center justify-center shadow-lg flex-shrink-0`}>
           <Trophy size={15} className="text-white" />
         </div>
@@ -1632,7 +1830,7 @@ function Sidebar({ tournaments, selectedId, gamesCache, picks, profile, activeVi
         </div>
       </button>
 
-      <button onClick={() => onSetView('settings')} className="px-4 py-3 border-b border-slate-800 flex items-center gap-2.5 hover:bg-slate-800/40 transition-colors text-left">
+      <button onClick={() => nav(() => onSetView('settings'))} className="px-4 py-3 border-b border-slate-800 flex items-center gap-2.5 hover:bg-white/5 transition-colors text-left">
         <Avatar profile={profile} size="sm" />
         <div className="flex-1 min-w-0">
           <div className="text-xs font-semibold text-slate-200 truncate">{profile.display_name}</div>
@@ -1645,9 +1843,9 @@ function Sidebar({ tournaments, selectedId, gamesCache, picks, profile, activeVi
 
       <div className="px-3 py-2 border-b border-slate-800">
         {navItems.map(n => (
-          <button key={n.id} onClick={() => { if (n.id === 'home') onHome(); else onSetView(n.id) }}
+          <button key={n.id} onClick={() => nav(() => { if (n.id === 'home') onHome(); else onSetView(n.id) })}
             className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
-              activeView === n.id ? `${theme.bg} ${theme.accent}` : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/50'
+              activeView === n.id ? `${theme.bg} ${theme.accent}` : 'text-slate-500 hover:text-slate-300 hover:bg-white/5'
             }`}>
             {n.icon} {n.label}
           </button>
@@ -1663,13 +1861,13 @@ function Sidebar({ tournaments, selectedId, gamesCache, picks, profile, activeVi
           const hasMissing = missingPicks.has(t.id)
           const isSelected = t.id === selectedId
           return (
-            <button key={t.id} onClick={() => onSelectTournament(t)}
-              className={`w-full text-left px-4 py-2.5 flex items-center gap-2.5 transition-all group ${isSelected ? 'bg-slate-800' : 'hover:bg-slate-800/40'}`}>
+            <button key={t.id} onClick={() => nav(() => onSelectTournament(t))}
+              className={`w-full text-left px-4 py-2.5 flex items-center gap-2.5 transition-all group ${isSelected ? 'bg-white/5' : 'hover:bg-white/5'}`}>
               <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${statusDot(t.status)} ${t.status === 'open' ? 'animate-pulse' : ''}`} />
               <span className={`text-xs font-medium flex-1 truncate ${hasMissing ? 'text-rose-400' : isSelected ? 'text-white' : 'text-slate-400 group-hover:text-slate-200'}`}>{t.name}</span>
               {hasMissing && <AlertTriangle size={11} className="text-rose-400 flex-shrink-0 animate-pulse" />}
               {profile.is_admin && (
-                <button onClick={e => { e.stopPropagation(); onSelectTournament(t); onSetView('admin') }}
+                <button onClick={e => { e.stopPropagation(); nav(() => { onSelectTournament(t); onSetView('admin') }) }}
                   className="opacity-0 group-hover:opacity-100 transition-opacity">
                   <Settings size={10} className="text-amber-400" />
                 </button>
@@ -1681,7 +1879,7 @@ function Sidebar({ tournaments, selectedId, gamesCache, picks, profile, activeVi
 
       {profile.is_admin && (
         <div className="p-3 border-t border-slate-800">
-          <button onClick={onAddTournament}
+          <button onClick={() => nav(onAddTournament)}
             className={`w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-white text-xs font-bold transition-all ${theme.btn}`}>
             <Plus size={13} /> Add New Tournament
           </button>
@@ -1743,7 +1941,6 @@ async function linkTemplateSlots(tournamentId: string): Promise<void> {
   if (!rawGames) return
   const allG = rawGames as Game[]
   const gameNums = computeGameNumbers(allG)
-  // Build per-next-game slot updates
   const nextUpdates: Record<string, { team1_name?: string; team2_name?: string }> = {}
   for (const game of allG) {
     if (!game.next_game_id) continue
@@ -1836,6 +2033,8 @@ export default function App() {
   const [snoopTargetId,      setSnoopTargetId]      = useState<string | null>(null)
   const [confirmModal,       setConfirmModal]       = useState<ConfirmModalCfg | null>(null)
   const [showAddTournament,  setShowAddTournament]  = useState(false)
+  const [sidebarOpen,        setSidebarOpen]        = useState(true)
+  const [mobileMenuOpen,     setMobileMenuOpen]     = useState(false)
   const { toasts, push } = useToasts()
 
   const currentTheme = profile?.theme ? THEMES[profile.theme] ?? THEMES.ember : THEMES.ember
@@ -1861,7 +2060,6 @@ export default function App() {
     if (data) setTournaments(data as Tournament[])
   }, [])
 
-  // FIX: Order by sort_order for stable rendering; secondary order by round_num
   const loadGames = useCallback(async (tid: string) => {
     const { data } = await supabase
       .from('games').select('*').eq('tournament_id', tid)
@@ -1888,7 +2086,6 @@ export default function App() {
     if (data) setPicks(data as Pick[])
   }, [profile, gamesCache])
 
-  // Load ALL user picks globally (for home page counts and sidebar indicators)
   const loadAllMyPicks = useCallback(async () => {
     if (!profile) return
     const { data } = await supabase.from('picks').select('*').eq('user_id', profile.id)
@@ -1916,6 +2113,25 @@ export default function App() {
     if ((activeView === 'leaderboard' || snoopTargetId) && profile) loadLeaderboard()
   }, [activeView, snoopTargetId, profile, loadLeaderboard])
 
+  // ── Realtime sync: refresh bracket and leaderboard on any games change ──
+  useEffect(() => {
+    if (!profile) return
+    const channel = supabase
+      .channel('games-realtime')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'games' }, () => {
+        loadTournaments()
+        if (selectedTournament) loadGames(selectedTournament.id)
+        if (activeView === 'leaderboard') loadLeaderboard()
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'games' }, () => {
+        if (selectedTournament) loadGames(selectedTournament.id)
+        tournaments.forEach(t => { if (gamesCache[t.id]) loadGames(t.id) })
+        if (activeView === 'leaderboard') loadLeaderboard()
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [profile, selectedTournament, activeView])
+
   // ── Actions ──
   const handleSelectTournament = (t: Tournament) => {
     setSelectedTournament(t)
@@ -1924,6 +2140,9 @@ export default function App() {
 
   const handlePick = async (game: Game, team: string) => {
     if (!profile) return
+    if (isPicksLocked(selectedTournament!, profile.is_admin)) {
+      push('Picks are locked', 'error'); return
+    }
     const existing = picks.find(p => p.game_id === game.id)
     if (existing?.predicted_winner === team) {
       await supabase.from('picks').delete().eq('id', existing.id)
@@ -2019,7 +2238,6 @@ export default function App() {
     push('Link removed', 'info')
   }
 
-  // FIX: Assign sort_order when adding games for stable ordering
   const handleAddGameToRound = async (round: number) => {
     if (!selectedTournament) return
     const roundGames = games.filter(g => g.round_num === round)
@@ -2111,6 +2329,14 @@ export default function App() {
     push(`Renamed to "${newName}"`, 'success')
   }
 
+  const handleUpdateTournament = async (updates: Partial<Tournament>) => {
+    if (!selectedTournament) return
+    await supabase.from('tournaments').update(updates).eq('id', selectedTournament.id)
+    setSelectedTournament(prev => prev ? { ...prev, ...updates } : null)
+    await loadTournaments()
+    push('Tournament schedule saved', 'success')
+  }
+
   const handleLock = () => {
     setConfirmModal({
       title: 'Lock Tournament',
@@ -2149,7 +2375,7 @@ export default function App() {
 
   return (
     <ThemeCtx.Provider value={currentTheme}>
-      <div className="h-screen bg-slate-950 flex overflow-hidden" style={{ fontFamily: "'DM Sans', sans-serif" }}>
+      <div className={`h-screen flex overflow-hidden ${currentTheme.appBg}`} style={{ fontFamily: "'DM Sans', sans-serif" }}>
         <style>{`
           @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=DM+Sans:wght@400;500;600;700&display=swap');
           @keyframes slideUp { from { opacity:0; transform:translateY(10px) } to { opacity:1; transform:translateY(0) } }
@@ -2157,20 +2383,59 @@ export default function App() {
           * { scrollbar-width: thin; scrollbar-color: #334155 transparent }
         `}</style>
 
-        <Sidebar
-          tournaments={tournaments}
-          selectedId={selectedTournament?.id ?? null}
-          gamesCache={gamesCache}
-          picks={allMyPicks}
-          profile={profile}
-          activeView={activeView}
-          onSelectTournament={handleSelectTournament}
-          onAddTournament={() => setShowAddTournament(true)}
-          onSetView={setActiveView}
-          onHome={() => { setActiveView('home'); setSelectedTournament(null) }}
-        />
+        {/* Mobile header */}
+        <MobileHeader onMenuOpen={() => setMobileMenuOpen(true)} />
 
-        <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        {/* Mobile sidebar overlay */}
+        {mobileMenuOpen && (
+          <div className="md:hidden fixed inset-0 z-50 flex">
+            <div className="absolute inset-0 bg-black/50" onClick={() => setMobileMenuOpen(false)} />
+            <div className="relative z-10 flex-shrink-0">
+              <Sidebar
+                tournaments={tournaments}
+                selectedId={selectedTournament?.id ?? null}
+                gamesCache={gamesCache}
+                picks={allMyPicks}
+                profile={profile}
+                activeView={activeView}
+                onSelectTournament={handleSelectTournament}
+                onAddTournament={() => setShowAddTournament(true)}
+                onSetView={setActiveView}
+                onHome={() => { setActiveView('home'); setSelectedTournament(null) }}
+                onClose={() => setMobileMenuOpen(false)}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Desktop sidebar */}
+        <div className={`hidden md:flex flex-shrink-0 overflow-hidden transition-all duration-200 ${sidebarOpen ? 'w-64' : 'w-0'}`}>
+          <Sidebar
+            tournaments={tournaments}
+            selectedId={selectedTournament?.id ?? null}
+            gamesCache={gamesCache}
+            picks={allMyPicks}
+            profile={profile}
+            activeView={activeView}
+            onSelectTournament={handleSelectTournament}
+            onAddTournament={() => setShowAddTournament(true)}
+            onSetView={setActiveView}
+            onHome={() => { setActiveView('home'); setSelectedTournament(null) }}
+            onClose={() => {}}
+          />
+        </div>
+
+        <main className="flex-1 flex flex-col min-w-0 overflow-hidden pt-14 md:pt-0">
+          {/* Desktop sidebar toggle */}
+          <div className="hidden md:flex items-center gap-2 px-3 pt-2 pb-0 flex-shrink-0">
+            <button
+              onClick={() => setSidebarOpen(v => !v)}
+              className="p-1.5 rounded-lg text-slate-600 hover:text-slate-300 hover:bg-white/5 transition-all"
+              title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}>
+              {sidebarOpen ? <PanelLeftClose size={15} /> : <PanelLeftOpen size={15} />}
+            </button>
+          </div>
+
           {selectedTournament && (activeView === 'bracket' || activeView === 'admin') && (
             <div className="flex items-center gap-1 px-6 pt-3 border-b border-slate-800 flex-shrink-0 bg-slate-900/50">
               <button onClick={() => setActiveView('bracket')}
@@ -2188,10 +2453,17 @@ export default function App() {
 
           <div className="flex-1 overflow-hidden">
             {activeView === 'settings' ? (
-              <SettingsView profile={profile} onProfileUpdate={setProfile} push={push} />
+              <SettingsView
+                profile={profile}
+                userEmail={user.email ?? ''}
+                onProfileUpdate={setProfile}
+                push={push}
+              />
             ) : activeView === 'leaderboard' ? (
-              <LeaderboardView allPicks={allPicks} allGames={allGames} allProfiles={allProfiles}
+              <LeaderboardView
+                allPicks={allPicks} allGames={allGames} allProfiles={allProfiles}
                 allTournaments={tournaments} currentUserId={profile.id}
+                isAdmin={profile.is_admin}
                 onSnoopUser={id => { setSnoopTargetId(id); loadLeaderboard() }}
               />
             ) : activeView === 'home' || !selectedTournament ? (
@@ -2214,6 +2486,7 @@ export default function App() {
                 onLink={handleLink}
                 onUnlink={handleUnlink}
                 onRenameTournament={handleRenameTournament}
+                onUpdateTournament={handleUpdateTournament}
               />
             ) : (
               <BracketView
