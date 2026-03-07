@@ -1,30 +1,34 @@
 // src/views/BracketView.tsx
 import { useState, useMemo } from 'react'
 import { Lock, Eye, Crown } from 'lucide-react'
-import { useTheme } from '../utils/theme'
+import { useTheme }          from '../utils/theme'
 import { isPicksLocked, formatCSTDisplay } from '../utils/time'
-import { getScore, getRoundLabel, isTBDName, statusLabel, statusIcon, computeGameNumbers, BD_REGIONS } from '../utils/helpers'
+import {
+  resolveScore, getRoundLabel, isTBDName,
+  statusLabel, statusIcon, computeGameNumbers, BD_REGIONS,
+} from '../utils/helpers'
 import GameCard from '../components/GameCard'
 import type { Tournament, Game, Pick, Profile } from '../types'
 
 interface Props {
-  tournament: Tournament
-  games: Game[]
-  picks: Pick[]
-  profile: Profile
-  onPick: (game: Game, team: string) => void
-  readOnly?: boolean
-  ownerName?: string
+  tournament:  Tournament
+  games:       Game[]
+  picks:       Pick[]
+  profile:     Profile
+  onPick:      (game: Game, team: string) => void
+  readOnly?:   boolean
+  ownerName?:  string
 }
 
 export default function BracketView({
   tournament, games, picks, profile, onPick, readOnly, ownerName,
 }: Props) {
-  const theme = useTheme()
+  const theme          = useTheme()
   const picksLocked    = isPicksLocked(tournament, profile.is_admin)
   const isLocked       = picksLocked || tournament.status === 'draft'
   const lockedByTipOff = picksLocked && tournament.status === 'open'
   const isBigDance     = games.some(g => g.region)
+
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null)
 
   const displayGames = useMemo(() => {
@@ -32,21 +36,81 @@ export default function BracketView({
     return games.filter(g => g.region === selectedRegion)
   }, [games, isBigDance, selectedRegion])
 
+  // ── Game numbers (needed for slot text-matching) ─────────────
+  const gameNumbers = useMemo(() => computeGameNumbers(games), [games])
+
+  // ── effectiveNames ───────────────────────────────────────────
+  // Derives each game's displayed team names by propagating the
+  // user's picks (and actual winners) forward through the bracket.
+  //
+  // SLOT RESOLUTION ORDER (mirrors gameService & recomputeLines):
+  //   1. PRIMARY   — text-match: does nextGame.team1_name / team2_name
+  //                  equal "Winner of Game #N"? Use that slot.
+  //   2. SECONDARY — if the actual_winner has already advanced, the
+  //                  placeholder was replaced by the team name — match that.
+  //   3. FALLBACK  — sort feeders by sort_order + id and use index 0/1.
+  //                  Only reached when no text evidence exists at all.
   const effectiveNames = useMemo(() => {
+    // Start with the raw DB values
     const names: Record<string, { team1: string; team2: string }> = {}
     games.forEach(g => { names[g.id] = { team1: g.team1_name, team2: g.team2_name } })
-    const pickMap  = new Map(picks.map(p => [p.game_id, p.predicted_winner]))
-    const gameNums = computeGameNumbers(games)
-    const sorted   = [...games].sort((a, b) => a.round_num - b.round_num)
+
+    const pickMap = new Map(picks.map(p => [p.game_id, p.predicted_winner]))
+
+    // Process rounds in ascending order so earlier picks propagate first
+    const sorted = [...games].sort((a, b) =>
+      a.round_num !== b.round_num ? a.round_num - b.round_num : (a.sort_order ?? 0) - (b.sort_order ?? 0)
+    )
+
     for (const game of sorted) {
       if (!game.next_game_id) continue
-      const winner = game.actual_winner ??
-        (game.team1_name.startsWith('Winner of Game') || game.team2_name.startsWith('Winner of Game')
-          ? undefined
-          : pickMap.get(game.id))
+
+      // Determine the winner to propagate for this game:
+      //   • actual_winner always wins out (admin-set result)
+      //   • user's pick is used only when both slots are real teams
+      //     (i.e. not still showing "Winner of Game #N" placeholders —
+      //     those mean the *feeder* game hasn't been resolved yet)
+      const currentTeam1 = names[game.id]?.team1 ?? game.team1_name
+      const currentTeam2 = names[game.id]?.team2 ?? game.team2_name
+      const slotsAreReal = !isTBDName(currentTeam1) && !isTBDName(currentTeam2)
+
+      const winner =
+        game.actual_winner ??
+        (slotsAreReal ? pickMap.get(game.id) : undefined)
+
       if (!winner) continue
+
       const nextGame = games.find(g => g.id === game.next_game_id)
       if (!nextGame) continue
+
+      const winnerText = `Winner of Game #${gameNumbers[game.id]}`
+
+      // ── 1. PRIMARY: text-match on the placeholder ─────────────
+      if (game.team1_name === winnerText || nextGame.team1_name === winnerText) {
+        // This game feeds into team1 slot of the next game
+        names[nextGame.id] = { ...names[nextGame.id], team1: winner }
+        continue
+      }
+      if (game.team2_name === winnerText || nextGame.team2_name === winnerText) {
+        // This game feeds into team2 slot of the next game
+        names[nextGame.id] = { ...names[nextGame.id], team2: winner }
+        continue
+      }
+
+      // ── 2. SECONDARY: actual winner name may have replaced placeholder ──
+      // (e.g. admin already set winners in earlier rounds)
+      if (game.actual_winner) {
+        if (nextGame.team1_name === game.actual_winner) {
+          names[nextGame.id] = { ...names[nextGame.id], team1: winner }
+          continue
+        }
+        if (nextGame.team2_name === game.actual_winner) {
+          names[nextGame.id] = { ...names[nextGame.id], team2: winner }
+          continue
+        }
+      }
+
+      // ── 3. FALLBACK: index-based (fresh templates before slot labels) ──
       const feeders = games
         .filter(g => g.next_game_id === game.next_game_id)
         .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.id.localeCompare(b.id))
@@ -54,14 +118,17 @@ export default function BracketView({
       if (isFirst) names[nextGame.id] = { ...names[nextGame.id], team1: winner }
       else          names[nextGame.id] = { ...names[nextGame.id], team2: winner }
     }
-    return names
-  }, [games, picks])
 
+    return names
+  }, [games, picks, gameNumbers])
+
+  // ── userPickMap ──────────────────────────────────────────────
   const userPickMap = useMemo(() =>
     new Map(picks.map(p => [p.game_id, p])),
     [picks]
   )
 
+  // ── Derived display values ───────────────────────────────────
   const maxRound    = useMemo(() => games.length ? Math.max(...games.map(g => g.round_num)) : 1, [games])
   const pickedCount = picks.length
   const totalGames  = games.length
@@ -74,11 +141,57 @@ export default function BracketView({
     })
     return Array.from(map.entries())
       .sort(([a], [b]) => a - b)
-      .map(([round, gs]) => [round, gs.sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))] as [number, Game[]])
+      .map(([round, gs]) => [
+        round,
+        gs.sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)),
+      ] as [number, Game[]])
   }, [displayGames])
 
+  // ── Champion derivation ──────────────────────────────────────
+  // Find the single championship game (highest round_num, no next_game_id).
+  // Then resolve the champion from:
+  //   1. actual_winner (admin confirmed result)
+  //   2. user's pick on that game
+  //   3. effectiveNames propagated value in team1 or team2 slot
+  //      (covers the case where a pick was made in an earlier round
+  //       and has visually advanced all the way to the championship)
+  const champion = useMemo(() => {
+    const champGame = games.find(
+      g => g.round_num === maxRound && !g.next_game_id
+    ) ?? games.find(g => g.round_num === maxRound) // fallback if next_game_id was set
+
+    if (!champGame) return null
+
+    // Actual winner beats everything
+    if (champGame.actual_winner) return champGame.actual_winner
+
+    // User's direct pick on the championship game
+    const directPick = pickMap_champion(picks, champGame.id)
+    if (directPick) return directPick
+
+    // A propagated effective name that is a real team (not a placeholder)
+    const eff = effectiveNames[champGame.id]
+    if (eff) {
+      const userPick = userPickMap.get(champGame.id)?.predicted_winner
+      if (userPick) return userPick
+      // Check if one of the effective slots is a resolved team from picks
+      if (eff.team1 && !isTBDName(eff.team1)) {
+        // Is team1 the one the user picked in an earlier game?
+        const pickedTeam1 = picks.some(p => p.predicted_winner === eff.team1)
+        if (pickedTeam1) return eff.team1
+      }
+      if (eff.team2 && !isTBDName(eff.team2)) {
+        const pickedTeam2 = picks.some(p => p.predicted_winner === eff.team2)
+        if (pickedTeam2) return eff.team2
+      }
+    }
+    return null
+  }, [games, picks, effectiveNames, userPickMap, maxRound])
+
+  // ── Render ───────────────────────────────────────────────────
   return (
     <div className="flex flex-col h-full overflow-hidden">
+
       {/* Header */}
       <div className={`px-6 py-4 border-b flex-shrink-0 flex items-center justify-between gap-4
         ${readOnly ? 'bg-violet-500/5 border-violet-500/20' : theme.headerBg}`}>
@@ -98,11 +211,14 @@ export default function BracketView({
             {!readOnly && (
               <>
                 <span className="text-slate-700">·</span>
-                <span className={`text-xs font-semibold ${theme.accent}`}>{pickedCount}/{totalGames} picks</span>
+                <span className={`text-xs font-semibold ${theme.accent}`}>
+                  {pickedCount}/{totalGames} picks
+                </span>
               </>
             )}
           </div>
         </div>
+
         {!readOnly && (
           <div className="text-right">
             <div className="flex items-center gap-2 justify-end mb-1">
@@ -112,7 +228,7 @@ export default function BracketView({
             <div className="w-28 h-1.5 bg-slate-800 rounded-full overflow-hidden">
               <div
                 className={`h-full ${theme.bar} rounded-full transition-all`}
-                style={{ width: `${totalGames ? (pickedCount / totalGames) * 100 : 0}%` }}
+                style={{ width: `${totalGames ? Math.round((pickedCount / totalGames) * 100) : 0}%` }}
               />
             </div>
           </div>
@@ -121,42 +237,36 @@ export default function BracketView({
 
       {/* Big Dance region tabs */}
       {isBigDance && (
-        <div className="flex gap-1 px-4 pt-2 pb-0 border-b border-slate-800 flex-shrink-0 overflow-x-auto bg-slate-900/50">
-          <button onClick={() => setSelectedRegion(null)}
+        <div className="flex gap-1 px-4 pt-2 pb-0 border-b border-slate-800 flex-shrink-0 overflow-x-auto">
+          <button
+            onClick={() => setSelectedRegion(null)}
             className={`px-4 py-2 text-xs font-bold rounded-t-lg transition-all border-b-2 flex-shrink-0
-              ${!selectedRegion ? theme.tabActive : 'text-slate-500 border-transparent hover:text-slate-300'}`}>
-            All Regions
+              ${!selectedRegion ? `${theme.accent} border-current` : 'text-slate-500 border-transparent hover:text-slate-300'}`}>
+            All
           </button>
           {BD_REGIONS.map(r => (
             <button key={r} onClick={() => setSelectedRegion(r)}
               className={`px-4 py-2 text-xs font-bold rounded-t-lg transition-all border-b-2 flex-shrink-0
-                ${selectedRegion === r ? theme.tabActive : 'text-slate-500 border-transparent hover:text-slate-300'}`}>
+                ${selectedRegion === r ? `${theme.accent} border-current` : 'text-slate-500 border-transparent hover:text-slate-300'}`}>
               {r}
             </button>
           ))}
         </div>
       )}
 
-      {/* Lock banners */}
-      {lockedByTipOff && !readOnly && (
-        <div className="mx-6 mt-4 px-4 py-3 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-center gap-3 flex-shrink-0">
-          <Lock size={13} className="text-amber-400" />
-          <p className="text-sm text-amber-300 font-semibold">Picks are now locked.</p>
-          {tournament.locks_at && (
-            <span className="text-xs text-amber-400/60 ml-auto">
-              Locked at {formatCSTDisplay(tournament.locks_at)}
-            </span>
-          )}
-        </div>
-      )}
-      {isLocked && !lockedByTipOff && !readOnly && (
-        <div className="mx-6 mt-4 px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-xl flex items-center gap-3 flex-shrink-0">
-          <Lock size={13} className="text-slate-400" />
-          <p className="text-sm text-slate-400">
-            {tournament.status === 'draft'
-              ? 'Draft mode — not yet open for picks.'
+      {/* Lock banner */}
+      {isLocked && !readOnly && (
+        <div className={`flex items-center gap-2 px-6 py-2 text-xs font-semibold flex-shrink-0
+          ${tournament.status === 'draft'
+            ? 'bg-amber-500/10 border-b border-amber-500/20 text-amber-400'
+            : 'bg-slate-800/60 border-b border-slate-700 text-slate-400'
+          }`}>
+          <Lock size={11} />
+          {tournament.status === 'draft'
+            ? 'Draft mode — not yet open for picks.'
+            : lockedByTipOff
+              ? `Picks locked${tournament.locks_at ? ` · ${formatCSTDisplay(tournament.locks_at)}` : ''}`
               : 'This tournament is locked.'}
-          </p>
         </div>
       )}
 
@@ -167,9 +277,15 @@ export default function BracketView({
             <div key={round} className="flex flex-col gap-3">
               <div className="text-center pb-3 border-b border-slate-800">
                 <h3 className={`font-display text-sm font-bold uppercase tracking-[0.15em] ${theme.accent}`}>
-                  {getRoundLabel(round, maxRound)}
+                  {/* Respect custom round names if configured */}
+                  {tournament.round_names?.[round - 1]?.trim()
+                    ? tournament.round_names[round - 1]
+                    : getRoundLabel(round, maxRound)
+                  }
                 </h3>
-                <span className="text-[10px] text-slate-600">{getScore(round)} points</span>
+                <span className="text-[10px] text-slate-600">
+                  {resolveScore(round, tournament.scoring_config)} points
+                </span>
               </div>
               <div className="flex flex-col gap-3">
                 {roundGames.map(game => (
@@ -191,43 +307,24 @@ export default function BracketView({
         </div>
 
         {/* Champion callout */}
-        {(() => {
-          const champGame = games.find(g => g.round_num === maxRound)
-          const champPick = champGame
-            ? picks.find(p => p.game_id === champGame.id)?.predicted_winner ?? null
-            : null
-          if (!champPick || readOnly) return null
-          return (
-            <div className="flex justify-center mt-10 mb-2">
-              <div className="flex flex-col items-center gap-1 relative">
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em]">Your Champion</span>
-                <div className="relative flex items-center justify-center px-10 py-5">
-                  <svg className="absolute inset-0 w-full h-full overflow-visible" preserveAspectRatio="none" viewBox="0 0 260 76">
-                    <defs>
-                      <filter id="chalkfx" x="-20%" y="-20%" width="140%" height="140%">
-                        <feTurbulence type="fractalNoise" baseFrequency="0.7" numOctaves="4" seed="8" result="noise"/>
-                        <feDisplacementMap in="SourceGraphic" in2="noise" scale="3" xChannelSelector="R" yChannelSelector="G"/>
-                      </filter>
-                    </defs>
-                    <ellipse cx="130" cy="38" rx="118" ry="32" fill="none"
-                      stroke="rgba(255,255,255,0.22)" strokeWidth="3.5" strokeLinecap="round"
-                      strokeDasharray="7 5" filter="url(#chalkfx)" />
-                    <ellipse cx="130" cy="38" rx="121" ry="35" fill="none"
-                      stroke="rgba(255,255,255,0.06)" strokeWidth="6" strokeLinecap="round"
-                      strokeDasharray="4 12" filter="url(#chalkfx)" />
-                  </svg>
-                  <div className="relative z-10 flex flex-col items-center gap-1">
-                    <Crown size={20} className={theme.accent} />
-                    <span className={`font-display text-3xl font-extrabold uppercase tracking-wider ${theme.accentB}`}>
-                      {champPick}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )
-        })()}
+        {champion && (
+          <div className={`mt-8 flex flex-col items-center gap-2 p-5 rounded-2xl border
+            ${theme.bg} ${theme.border} max-w-xs mx-auto`}>
+            <Crown size={20} className={theme.accent} />
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+              {readOnly ? `${ownerName}'s Champion` : 'Your Champion'}
+            </p>
+            <p className={`font-display text-2xl font-extrabold uppercase tracking-wide ${theme.accent}`}>
+              {champion}
+            </p>
+          </div>
+        )}
       </div>
     </div>
   )
+}
+
+// ── Module-level helper (avoids recreating inside useMemo) ────
+function pickMap_champion(picks: Pick[], gameId: string): string | undefined {
+  return picks.find(p => p.game_id === gameId)?.predicted_winner
 }

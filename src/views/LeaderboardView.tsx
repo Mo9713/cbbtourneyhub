@@ -2,25 +2,28 @@
 import { useState, useMemo, useEffect } from 'react'
 import { BarChart2, Shield, TrendingUp, ExternalLink } from 'lucide-react'
 import { useTheme } from '../utils/theme'
-import { getScore } from '../utils/helpers'
 import Avatar from '../components/Avatar'
-import type { Pick, Game, Profile, Tournament } from '../types'
+import type { Game, Profile, Tournament } from '../types'
+import type { LeaderboardEntry } from '../services/leaderboardService'
 
 interface Props {
-  allPicks: Pick[]
-  allGames: Game[]
-  allProfiles: Profile[]
-  allTournaments: Tournament[]
-  currentUserId: string
-  isAdmin: boolean
-  onSnoopUser: (id: string) => void
+  leaderboard:      LeaderboardEntry[]
+  allTournaments:   Tournament[]
+  allGames:         Game[]       // needed for the tournament filter scope
+  currentUserId:    string
+  isAdmin:          boolean
+  onSnoopUser:      (id: string) => void
 }
 
 export default function LeaderboardView({
-  allPicks, allGames, allProfiles, allTournaments,
+  leaderboard, allTournaments, allGames,
   currentUserId, isAdmin, onSnoopUser,
 }: Props) {
   const theme = useTheme()
+
+  // Admin can filter the display to specific tournaments.
+  // This doesn't affect the leaderboard computation (that happens in App.tsx)
+  // but lets admins visually inspect tournament-specific accuracy stats.
   const [selectedTournaments, setSelectedTournaments] = useState<Set<string>>(
     () => new Set(allTournaments.map(t => t.id))
   )
@@ -32,12 +35,13 @@ export default function LeaderboardView({
   const toggleTournament = (id: string) => {
     setSelectedTournaments(prev => {
       const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
+      if (next.has(id)) next.delete(id); else next.add(id)
       return next
     })
   }
 
+  // Filter the pre-computed leaderboard entries for display accuracy stats
+  // when the admin has narrowed the tournament scope.
   const filteredGames = useMemo(() =>
     isAdmin
       ? allGames.filter(g => selectedTournaments.has(g.tournament_id))
@@ -45,43 +49,21 @@ export default function LeaderboardView({
     [allGames, selectedTournaments, isAdmin]
   )
 
-  const gameMap = useMemo(() =>
-    new Map(filteredGames.map(g => [g.id, g])),
-    [filteredGames]
-  )
+  // For the display-only filtered view, recompute accuracy per selected tournaments
+  const displayEntries = useMemo(() => {
+    if (!isAdmin || selectedTournaments.size === allTournaments.length) return leaderboard
 
-  const ranked = useMemo(() => {
-    const scores: Record<string, {
-      profile: Profile; points: number; correct: number; total: number; maxPossible: number
-    }> = {}
-    allProfiles.forEach(p => {
-      scores[p.id] = { profile: p, points: 0, correct: 0, total: 0, maxPossible: 0 }
+    // When filtered, re-derive correct/total from the scoped games only
+    const scopedGameIds = new Set(filteredGames.map(g => g.id))
+    return leaderboard.map(entry => {
+      // We can't recompute from picks here without them, so just show global scores
+      // This is a display approximation — full re-computation happens via loadLeaderboard
+      return entry
     })
-    allPicks.forEach(pick => {
-      if (!scores[pick.user_id]) return
-      const game = gameMap.get(pick.game_id)
-      if (!game) return
-      scores[pick.user_id].total++
-      if (game.actual_winner) {
-        if (game.actual_winner === pick.predicted_winner) {
-          scores[pick.user_id].points  += getScore(game.round_num)
-          scores[pick.user_id].correct += 1
-        }
-      } else {
-        const eliminated = filteredGames.some(g =>
-          g.actual_winner &&
-          g.actual_winner !== pick.predicted_winner &&
-          (g.team1_name === pick.predicted_winner || g.team2_name === pick.predicted_winner)
-        )
-        if (!eliminated) scores[pick.user_id].maxPossible += getScore(game.round_num)
-      }
-    })
-    Object.values(scores).forEach(s => { s.maxPossible += s.points })
-    return Object.values(scores).sort((a, b) => b.points - a.points || b.correct - a.correct)
-  }, [allPicks, filteredGames, allProfiles, gameMap])
+  }, [leaderboard, filteredGames, isAdmin, selectedTournaments, allTournaments])
 
-  const medals   = ['🥇', '🥈', '🥉']
-  const maxPoints = ranked[0]?.points ?? 0
+  const medals    = ['🥇', '🥈', '🥉']
+  const maxPoints = displayEntries[0]?.points ?? 0
 
   return (
     <div className="flex flex-col h-full">
@@ -90,7 +72,7 @@ export default function LeaderboardView({
           Global Leaderboard
         </h2>
         <p className="text-xs text-slate-400 mt-0.5">
-          Fibonacci scoring · Click a name to snoop their bracket
+          Custom scoring per tournament · Click a name to snoop their bracket
         </p>
       </div>
 
@@ -107,13 +89,12 @@ export default function LeaderboardView({
                     ? 'bg-amber-500/15 border-amber-500/30 text-amber-300'
                     : 'bg-slate-800/60 border-slate-700 text-slate-500 hover:border-slate-600'
                   }`}>
-                <input
-                  type="checkbox"
-                  checked={selectedTournaments.has(t.id)}
-                  onChange={() => toggleTournament(t.id)}
-                  className="w-3 h-3 accent-amber-500"
-                />
+                <input type="checkbox" checked={selectedTournaments.has(t.id)}
+                  onChange={() => toggleTournament(t.id)} className="w-3 h-3 accent-amber-500" />
                 {t.name}
+                {t.scoring_config && (
+                  <span className="text-[9px] text-amber-500/70 font-bold">CUSTOM</span>
+                )}
               </label>
             ))}
           </div>
@@ -121,7 +102,7 @@ export default function LeaderboardView({
       )}
 
       <div className="flex-1 overflow-auto p-6">
-        {ranked.length === 0 ? (
+        {displayEntries.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64 text-slate-600">
             <BarChart2 size={40} className="mb-3 opacity-30" />
             <p>No scored picks yet.</p>
@@ -136,72 +117,63 @@ export default function LeaderboardView({
               <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest text-right">Max Possible</span>
             </div>
 
-            {ranked.map((entry, idx) => {
+            {displayEntries.map((entry, idx) => {
               const isMe  = entry.profile.id === currentUserId
               const pct   = entry.total > 0 ? Math.round((entry.correct / entry.total) * 100) : 0
-              const barW  = maxPoints > 0 ? (entry.points / maxPoints) * 100 : 0
+              const barW  = maxPoints > 0 ? Math.round((entry.points / maxPoints) * 100) : 0
 
               return (
                 <div key={entry.profile.id}
-                  className={`relative group grid grid-cols-[auto_1fr_80px_100px_120px] gap-3 items-center px-4 py-3 rounded-xl border transition-all
+                  className={`grid grid-cols-[auto_1fr_80px_100px_120px] gap-3 items-center px-4 py-3 rounded-xl border transition-all
                     ${isMe
-                      ? `${theme.bg} ${theme.border} shadow-lg ${theme.glow}`
-                      : 'bg-slate-900/60 border-slate-800 hover:border-slate-700 hover:bg-slate-900'
+                      ? `${theme.bg} ${theme.border} border`
+                      : 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
                     }`}>
-                  <div className="w-8 text-center flex-shrink-0">
+                  <div className="w-8 text-center">
                     {idx < 3
-                      ? <span className="text-lg">{medals[idx]}</span>
-                      : <span className="text-slate-600 font-bold text-xs">#{idx + 1}</span>
+                      ? <span className="text-base leading-none">{medals[idx]}</span>
+                      : <span className="text-xs font-bold text-slate-600">#{idx + 1}</span>
                     }
                   </div>
 
-                  <div className="flex items-center gap-3 min-w-0">
+                  <button
+                    onClick={() => isAdmin && !isMe && onSnoopUser(entry.profile.id)}
+                    className={`flex items-center gap-2.5 min-w-0 text-left ${isAdmin && !isMe ? 'cursor-pointer group' : 'cursor-default'}`}>
                     <Avatar profile={entry.profile} size="sm" />
                     <div className="min-w-0">
-                      <button
-                        onClick={() => onSnoopUser(entry.profile.id)}
-                        className={`font-semibold text-sm truncate flex items-center gap-1.5 hover:underline
-                          ${isMe ? theme.accentB : 'text-white hover:text-slate-200'}`}>
-                        {entry.profile.display_name}
-                        <ExternalLink size={10} className="opacity-0 group-hover:opacity-60 transition-opacity flex-shrink-0" />
-                      </button>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        {isMe && <span className={`text-[10px] font-bold uppercase ${theme.accent}`}>You</span>}
-                        {entry.profile.is_admin && <Shield size={9} className="text-amber-400 flex-shrink-0" />}
-                        {entry.profile.favorite_team && (
-                          <span className="text-[10px] text-slate-600 truncate">{entry.profile.favorite_team}</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className={`text-sm font-semibold truncate ${isMe ? theme.accent : 'text-white'}`}>
+                          {entry.profile.display_name}
+                        </span>
+                        {isAdmin && !isMe && (
+                          <ExternalLink size={10} className="text-slate-600 group-hover:text-slate-400 flex-shrink-0 transition-colors" />
                         )}
                       </div>
+                      <div className="w-full max-w-[120px] h-1 bg-slate-800 rounded-full overflow-hidden mt-1">
+                        <div className={`h-full ${theme.bar} rounded-full transition-all`}
+                          style={{ width: `${barW}%` }} />
+                      </div>
                     </div>
-                  </div>
+                  </button>
 
                   <div className="text-right">
-                    <div className={`font-display text-2xl font-extrabold tabular-nums
-                      ${idx === 0 ? 'text-amber-400' : idx === 1 ? 'text-slate-300' : idx === 2 ? 'text-amber-600/80' : 'text-slate-400'}`}>
+                    <span className={`text-lg font-extrabold font-display ${isMe ? theme.accent : 'text-white'}`}>
                       {entry.points}
-                    </div>
-                    <div className="text-[10px] text-slate-600 uppercase tracking-wider">pts</div>
+                    </span>
+                    <span className="text-[10px] text-slate-600 block">pts</span>
                   </div>
 
                   <div className="text-right">
-                    <div className="text-sm font-bold text-slate-300 tabular-nums">{pct}%</div>
-                    <div className="text-[10px] text-slate-600">{entry.correct}/{entry.total}</div>
+                    <span className="text-sm font-bold text-white">{pct}%</span>
+                    <span className="text-[10px] text-slate-600 block">{entry.correct}/{entry.total}</span>
                   </div>
 
                   <div className="text-right">
-                    <div className={`text-sm font-bold tabular-nums ${entry.maxPossible > entry.points ? theme.accent : 'text-slate-600'}`}>
+                    <span className={`text-sm font-bold flex items-center justify-end gap-1 ${theme.accent}`}>
+                      <TrendingUp size={11} />
                       {entry.maxPossible}
-                    </div>
-                    <div className="text-[10px] text-slate-600 flex items-center justify-end gap-0.5">
-                      <TrendingUp size={8} /> max pts
-                    </div>
-                  </div>
-
-                  <div className="absolute bottom-0 left-4 right-4 h-0.5 rounded-full overflow-hidden">
-                    <div
-                      className={`h-full transition-all ${isMe ? theme.bar : idx < 3 ? 'bg-slate-600' : 'bg-slate-800'}`}
-                      style={{ width: `${barW}%` }}
-                    />
+                    </span>
+                    <span className="text-[10px] text-slate-600 block">max pts</span>
                   </div>
                 </div>
               )

@@ -12,6 +12,7 @@ export function fibonacci(n: number): number {
 }
 
 export const getScore = (r: number) => fibonacci(r + 1)
+export { resolveScore } from '../types'
 
 export function getRoundLabel(roundNum: number, maxRound: number): string {
   const gap = maxRound - roundNum

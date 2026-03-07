@@ -1,22 +1,19 @@
 // src/views/SettingsView.tsx
 import { useState } from 'react'
-import { createClient } from '@supabase/supabase-js'
 import { User as UserIcon, Palette, Key, Check, Image } from 'lucide-react'
-import { useTheme } from '../utils/theme'
-import { THEMES } from '../utils/theme'
+import { useTheme, THEMES } from '../utils/theme'
 import type { ThemeConfig } from '../utils/theme'
 import type { Profile, ToastMsg, ThemeKey } from '../types'
 
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL ?? '',
-  import.meta.env.VITE_SUPABASE_ANON_KEY ?? ''
-)
+// ── Services ─────────────────────────────────────────────────
+import { supabase }         from '../services/supabaseClient'
+import * as profileService  from '../services/profileService'
 
 interface Props {
-  profile: Profile
-  userEmail: string
+  profile:         Profile
+  userEmail:       string
   onProfileUpdate: (p: Profile) => void
-  push: (msg: string, type?: ToastMsg['type']) => void
+  push:            (msg: string, type?: ToastMsg['type']) => void
 }
 
 export default function SettingsView({ profile, userEmail, onProfileUpdate, push }: Props) {
@@ -34,14 +31,17 @@ export default function SettingsView({ profile, userEmail, onProfileUpdate, push
 
   const save = async () => {
     setSaving(true)
-    const updates: Partial<Profile> = {
+    const result = await profileService.updateMyProfile({
       display_name:  displayName.trim() || profile.display_name,
       favorite_team: favoriteTeam.trim() || null,
       avatar_url:    avatarUrl.trim() || null,
+    })
+    if (result.ok) {
+      onProfileUpdate(result.data)
+      push('Profile saved!', 'success')
+    } else {
+      push(result.error, 'error')
     }
-    const { data } = await supabase
-      .from('profiles').update(updates).eq('id', profile.id).select().single()
-    if (data) { onProfileUpdate(data as Profile); push('Profile saved!', 'success') }
     setSaving(false)
   }
 
@@ -51,6 +51,7 @@ export default function SettingsView({ profile, userEmail, onProfileUpdate, push
     if (newPass !== confirmPass) { push('New passwords do not match', 'error'); return }
 
     setChangingPass(true)
+    // Verify current password by re-authenticating
     const { error: verifyErr } = await supabase.auth.signInWithPassword({ email: userEmail, password: currentPass })
     if (verifyErr) {
       push('Current password is incorrect', 'error')
@@ -58,8 +59,9 @@ export default function SettingsView({ profile, userEmail, onProfileUpdate, push
       return
     }
     const { error } = await supabase.auth.updateUser({ password: newPass })
-    if (error) push(error.message, 'error')
-    else {
+    if (error) {
+      push(error.message, 'error')
+    } else {
       push('Password updated!', 'success')
       setCurrentPass(''); setNewPass(''); setConfirmPass('')
     }
@@ -67,8 +69,9 @@ export default function SettingsView({ profile, userEmail, onProfileUpdate, push
   }
 
   const setThemeKey = async (t: ThemeKey) => {
-    await supabase.from('profiles').update({ theme: t }).eq('id', profile.id)
-    onProfileUpdate({ ...profile, theme: t })
+    const result = await profileService.updateTheme(t)
+    if (result.ok) onProfileUpdate(result.data)
+    else push(result.error, 'error')
   }
 
   const inputCls = `w-full ${theme.inputBg} border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm placeholder-slate-600 focus:outline-none focus:border-slate-500 transition-colors`
@@ -90,48 +93,30 @@ export default function SettingsView({ profile, userEmail, onProfileUpdate, push
             <div className="space-y-3">
               <div>
                 <label className="block text-xs text-slate-500 mb-1">Display Name</label>
-                <input
-                  value={displayName}
-                  onChange={e => setDisplayName(e.target.value)}
-                  className={inputCls}
-                />
+                <input value={displayName} onChange={e => setDisplayName(e.target.value)} className={inputCls} />
               </div>
               <div>
                 <label className="block text-xs text-slate-500 mb-1">Favorite Team</label>
-                <input
-                  value={favoriteTeam}
-                  onChange={e => setFavoriteTeam(e.target.value)}
-                  placeholder="e.g. Duke Blue Devils"
-                  className={inputCls}
-                />
+                <input value={favoriteTeam} onChange={e => setFavoriteTeam(e.target.value)}
+                  placeholder="e.g. Duke Blue Devils" className={inputCls} />
               </div>
-              {/* ── Avatar URL (restored) ── */}
               <div>
                 <label className="block text-xs text-slate-500 mb-1 flex items-center gap-1.5">
                   <Image size={10} /> Avatar Image URL
                 </label>
-                <input
-                  value={avatarUrl}
-                  onChange={e => setAvatarUrl(e.target.value)}
-                  placeholder="https://example.com/your-photo.jpg"
-                  className={inputCls}
-                />
+                <input value={avatarUrl} onChange={e => setAvatarUrl(e.target.value)}
+                  placeholder="https://example.com/your-photo.jpg" className={inputCls} />
                 {avatarUrl.trim() && (
                   <div className="mt-2 flex items-center gap-2">
-                    <img
-                      src={avatarUrl.trim()}
-                      alt="Avatar preview"
+                    <img src={avatarUrl.trim()} alt="Avatar preview"
                       className={`w-10 h-10 rounded-full object-cover border-2 ${theme.borderB}`}
-                      onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
-                    />
+                      onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
                     <span className="text-[10px] text-slate-500">Preview</span>
                   </div>
                 )}
               </div>
             </div>
-            <button
-              onClick={save}
-              disabled={saving}
+            <button onClick={save} disabled={saving}
               className={`mt-4 px-5 py-2.5 rounded-xl text-white text-sm font-bold transition-all ${theme.btn} disabled:opacity-40`}>
               {saving ? 'Saving…' : 'Save Profile'}
             </button>
@@ -153,9 +138,8 @@ export default function SettingsView({ profile, userEmail, onProfileUpdate, push
                       {t.label}
                     </span>
                     <span className="text-[10px] text-slate-600">
-                      {t.key === 'ember' ? 'Warm dark' :
-                       t.key === 'ice'   ? 'Cool dark' :
-                       t.key === 'plasma'? 'Deep violet' : 'Rich green'}
+                      {t.key === 'ember' ? 'Warm dark' : t.key === 'ice' ? 'Cool dark' :
+                       t.key === 'plasma' ? 'Deep violet' : 'Rich green'}
                     </span>
                   </div>
                   {profile.theme === t.key && <Check size={13} className={`ml-auto ${t.accent}`} />}
@@ -186,8 +170,7 @@ export default function SettingsView({ profile, userEmail, onProfileUpdate, push
                   placeholder="Repeat new password" className={inputCls} />
               </div>
             </div>
-            <button
-              onClick={changePass}
+            <button onClick={changePass}
               disabled={changingPass || !currentPass || !newPass || !confirmPass}
               className={`mt-4 px-5 py-2.5 rounded-xl text-white text-sm font-bold transition-all ${theme.btn} disabled:opacity-40`}>
               {changingPass ? 'Verifying…' : 'Update Password'}
