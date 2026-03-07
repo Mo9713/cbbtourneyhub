@@ -1,72 +1,35 @@
 // src/views/LeaderboardView.tsx
-import { useState, useMemo, useEffect } from 'react'
 import { BarChart2, Shield, TrendingUp, ExternalLink } from 'lucide-react'
 import { useTheme } from '../utils/theme'
 import Avatar from '../components/Avatar'
-import type { Game, Profile, Tournament } from '../types'
+import type { Tournament } from '../types'
 import type { LeaderboardEntry } from '../services/leaderboardService'
 
 interface Props {
-  leaderboard:      LeaderboardEntry[]
-  allTournaments:   Tournament[]
-  allGames:         Game[]       // needed for the tournament filter scope
-  currentUserId:    string
-  isAdmin:          boolean
-  onSnoopUser:      (id: string) => void
+  leaderboard:          LeaderboardEntry[]
+  allTournaments:       Tournament[]
+  // ── Lifted from internal state — owned by App.tsx now ────────
+  selectedTournaments:  Set<string>
+  toggleTournament:     (id: string) => void
+  // ─────────────────────────────────────────────────────────────
+  currentUserId:        string
+  isAdmin:              boolean
+  onSnoopUser:          (id: string) => void
 }
 
 export default function LeaderboardView({
-  leaderboard, allTournaments, allGames,
+  leaderboard, allTournaments,
+  selectedTournaments, toggleTournament,
   currentUserId, isAdmin, onSnoopUser,
 }: Props) {
-  const theme = useTheme()
-
-  // Admin can filter the display to specific tournaments.
-  // This doesn't affect the leaderboard computation (that happens in App.tsx)
-  // but lets admins visually inspect tournament-specific accuracy stats.
-  const [selectedTournaments, setSelectedTournaments] = useState<Set<string>>(
-    () => new Set(allTournaments.map(t => t.id))
-  )
-
-  useEffect(() => {
-    setSelectedTournaments(new Set(allTournaments.map(t => t.id)))
-  }, [allTournaments.length])
-
-  const toggleTournament = (id: string) => {
-    setSelectedTournaments(prev => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id); else next.add(id)
-      return next
-    })
-  }
-
-  // Filter the pre-computed leaderboard entries for display accuracy stats
-  // when the admin has narrowed the tournament scope.
-  const filteredGames = useMemo(() =>
-    isAdmin
-      ? allGames.filter(g => selectedTournaments.has(g.tournament_id))
-      : allGames,
-    [allGames, selectedTournaments, isAdmin]
-  )
-
-  // For the display-only filtered view, recompute accuracy per selected tournaments
-  const displayEntries = useMemo(() => {
-    if (!isAdmin || selectedTournaments.size === allTournaments.length) return leaderboard
-
-    // When filtered, re-derive correct/total from the scoped games only
-    const scopedGameIds = new Set(filteredGames.map(g => g.id))
-    return leaderboard.map(entry => {
-      // We can't recompute from picks here without them, so just show global scores
-      // This is a display approximation — full re-computation happens via loadLeaderboard
-      return entry
-    })
-  }, [leaderboard, filteredGames, isAdmin, selectedTournaments, allTournaments])
-
+  const theme     = useTheme()
   const medals    = ['🥇', '🥈', '🥉']
-  const maxPoints = displayEntries[0]?.points ?? 0
+  const maxPoints = leaderboard[0]?.points ?? 0
 
   return (
     <div className="flex flex-col h-full">
+
+      {/* Header */}
       <div className={`px-6 py-4 border-b flex-shrink-0 ${theme.headerBg}`}>
         <h2 className="font-display text-4xl font-extrabold text-white uppercase tracking-wide">
           Global Leaderboard
@@ -76,6 +39,7 @@ export default function LeaderboardView({
         </p>
       </div>
 
+      {/* Tournament filter — admin only, scores recompute instantly in App.tsx */}
       {isAdmin && allTournaments.length > 0 && (
         <div className="px-6 py-3 border-b border-slate-800 bg-amber-500/5 flex-shrink-0">
           <div className="flex items-center gap-2 flex-wrap">
@@ -83,17 +47,23 @@ export default function LeaderboardView({
               <Shield size={9} /> Filter:
             </span>
             {allTournaments.map(t => (
-              <label key={t.id}
+              <label
+                key={t.id}
                 className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border cursor-pointer text-xs font-medium transition-all select-none
                   ${selectedTournaments.has(t.id)
                     ? 'bg-amber-500/15 border-amber-500/30 text-amber-300'
                     : 'bg-slate-800/60 border-slate-700 text-slate-500 hover:border-slate-600'
-                  }`}>
-                <input type="checkbox" checked={selectedTournaments.has(t.id)}
-                  onChange={() => toggleTournament(t.id)} className="w-3 h-3 accent-amber-500" />
+                  }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={selectedTournaments.has(t.id)}
+                  onChange={() => toggleTournament(t.id)}
+                  className="w-3 h-3 accent-amber-500"
+                />
                 {t.name}
                 {t.scoring_config && (
-                  <span className="text-[9px] text-amber-500/70 font-bold">CUSTOM</span>
+                  <span className="text-[9px] text-amber-500/60 font-bold ml-0.5">CUSTOM</span>
                 )}
               </label>
             ))}
@@ -101,14 +71,17 @@ export default function LeaderboardView({
         </div>
       )}
 
+      {/* Rows */}
       <div className="flex-1 overflow-auto p-6">
-        {displayEntries.length === 0 ? (
+        {leaderboard.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64 text-slate-600">
             <BarChart2 size={40} className="mb-3 opacity-30" />
             <p>No scored picks yet.</p>
           </div>
         ) : (
           <div className="space-y-2 max-w-3xl mx-auto">
+
+            {/* Column headers */}
             <div className="grid grid-cols-[auto_1fr_80px_100px_120px] gap-3 px-4 pb-1">
               <div className="w-8" />
               <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">Player</span>
@@ -117,18 +90,21 @@ export default function LeaderboardView({
               <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest text-right">Max Possible</span>
             </div>
 
-            {displayEntries.map((entry, idx) => {
+            {leaderboard.map((entry, idx) => {
               const isMe  = entry.profile.id === currentUserId
               const pct   = entry.total > 0 ? Math.round((entry.correct / entry.total) * 100) : 0
               const barW  = maxPoints > 0 ? Math.round((entry.points / maxPoints) * 100) : 0
 
               return (
-                <div key={entry.profile.id}
+                <div
+                  key={entry.profile.id}
                   className={`grid grid-cols-[auto_1fr_80px_100px_120px] gap-3 items-center px-4 py-3 rounded-xl border transition-all
                     ${isMe
                       ? `${theme.bg} ${theme.border} border`
                       : 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
-                    }`}>
+                    }`}
+                >
+                  {/* Rank */}
                   <div className="w-8 text-center">
                     {idx < 3
                       ? <span className="text-base leading-none">{medals[idx]}</span>
@@ -136,9 +112,12 @@ export default function LeaderboardView({
                     }
                   </div>
 
+                  {/* Player */}
                   <button
                     onClick={() => isAdmin && !isMe && onSnoopUser(entry.profile.id)}
-                    className={`flex items-center gap-2.5 min-w-0 text-left ${isAdmin && !isMe ? 'cursor-pointer group' : 'cursor-default'}`}>
+                    className={`flex items-center gap-2.5 min-w-0 text-left
+                      ${isAdmin && !isMe ? 'cursor-pointer group' : 'cursor-default'}`}
+                  >
                     <Avatar profile={entry.profile} size="sm" />
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5">
@@ -150,12 +129,15 @@ export default function LeaderboardView({
                         )}
                       </div>
                       <div className="w-full max-w-[120px] h-1 bg-slate-800 rounded-full overflow-hidden mt-1">
-                        <div className={`h-full ${theme.bar} rounded-full transition-all`}
-                          style={{ width: `${barW}%` }} />
+                        <div
+                          className={`h-full ${theme.bar} rounded-full transition-all`}
+                          style={{ width: `${barW}%` }}
+                        />
                       </div>
                     </div>
                   </button>
 
+                  {/* Score */}
                   <div className="text-right">
                     <span className={`text-lg font-extrabold font-display ${isMe ? theme.accent : 'text-white'}`}>
                       {entry.points}
@@ -163,11 +145,13 @@ export default function LeaderboardView({
                     <span className="text-[10px] text-slate-600 block">pts</span>
                   </div>
 
+                  {/* Accuracy */}
                   <div className="text-right">
                     <span className="text-sm font-bold text-white">{pct}%</span>
                     <span className="text-[10px] text-slate-600 block">{entry.correct}/{entry.total}</span>
                   </div>
 
+                  {/* Max possible */}
                   <div className="text-right">
                     <span className={`text-sm font-bold flex items-center justify-end gap-1 ${theme.accent}`}>
                       <TrendingUp size={11} />

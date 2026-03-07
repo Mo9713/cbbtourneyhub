@@ -2,25 +2,20 @@
 /// <reference types="vite/client" />
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import type { User } from '@supabase/supabase-js'
-import { PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { PanelLeftClose, PanelLeftOpen, Shield } from 'lucide-react'
 
-// ── Services ──────────────────────────────────────────────────
 import { supabase }                                   from './services/supabaseClient'
 import * as tournamentService                         from './services/tournamentService'
 import * as gameService                               from './services/gameService'
 import * as pickService                               from './services/pickService'
 import * as profileService                            from './services/profileService'
-import { computeLeaderboard, type LeaderboardEntry } from './services/leaderboardService'
+import { computeLeaderboard }                         from './services/leaderboardService'
 
-// ── Hooks ─────────────────────────────────────────────────────
-import { useRealtimeSync } from './hooks/useRealtimeSync'
-
-// ── Utils ─────────────────────────────────────────────────────
+import { useRealtimeSync }    from './hooks/useRealtimeSync'
 import { ThemeCtx, THEMES }   from './utils/theme'
 import { isPicksLocked }      from './utils/time'
 import { computeGameNumbers } from './utils/helpers'
 
-// ── Components ────────────────────────────────────────────────
 import AuthForm           from './components/AuthForm'
 import Sidebar            from './components/Sidebar'
 import Toaster            from './components/Toaster'
@@ -29,7 +24,6 @@ import AddTournamentModal from './components/AddTournamentModal'
 import SnoopModal         from './components/SnoopModal'
 import MobileHeader       from './components/MobileHeader'
 
-// ── Views ─────────────────────────────────────────────────────
 import HomeView         from './views/HomeView'
 import SettingsView     from './views/SettingsView'
 import LeaderboardView  from './views/LeaderboardView'
@@ -41,7 +35,6 @@ import type {
   ToastMsg, ConfirmModalCfg, ActiveView, TemplateKey,
 } from './types'
 
-// ── Toast Hook ────────────────────────────────────────────────
 function useToasts() {
   const [toasts, setToasts] = useState<ToastMsg[]>([])
   const push = useCallback((text: string, type: ToastMsg['type'] = 'success') => {
@@ -52,7 +45,6 @@ function useToasts() {
   return { toasts, push }
 }
 
-// ── Main App ──────────────────────────────────────────────────
 export default function App() {
   const [user,               setUser]               = useState<User | null>(null)
   const [profile,            setProfile]            = useState<Profile | null>(null)
@@ -62,10 +54,18 @@ export default function App() {
   const [gamesCache,         setGamesCache]         = useState<Record<string, Game[]>>({})
   const [picks,              setPicks]              = useState<Pick[]>([])
   const [allMyPicks,         setAllMyPicks]         = useState<Pick[]>([])
-  const [allPicks,           setAllPicks]           = useState<Pick[]>([])
-  const [allGames,           setAllGames]           = useState<Game[]>([])
-  const [allProfiles,        setAllProfiles]        = useState<Profile[]>([])
-  const [leaderboard,        setLeaderboard]        = useState<LeaderboardEntry[]>([])
+
+  // Raw leaderboard data — fetched once, reused by the memo below
+  const [allPicks,    setAllPicks]    = useState<Pick[]>([])
+  const [allGames,    setAllGames]    = useState<Game[]>([])
+  const [allProfiles, setAllProfiles] = useState<Profile[]>([])
+
+  // ── LIFTED: filter state lives here so it persists across navigation
+  // and so computeLeaderboard re-runs automatically when it changes
+  const [selectedTournaments, setSelectedTournaments] = useState<Set<string>>(
+    () => new Set<string>()
+  )
+
   const [activeView,         setActiveView]         = useState<ActiveView>('home')
   const [appLoading,         setAppLoading]         = useState(true)
   const [snoopTargetId,      setSnoopTargetId]      = useState<string | null>(null)
@@ -78,7 +78,34 @@ export default function App() {
   const currentTheme = profile?.theme ? THEMES[profile.theme] ?? THEMES.ember : THEMES.ember
   const gameNumbers  = useMemo(() => computeGameNumbers(games), [games])
 
-  // ── Auth ───────────────────────────────────────────────────
+  // Seed the filter set whenever tournaments first load (select all by default)
+  useEffect(() => {
+    if (tournaments.length > 0 && selectedTournaments.size === 0) {
+      setSelectedTournaments(new Set(tournaments.map(t => t.id)))
+    }
+  }, [tournaments])
+
+  const toggleTournament = useCallback((id: string) => {
+    setSelectedTournaments(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }, [])
+
+  // ── LEADERBOARD: purely derived — recomputes whenever raw data
+  //    OR the filter changes. No separate setState call needed.
+  const leaderboard = useMemo(() => {
+    if (allProfiles.length === 0) return []
+    const tournamentMap = new Map(tournaments.map(t => [t.id, t]))
+    // Filter games to only the selected tournaments for score computation
+    const scopedGames = selectedTournaments.size > 0
+      ? allGames.filter(g => selectedTournaments.has(g.tournament_id))
+      : allGames
+    return computeLeaderboard(allPicks, scopedGames, allGames, allProfiles, tournamentMap)
+  }, [allPicks, allGames, allProfiles, tournaments, selectedTournaments])
+
+  // ── Auth ──────────────────────────────────────────────────────
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setUser(data.user ?? null))
     const { data: sub } = supabase.auth.onAuthStateChange((_ev, session) =>
@@ -96,16 +123,11 @@ export default function App() {
     })
   }, [user])
 
-  // ── Data Loaders ───────────────────────────────────────────
+  // ── Data Loaders ──────────────────────────────────────────────
   const loadTournaments = useCallback(async () => {
     const result = await tournamentService.fetchTournaments()
-    if (result.ok) {
-      setTournaments(result.data)
-    } else {
-      push(`Database Error: ${result.error}`, 'error')
-      console.error("FETCH ERROR:", result.error)
-    }
-  }, [push])
+    if (result.ok) setTournaments(result.data)
+  }, [])
 
   const loadGames = useCallback(async (tid: string) => {
     const result = await gameService.fetchGames(tid)
@@ -129,29 +151,19 @@ export default function App() {
     if (result.ok) setAllMyPicks(result.data)
   }, [profile])
 
+  // loadLeaderboard only fetches raw data — scoring is done by the useMemo above
   const loadLeaderboard = useCallback(async () => {
     const [picksRes, gamesRes, profilesRes] = await Promise.all([
       pickService.fetchAllPicks(),
       gameService.fetchAllGames(),
       profileService.fetchAllProfiles(),
     ])
-    const p = picksRes.ok    ? picksRes.data    : []
-    const g = gamesRes.ok    ? gamesRes.data    : []
-    const r = profilesRes.ok ? profilesRes.data : []
-    setAllPicks(p); setAllGames(g); setAllProfiles(r)
-    const tMap = new Map(tournaments.map(t => [t.id, t]))
-    setLeaderboard(computeLeaderboard(p, g, g, r, tMap))
-  }, [tournaments])
+    if (picksRes.ok)    setAllPicks(picksRes.data)
+    if (gamesRes.ok)    setAllGames(gamesRes.data)
+    if (profilesRes.ok) setAllProfiles(profilesRes.data)
+  }, [])
 
-  // Re-compute leaderboard display when tournament scoring configs change
-  useEffect(() => {
-    if (allPicks.length > 0) {
-      const tMap = new Map(tournaments.map(t => [t.id, t]))
-      setLeaderboard(computeLeaderboard(allPicks, allGames, allGames, allProfiles, tMap))
-    }
-  }, [tournaments])
-
-  // ── Boot Sequence ──────────────────────────────────────────
+  // ── Boot Sequence ─────────────────────────────────────────────
   useEffect(() => { if (profile) loadTournaments() }, [profile, loadTournaments])
 
   useEffect(() => {
@@ -173,20 +185,13 @@ export default function App() {
     if ((activeView === 'leaderboard' || snoopTargetId) && profile) loadLeaderboard()
   }, [activeView, snoopTargetId, profile])
 
-  // ── Realtime (one line) ────────────────────────────────────
+  // ── Realtime ──────────────────────────────────────────────────
   useRealtimeSync({
-    profile,
-    selectedTournament,
-    activeView,
-    snoopTargetId,
-    loadTournaments,
-    loadGames,
-    loadPicks,
-    loadAllMyPicks,
-    loadLeaderboard,
+    profile, selectedTournament, activeView, snoopTargetId,
+    loadTournaments, loadGames, loadPicks, loadAllMyPicks, loadLeaderboard,
   })
 
-  // ── Action Handlers ────────────────────────────────────────
+  // ── Action Handlers ───────────────────────────────────────────
   const handleSelectTournament = (t: Tournament) => {
     setSelectedTournament(t)
     setActiveView('bracket')
@@ -361,7 +366,7 @@ export default function App() {
     [snoopTargetId, allProfiles]
   )
 
-  // ── Render ─────────────────────────────────────────────────
+  // ── Render ────────────────────────────────────────────────────
   if (appLoading) return (
     <div className="min-h-screen bg-slate-950 flex items-center justify-center">
       <div className="text-center">
@@ -375,7 +380,9 @@ export default function App() {
     <AuthForm onAuth={() => supabase.auth.getUser().then(({ data }) => setUser(data.user ?? null))} />
   )
 
-  const showAdminTab = profile.is_admin && !!selectedTournament
+  const showAdminTab = profile.is_admin
+    && !!selectedTournament
+    && (activeView === 'bracket' || activeView === 'admin')
 
   const sidebarProps = {
     tournaments, selectedId: selectedTournament?.id ?? null,
@@ -404,7 +411,6 @@ export default function App() {
           logo={currentTheme.logo}
         />
 
-        {/* Mobile overlay sidebar */}
         {mobileMenuOpen && (
           <div className="md:hidden fixed inset-0 z-50 flex">
             <div className="absolute inset-0 bg-black/50" onClick={() => setMobileMenuOpen(false)} />
@@ -414,14 +420,11 @@ export default function App() {
           </div>
         )}
 
-        {/* Desktop sidebar */}
         <div className={`hidden md:flex flex-shrink-0 overflow-hidden transition-all duration-200 ${sidebarOpen ? 'w-64' : 'w-0'}`}>
           <Sidebar {...sidebarProps} onClose={() => {}} />
         </div>
 
         <main className="flex-1 flex flex-col min-w-0 overflow-hidden pt-14 md:pt-0">
-
-          {/* Desktop toolbar row */}
           <div className="hidden md:flex items-center gap-2 px-3 pt-2 pb-0 flex-shrink-0">
             <button
               onClick={() => setSidebarOpen(v => !v)}
@@ -432,23 +435,28 @@ export default function App() {
             </button>
           </div>
 
-          {/* Bracket / Admin tabs */}
+          {/* Bracket / Admin tabs — only when a tournament is open AND on those views */}
           {showAdminTab && (
             <div className="flex items-center gap-1 px-6 pt-3 border-b border-slate-800 flex-shrink-0 bg-slate-900/50">
-              {(['bracket', 'admin'] as ActiveView[]).map(v => (
-                <button key={v} onClick={() => setActiveView(v)}
-                  className={`px-4 py-2 text-xs font-bold rounded-t-lg transition-all border-b-2
-                    ${activeView === v
-                      ? `${currentTheme.accent} border-current`
-                      : 'text-slate-500 border-transparent hover:text-slate-300'
-                    }`}>
-                  {v.charAt(0).toUpperCase() + v.slice(1)}
-                </button>
-              ))}
+              <button onClick={() => setActiveView('bracket')}
+                className={`px-4 py-2 text-xs font-bold rounded-t-lg transition-all border-b-2
+                  ${activeView === 'bracket'
+                    ? `${currentTheme.accent} border-current`
+                    : 'text-slate-500 border-transparent hover:text-slate-300'
+                  }`}>
+                Make Picks
+              </button>
+              <button onClick={() => setActiveView('admin')}
+                className={`px-4 py-2 text-xs font-bold rounded-t-lg transition-all border-b-2 flex items-center gap-1.5
+                  ${activeView === 'admin'
+                    ? 'text-amber-400 border-amber-500'
+                    : 'text-slate-500 border-transparent hover:text-slate-300'
+                  }`}>
+                <Shield size={11} /> Admin Builder
+              </button>
             </div>
           )}
 
-          {/* Main view */}
           <div className="flex-1 overflow-hidden">
             {activeView === 'settings' ? (
               <SettingsView
@@ -459,7 +467,8 @@ export default function App() {
               <LeaderboardView
                 leaderboard={leaderboard}
                 allTournaments={tournaments}
-                allGames={allGames}
+                selectedTournaments={selectedTournaments}
+                toggleTournament={toggleTournament}
                 currentUserId={profile.id}
                 isAdmin={profile.is_admin}
                 onSnoopUser={setSnoopTargetId}
@@ -496,7 +505,6 @@ export default function App() {
           </div>
         </main>
 
-        {/* Overlays */}
         {snoopTargetId && snoopProfile && (
           <SnoopModal
             targetProfile={snoopProfile}
