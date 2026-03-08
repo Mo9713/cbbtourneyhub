@@ -89,9 +89,9 @@ export function resolveAdvancingSlot(
   const winnerText = `Winner of Game #${gameNumbers[game.id]}`
 
   if (nextGame) {
-    // 1. PRIMARY: placeholder text-match
-    if (nextGame.team1_name === winnerText || game.team1_name === winnerText) return 'in1'
-    if (nextGame.team2_name === winnerText || game.team2_name === winnerText) return 'in2'
+    // 1. PRIMARY: placeholder text-match (fixed typo here)
+    if (nextGame.team1_name === winnerText) return 'in1'
+    if (nextGame.team2_name === winnerText) return 'in2'
 
     // 2. SECONDARY: winner already advanced, match by name
     if (game.actual_winner) {

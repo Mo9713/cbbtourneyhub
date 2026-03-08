@@ -5,8 +5,6 @@ import { useTheme }            from '../../utils/theme'
 import { getRoundLabel }       from '../../utils/helpers'
 import type { Tournament, Game, ScoringConfig } from '../../types'
 
-// Fibonacci helper — mirrors resolveScore but returns the default value
-// for a given round so the UI can show "(fib: N)" hints.
 function fibonacci(n: number): number {
   if (n <= 0) return 0
   if (n === 1 || n === 2) return 1
@@ -26,6 +24,8 @@ export default function TournamentConfigPanel({ tournament, games, onUpdate }: P
   const maxRound = games.length ? Math.max(...games.map(g => g.round_num)) : 6
 
   const [open, setOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
 
   const [roundNamesInput, setRoundNamesInput] = useState<string[]>(
     tournament.round_names?.length ? [...tournament.round_names] : []
@@ -34,7 +34,6 @@ export default function TournamentConfigPanel({ tournament, games, onUpdate }: P
     buildScoringInput(tournament.scoring_config, maxRound)
   )
 
-  // Sync when parent updates after a save or realtime event
   useEffect(() => {
     setRoundNamesInput(tournament.round_names?.length ? [...tournament.round_names] : [])
   }, [tournament.round_names])
@@ -43,7 +42,8 @@ export default function TournamentConfigPanel({ tournament, games, onUpdate }: P
     setScoringInput(buildScoringInput(tournament.scoring_config, maxRound))
   }, [tournament.scoring_config, maxRound])
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    setSaving(true)
     const config: ScoringConfig = {}
     let isCustom = false
     Object.entries(scoringInput).forEach(([r, val]) => {
@@ -54,10 +54,15 @@ export default function TournamentConfigPanel({ tournament, games, onUpdate }: P
         if (parsed !== defaultVal) isCustom = true
       }
     })
-    onUpdate({
+    
+    await onUpdate({
       round_names:    roundNamesInput.map(n => n.trim()),
       scoring_config: isCustom ? config : null,
     })
+    
+    setSaving(false)
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2000)
   }
 
   const resetToFibonacci = () => {
@@ -72,7 +77,6 @@ export default function TournamentConfigPanel({ tournament, games, onUpdate }: P
 
   return (
     <div className="px-5 border-b border-amber-500/10 bg-amber-500/5 flex-shrink-0">
-      {/* Toggle row */}
       <button
         onClick={() => setOpen(v => !v)}
         className="flex items-center gap-2 text-[11px] font-bold text-amber-400/70 hover:text-amber-300 uppercase tracking-widest transition-colors w-full text-left py-2"
@@ -88,7 +92,6 @@ export default function TournamentConfigPanel({ tournament, games, onUpdate }: P
       {open && (
         <div className="pb-4 grid grid-cols-1 md:grid-cols-3 gap-4">
 
-          {/* ── Scoring per round ── */}
           <div className={`${theme.panelBg} border border-slate-800 rounded-xl p-3`}>
             <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1.5">
               <Hash size={9} /> Points per Round
@@ -118,7 +121,6 @@ export default function TournamentConfigPanel({ tournament, games, onUpdate }: P
             )}
           </div>
 
-          {/* ── Custom round names ── */}
           <div className={`${theme.panelBg} border border-slate-800 rounded-xl p-3`}>
             <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
               Custom Round Names
@@ -143,7 +145,6 @@ export default function TournamentConfigPanel({ tournament, games, onUpdate }: P
             </div>
           </div>
 
-          {/* ── Tiebreaker toggle ── */}
           <div className={`${theme.panelBg} border border-slate-800 rounded-xl p-3`}>
             <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">
               Tie-Breaker
@@ -169,11 +170,11 @@ export default function TournamentConfigPanel({ tournament, games, onUpdate }: P
             )}
           </div>
 
-          {/* Save */}
           <div className="md:col-span-3 flex justify-end">
-            <button onClick={handleSave}
-              className={`px-5 py-2 rounded-xl text-white text-sm font-bold transition-all ${theme.btn}`}>
-              Save Tournament Config
+            <button onClick={handleSave} disabled={saving}
+              className={`px-5 py-2 rounded-xl text-white text-sm font-bold transition-all
+                ${saved ? 'bg-emerald-600' : `${theme.btn}`} disabled:opacity-50`}>
+              {saving ? 'Saving...' : saved ? 'Saved!' : 'Save Tournament Config'}
             </button>
           </div>
 
@@ -183,7 +184,6 @@ export default function TournamentConfigPanel({ tournament, games, onUpdate }: P
   )
 }
 
-// ── Module-level helper ───────────────────────────────────────
 function buildScoringInput(
   config: ScoringConfig | null | undefined,
   maxRound: number,

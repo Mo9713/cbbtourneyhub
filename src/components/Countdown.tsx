@@ -1,6 +1,6 @@
 // src/components/Countdown.tsx
 import { useState, useEffect } from 'react'
-import { Lock, Clock } from 'lucide-react'
+import { Lock, Clock, AlertTriangle } from 'lucide-react'
 import { useTheme } from '../utils/theme'
 import {
   isBeforeUnlock,
@@ -19,15 +19,25 @@ interface Props {
   timezone:   string | null
 }
 
-type Phase = 'locked' | 'before-open' | 'open' | 'closing-soon'
+// Added 'draft' phase to correctly restore the admin badge
+type Phase = 'draft' | 'locked' | 'before-open' | 'open' | 'closing-soon'
 
 const CLOSING_SOON_THRESHOLD_MS = 15 * 60 * 1000  // show urgency under 15 min
 
 function getPhase(tournament: Tournament, isAdmin: boolean): Phase {
-  if (isPicksLocked(tournament, isAdmin))     return 'locked'
+  // 1. Status overrides come first
+  if (tournament.status === 'draft')          return 'draft'
+  
+  // 2. MUST check before-open BEFORE isPicksLocked, otherwise the countdown gets hidden!
   if (isBeforeUnlock(tournament))             return 'before-open'
+  
+  // 3. Now we can safely check if the tournament is completely locked
+  if (isPicksLocked(tournament, isAdmin))     return 'locked'
+  
+  // 4. Otherwise, it is open and ticking down to the close time
   const remaining = msUntilLock(tournament)
   if (remaining !== null && remaining <= CLOSING_SOON_THRESHOLD_MS) return 'closing-soon'
+  
   return 'open'
 }
 
@@ -67,6 +77,16 @@ export default function Countdown({ tournament, isAdmin, timezone }: Props) {
   const locksAtLabel   = tournament.locks_at   ? formatInUserTz(tournament.locks_at,   timezone) : null
   const unlocksAtLabel = tournament.unlocks_at ? formatInUserTz(tournament.unlocks_at, timezone) : null
 
+  // ── Draft Mode ─────────────────────────────────────────────
+  if (phase === 'draft') {
+    return (
+      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400">
+        <AlertTriangle size={12} />
+        <span className="text-[10px] font-bold uppercase tracking-widest">Draft Mode - Hidden</span>
+      </div>
+    )
+  }
+
   // ── Closed / locked by tip-off time ────────────────────────
   if (phase === 'locked') {
     return (
@@ -77,16 +97,16 @@ export default function Countdown({ tournament, isAdmin, timezone }: Props) {
     )
   }
 
-  // ── Not yet open ───────────────────────────────────────────
+  // ── Not yet open (Countdown correctly displayed here) ──────
   if (phase === 'before-open') {
     return (
-      <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-800/60 border border-slate-700`}>
-        <Clock size={11} className="text-slate-400 flex-shrink-0" />
+      <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg bg-sky-500/10 border border-sky-500/20`}>
+        <Clock size={11} className="text-sky-400 flex-shrink-0" />
         <div className="flex flex-col leading-tight">
-          <span className="text-[10px] text-slate-500 font-semibold uppercase tracking-widest">
+          <span className="text-[10px] text-sky-400 font-semibold uppercase tracking-widest">
             Opens in
           </span>
-          <span className="text-sm font-display font-bold text-slate-200 tabular-nums">
+          <span className="text-sm font-display font-bold text-sky-300 tabular-nums">
             {countdownStr ?? (unlocksAtLabel ?? '–')}
           </span>
         </div>

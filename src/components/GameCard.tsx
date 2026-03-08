@@ -2,15 +2,8 @@
 import { CheckCircle, EyeOff } from 'lucide-react'
 import { useTheme }            from '../utils/theme'
 import { useBracketView }      from '../context/BracketViewContext'
+import { useTournamentContext } from '../context/TournamentContext'
 import type { Game, Pick }     from '../types'
-
-function getScore(r: number): number {
-  if (r <= 0) return 0
-  if (r === 1 || r === 2) return 1
-  let a = 1, b = 1
-  for (let i = 3; i <= r; i++) { const c = a + b; a = b; b = c }
-  return b
-}
 
 const isTBDName = (n: string) =>
   !n || n === 'TBD' || n === 'BYE' || n.startsWith('Winner of Game')
@@ -26,6 +19,7 @@ export default function GameCard({
   game, userPick, effectiveTeam1, effectiveTeam2,
 }: GameCardProps) {
   const theme                          = useTheme()
+  const { selectedTournament }         = useTournamentContext()
   const { isLocked, readOnly, onPick } = useBracketView()
 
   const teams = [
@@ -33,25 +27,32 @@ export default function GameCard({
     { name: effectiveTeam2, key: 'team2' as const },
   ]
 
+  // Read dynamically from config
+  const getScoreFallback = (r: number) => {
+    if (r <= 0) return 0; if (r === 1 || r === 2) return 1;
+    let a = 1, b = 1; for (let i = 3; i <= r; i++) { const c = a + b; a = b; b = c; } return b;
+  }
+  const pts = selectedTournament?.scoring_config?.[game.round_num] ?? getScoreFallback(game.round_num)
+
   return (
-    <div className="relative bg-slate-900/90 backdrop-blur border border-slate-800 rounded-xl overflow-hidden w-52 flex-shrink-0 shadow-lg hover:border-slate-700 transition-all">
-      <div className="px-3 py-1.5 bg-slate-800/60 border-b border-slate-800 flex items-center justify-between">
-        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
-          {getScore(game.round_num)}pt · R{game.round_num}
+    <div className="relative bg-slate-900/50 backdrop-blur border border-slate-800/80 rounded-xl overflow-hidden w-full flex-shrink-0 shadow-sm hover:border-slate-700 transition-all">
+      <div className="px-3 py-1.5 bg-slate-800/30 border-b border-slate-800/60 flex items-center justify-between">
+        <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">
+          R{game.round_num} · {pts}PT
         </span>
         <div className="flex items-center gap-1.5">
           {game.actual_winner && (
-            <span className="text-[10px] font-semibold text-emerald-400 uppercase tracking-widest flex items-center gap-1">
+            <span className="text-[9px] font-bold text-emerald-400 uppercase tracking-widest flex items-center gap-1">
               <CheckCircle size={9} /> Final
             </span>
           )}
           {!game.actual_winner && userPick && (
-            <span className={`text-[10px] font-semibold uppercase tracking-widest ${theme.accent}`}>
+            <span className={`text-[9px] font-bold uppercase tracking-widest ${theme.accent}`}>
               Picked
             </span>
           )}
           {readOnly && (
-            <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest flex items-center gap-1">
+            <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1">
               <EyeOff size={9} /> View
             </span>
           )}
@@ -75,7 +76,7 @@ export default function GameCard({
               ${isWinner    ? 'bg-emerald-500/10'
               : isPicked    ? `${theme.bg}`
               : pickedWrong ? 'bg-rose-500/5'
-              :               'hover:bg-slate-800/60'
+              :               'hover:bg-slate-800/40'
               } border-b border-slate-800/60 last:border-0`}
           >
             <span className={`flex-1 text-sm font-medium truncate

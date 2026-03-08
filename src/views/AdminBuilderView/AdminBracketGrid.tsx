@@ -68,8 +68,9 @@ export default function AdminBracketGrid({
       const inEl = container.querySelector<HTMLElement>(`[data-${slot}="${game.next_game_id}"]`)
       if (!inEl) continue
       const iR = inEl.getBoundingClientRect()
+      const Y_OFFSET = 8 
       const inX = iR.left + iR.width  / 2 - cRect.left + container.scrollLeft
-      const inY = iR.top  + iR.height / 2 - cRect.top  + container.scrollTop
+      const inY = iR.top  + iR.height / 2 - cRect.top  + container.scrollTop - Y_OFFSET
 
       lines.push({ x1: outX, y1: outY, x2: inX, y2: inY, gameId: game.id, fromSlot: slot })
     }
@@ -78,8 +79,18 @@ export default function AdminBracketGrid({
     setSvgDims({ w: container.scrollWidth, h: container.scrollHeight })
   }, [games, gameNumbers])
 
-  // Recompute after any game/round change, and on region tab switch
-  useLayoutEffect(() => { recomputeLines() }, [games, recomputeLines])
+  // Recompute lines if games change, OR if the container size changes (like closing the sidebar)
+  useLayoutEffect(() => {
+    recomputeLines()
+    
+    const container = bracketRef.current
+    if (!container) return
+    
+    const observer = new ResizeObserver(() => recomputeLines())
+    observer.observe(container)
+    
+    return () => observer.disconnect()
+  }, [games, recomputeLines])
 
   return (
     <>
@@ -120,6 +131,8 @@ export default function AdminBracketGrid({
                 ? tournament.round_names[round - 1]
                 : getRoundLabel(round, maxRound)
 
+              const pts = tournament.scoring_config?.[round] ?? getScore(round)
+
               return (
                 <div key={round} className="flex flex-col gap-3" style={{ overflow: 'visible' }}>
 
@@ -129,7 +142,7 @@ export default function AdminBracketGrid({
                       {label}
                     </h3>
                     <span className="text-[10px] text-slate-600">
-                      {roundGames.length} game{roundGames.length !== 1 ? 's' : ''} · {getScore(round)}pt
+                      {roundGames.length} game{roundGames.length !== 1 ? 's' : ''} · {pts}pt {/* <--- Changed to {pts}pt */}
                     </span>
                   </div>
 

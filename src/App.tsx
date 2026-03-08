@@ -1,13 +1,14 @@
 // src/App.tsx
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo }    from 'react'
+import { PanelLeftOpen }                     from 'lucide-react'
 
-import ErrorBoundary        from './components/ErrorBoundary'
-import Sidebar              from './components/Sidebar'
-import MobileHeader         from './components/MobileHeader'
-import Toaster              from './components/Toaster'
-import ConfirmModal         from './components/ConfirmModal'
-import SnoopModal           from './components/SnoopModal'
-import AddTournamentModal   from './components/AddTournamentModal'
+import ErrorBoundary       from './components/ErrorBoundary'
+import Sidebar             from './components/Sidebar'
+import MobileHeader        from './components/MobileHeader'
+import Toaster             from './components/Toaster'
+import ConfirmModal        from './components/ConfirmModal'
+import SnoopModal          from './components/SnoopModal'
+import AddTournamentModal  from './components/AddTournamentModal'
 
 import { AuthProvider }        from './context/AuthContext'
 import { TournamentProvider }  from './context/TournamentContext'
@@ -62,7 +63,7 @@ function useLayoutState() {
 }
 
 // ─────────────────────────────────────────────────────────────
-// § 2. ViewRouter — extracted from AppShellContent
+// § 2. ViewRouter
 // ─────────────────────────────────────────────────────────────
 
 interface ViewRouterProps {
@@ -102,7 +103,7 @@ function ViewRouter({ push, onSnoop, onDeleteGame, onDeleteTournament }: ViewRou
 }
 
 // ─────────────────────────────────────────────────────────────
-// § 3. AppShell — owns layout + snoop state
+// § 3. AppShell
 // ─────────────────────────────────────────────────────────────
 
 function AppShell() {
@@ -168,21 +169,20 @@ function AppShellContent({ layout, snoopTargetId, setSnoopTargetId }: AppShellCo
       dangerous:    true,
       onConfirm: async () => {
         setConfirmModal(null)
-        const gameIds = (gamesCache[selectedTournament.id] ?? []).map(g => g.id)
-        const err = await deleteTournament(gameIds)
+        const tournamentGames = gamesCache[selectedTournament.id] || []
+        const gameIds = tournamentGames.map(g => g.id)
+        const err = await deleteTournament(gameIds) 
         if (err) push(err, 'error'); else push('Tournament deleted', 'info')
       },
       onCancel: () => setConfirmModal(null),
     })
   }, [selectedTournament, gamesCache, deleteTournament, push])
 
-  const handleCreateTournament = useCallback(async (
-    name: string, template: TemplateKey, teamCount?: number
-  ) => {
+  const handleCreateTournament = async (name: string, template: TemplateKey, teamCount?: number) => {
     push('Creating tournament…', 'info')
     const err = await createTournament(name, template, teamCount)
     if (err) push(err, 'error'); else push(`"${name}" created!`, 'success')
-  }, [createTournament, push])
+  }
 
   const snoopProfile = useMemo(
     () => snoopTargetId ? (allProfiles.find(p => p.id === snoopTargetId) ?? null) : null,
@@ -192,12 +192,31 @@ function AppShellContent({ layout, snoopTargetId, setSnoopTargetId }: AppShellCo
   return (
     <div className="flex h-screen overflow-hidden bg-slate-950 text-white">
 
+      {/* Desktop Sidebar (Expanded) */}
       {layout.sidebarOpen && (
         <div className="hidden md:flex">
-          <Sidebar onClose={() => {}} onOpenAddTournament={layout.openAddTournament} />
+          <Sidebar 
+            onClose={() => {}} 
+            onOpenAddTournament={layout.openAddTournament} 
+            onToggleDesktop={() => layout.setSidebarOpen(false)}
+          />
         </div>
       )}
 
+      {/* Desktop Sidebar (Minimized Stub) */}
+      {!layout.sidebarOpen && (
+        <div className={`hidden md:flex flex-col items-center py-4 w-16 border-r border-slate-800 flex-shrink-0 ${theme.sidebarBg}`}>
+          <button
+            onClick={() => layout.setSidebarOpen(true)}
+            className="p-2 rounded-lg text-slate-500 hover:text-white hover:bg-white/5 transition-colors"
+            title="Expand sidebar"
+          >
+            <PanelLeftOpen size={18} />
+          </button>
+        </div>
+      )}
+
+      {/* Mobile Sidebar Overlay */}
       {layout.mobileMenuOpen && (
         <div className="md:hidden fixed inset-0 z-40 flex">
           <div className="absolute inset-0 bg-black/60" onClick={layout.closeMobileMenu} />
@@ -207,7 +226,8 @@ function AppShellContent({ layout, snoopTargetId, setSnoopTargetId }: AppShellCo
         </div>
       )}
 
-      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+      {/* Main Content Area */}
+      <div className="flex flex-col flex-1 min-w-0 overflow-hidden relative">
         <MobileHeader
           onMenuOpen={layout.openMobileMenu}
           sidebarBg={theme.sidebarBg}

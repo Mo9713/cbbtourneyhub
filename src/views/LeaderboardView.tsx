@@ -1,5 +1,4 @@
 // src/views/LeaderboardView.tsx
-
 import { BarChart2, Shield, ExternalLink, TrendingUp } from 'lucide-react'
 import { useTheme }              from '../utils/theme'
 import { useAuthContext }        from '../context/AuthContext'
@@ -24,9 +23,9 @@ export default function LeaderboardView({ onSnoop }: LeaderboardViewProps) {
   const { selectedTournaments, toggleTournament } = useLeaderboardFilter()
   const { tournaments }                           = useTournamentList()
 
-  const maxPoints = leaderboard[0]?.points ?? 0
-  const isAdmin   = profile?.is_admin ?? false
-  const currentId = profile?.id ?? ''
+  const maxPoints  = leaderboard[0]?.points ?? 0
+  const isAdmin    = profile?.is_admin ?? false
+  const currentId  = profile?.id ?? ''
 
   return (
     <div className="flex flex-col h-full">
@@ -114,13 +113,13 @@ export default function LeaderboardView({ onSnoop }: LeaderboardViewProps) {
                     }
                   </div>
 
-                  {/* Player */}
+                  {/* Player — removed showTeam for perfect centering */}
                   <button
                     onClick={() => isAdmin && !isMe ? onSnoop(entry.profile.id) : undefined}
-                    className={`flex items-center gap-2.5 min-w-0 text-left ${isAdmin && !isMe ? 'cursor-pointer group' : 'cursor-default'}`}
+                    className={`flex items-center gap-3 min-w-0 text-left ${isAdmin && !isMe ? 'cursor-pointer group' : 'cursor-default'}`}
                   >
-                    <Avatar profile={entry.profile} size={28} showTeam />
-                    <div className="min-w-0">
+                    <Avatar profile={entry.profile} size="sm" />
+                    <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5">
                         <span className={`text-sm font-semibold truncate ${isMe ? theme.accent : 'text-white'}`}>
                           {entry.profile.display_name}
@@ -131,7 +130,7 @@ export default function LeaderboardView({ onSnoop }: LeaderboardViewProps) {
                         )}
                       </div>
                       {/* Points bar */}
-                      <div className="w-full h-1 bg-slate-800 rounded-full mt-1 overflow-hidden">
+                      <div className="w-full max-w-[120px] h-1 bg-slate-800 rounded-full mt-1.5 overflow-hidden">
                         <div
                           className={`h-full rounded-full transition-all ${theme.bar}`}
                           style={{ width: `${barW}%` }}
@@ -142,33 +141,26 @@ export default function LeaderboardView({ onSnoop }: LeaderboardViewProps) {
 
                   {/* Score */}
                   <div className="text-right">
-                    <span className={`text-sm font-bold ${isMe ? theme.accent : 'text-white'}`}>
+                    <span className={`text-lg font-extrabold font-display ${isMe ? theme.accentB : 'text-white'}`}>
                       {entry.points}
                     </span>
-                    <span className="text-[10px] text-slate-600 ml-0.5">pts</span>
+                    <span className="text-[10px] text-slate-600 block">pts</span>
                   </div>
 
                   {/* Accuracy */}
                   <div className="text-right">
-                    <span className="text-sm font-semibold text-slate-300">
-                      {entry.total > 0 ? `${pct}%` : '—'}
-                    </span>
-                    <div className="text-[10px] text-slate-600">
+                    <span className="text-sm font-bold text-slate-300">
                       {entry.correct}/{entry.total}
-                    </div>
+                    </span>
+                    <span className="text-[10px] text-slate-600 block flex items-center justify-end gap-0.5">
+                      <TrendingUp size={8} /> {pct}%
+                    </span>
                   </div>
 
                   {/* Max possible */}
                   <div className="text-right">
-                    <span className="text-sm font-semibold text-slate-500">
-                      {entry.maxPossible ?? '—'}
-                    </span>
-                    {entry.maxPossible !== undefined && (
-                      <div className="flex items-center justify-end gap-0.5 text-[10px] text-slate-600">
-                        <TrendingUp size={8} />
-                        max
-                      </div>
-                    )}
+                    <span className="text-sm font-bold text-slate-400">{entry.maxPossible}</span>
+                    <span className="text-[10px] text-slate-600 block">ceiling</span>
                   </div>
                 </div>
               )

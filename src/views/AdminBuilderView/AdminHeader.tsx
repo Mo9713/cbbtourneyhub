@@ -29,6 +29,7 @@ export default function AdminHeader({
   const [nameInput,      setNameInput]      = useState(tournament.name)
   const [unlocksAtInput, setUnlocksAtInput] = useState(isoToInputCST(tournament.unlocks_at))
   const [locksAtInput,   setLocksAtInput]   = useState(isoToInputCST(tournament.locks_at))
+  const [savedTime,      setSavedTime]      = useState(false)
 
   // Sync date inputs when tournament updates externally (realtime)
   useEffect(() => { setUnlocksAtInput(isoToInputCST(tournament.unlocks_at)) }, [tournament.unlocks_at])
@@ -45,6 +46,8 @@ export default function AdminHeader({
       unlocks_at: cstInputToISO(unlocksAtInput),
       locks_at:   cstInputToISO(locksAtInput),
     })
+    setSavedTime(true)
+    setTimeout(() => setSavedTime(false), 2000)
   }
 
   const inputCls = 'bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-amber-500/50 transition-colors'
@@ -116,8 +119,9 @@ export default function AdminHeader({
                 className={inputCls} />
             </div>
             <button onClick={handleSaveTipOff}
-              className="px-2.5 py-1.5 bg-amber-600/80 hover:bg-amber-600 text-white rounded-lg text-[10px] font-bold transition-all self-end">
-              Save
+              className={`px-3 py-1.5 text-white rounded-lg text-[10px] font-bold transition-all self-end
+                ${savedTime ? 'bg-emerald-600 border border-emerald-500' : 'bg-amber-600/80 hover:bg-amber-600'}`}>
+              {savedTime ? 'Saved!' : 'Save'}
             </button>
           </div>
 

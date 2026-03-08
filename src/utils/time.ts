@@ -31,14 +31,6 @@ import type { Tournament } from '../types'
  * Uses Date.parse() which is spec-guaranteed (ECMA-262) to parse
  * ISO 8601 strings correctly across all modern browsers, returning
  * UTC epoch ms regardless of the browser's local timezone setting.
- *
- * ❌ Do NOT use: new Date(toLocaleString(...)) — locale string format
- *    is implementation-defined and varies across browsers/OS settings,
- *    causing brackets to lock hours early or late depending on the user's
- *    environment.
- *
- * ❌ Do NOT use: new Date(iso).toLocaleString(...) then new Date(result)
- *    — double-converting through a locale string introduces the same risk.
  */
 export function parseTournamentTimestamp(iso: string): number {
   return Date.parse(iso)
@@ -61,11 +53,22 @@ export function parseTournamentTimestamp(iso: string): number {
  * drive live UI updates — it does NOT pass a timezone to this function.
  */
 export function isPicksLocked(tournament: Tournament, isAdmin = false): boolean {
-  if (isAdmin) return false
+  // Admins must obey the time locks for their own picks just like regular users!
+  
   if (tournament.status === 'draft' || tournament.status === 'locked') return true
-  if (tournament.locks_at && Date.now() >= parseTournamentTimestamp(tournament.locks_at)) {
+  
+  const now = Date.now()
+
+  // 1. Lock the bracket if we haven't reached the unlock time yet
+  if (tournament.unlocks_at && now < parseTournamentTimestamp(tournament.unlocks_at)) {
     return true
   }
+
+  // 2. Lock the bracket if we have passed the lock time
+  if (tournament.locks_at && now >= parseTournamentTimestamp(tournament.locks_at)) {
+    return true
+  }
+
   return false
 }
 

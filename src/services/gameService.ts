@@ -1,23 +1,8 @@
 // src/services/gameService.ts
-// ─────────────────────────────────────────────────────────────
-// All mutations for GAME records.
-
 import { supabase, withAdminAuth } from './supabaseClient'
 import { resolveAdvancingSlot }    from '../utils/bracketMath'
 import type { Game, ServiceResult } from '../types'
 
-// ─────────────────────────────────────────────────────────────
-// § Internal helpers
-// ─────────────────────────────────────────────────────────────
-
-/**
- * Maps resolveAdvancingSlot()'s display-layer return value
- * ('in1' | 'in2') to the database column name for the next game.
- *
- * This thin adapter is the ONLY place the mapping lives.
- * gameService is the only caller that needs DB column names;
- * the display layer uses 'in1'/'in2' throughout.
- */
 function advancingSlotToDbColumn(
   game:        Game,
   allGames:    Game[],
@@ -27,10 +12,6 @@ function advancingSlotToDbColumn(
     ? 'team1_name'
     : 'team2_name'
 }
-
-// ─────────────────────────────────────────────────────────────
-// § Read
-// ─────────────────────────────────────────────────────────────
 
 export async function fetchGames(tournamentId: string): Promise<ServiceResult<Game[]>> {
   const { data, error } = await supabase
@@ -53,10 +34,6 @@ export async function fetchAllGames(): Promise<ServiceResult<Game[]>> {
   if (error) return { ok: false, error: error.message }
   return { ok: true, data: data as Game[] }
 }
-
-// ─────────────────────────────────────────────────────────────
-// § Create
-// ─────────────────────────────────────────────────────────────
 
 export async function addGameToRound(
   tournamentId: string,
@@ -81,11 +58,6 @@ export async function addGameToRound(
   })
 }
 
-// ─────────────────────────────────────────────────────────────
-// § Update
-// ─────────────────────────────────────────────────────────────
-
-/** Generic partial update on a game row (team names, sort_order, etc.). */
 export async function updateGame(
   id:      string,
   updates: Partial<Pick<Game, 'team1_name' | 'team2_name' | 'sort_order' | 'next_game_id'>>
@@ -103,17 +75,6 @@ export async function updateGame(
   })
 }
 
-// ─────────────────────────────────────────────────────────────
-// § Set / Clear Winner
-// ─────────────────────────────────────────────────────────────
-
-/**
- * Sets or clears the actual_winner on a game, and propagates the
- * winner's name to the correct slot of the next game.
- *
- * Pass winner = '' to CLEAR (reverts the next game slot back to
- * "Winner of Game #N" placeholder text).
- */
 export async function setWinner(
   game:        Game,
   winner:      string,
@@ -121,7 +82,6 @@ export async function setWinner(
   gameNumbers: Record<string, number>
 ): Promise<ServiceResult<true>> {
   return withAdminAuth(async () => {
-    // Step 1: Clearing a winner that already advanced — revert the next slot.
     if (!winner && game.actual_winner && game.next_game_id) {
       const slot = advancingSlotToDbColumn(game, allGames, gameNumbers)
       const { error } = await supabase
@@ -131,14 +91,12 @@ export async function setWinner(
       if (error) return { ok: false, error: error.message }
     }
 
-    // Step 2: Write (or clear) the actual_winner.
     const { error: winErr } = await supabase
       .from('games')
       .update({ actual_winner: winner || null })
       .eq('id', game.id)
     if (winErr) return { ok: false, error: winErr.message }
 
-    // Step 3: If setting a winner with a downstream game, push the name forward.
     if (winner && game.next_game_id) {
       const slot = advancingSlotToDbColumn(game, allGames, gameNumbers)
       const { error } = await supabase
@@ -152,14 +110,6 @@ export async function setWinner(
   })
 }
 
-// ─────────────────────────────────────────────────────────────
-// § Link / Unlink
-// ─────────────────────────────────────────────────────────────
-
-/**
- * Links fromGame → toGame, writing the "Winner of Game #N"
- * placeholder into the correct slot of toGame.
- */
 export async function linkGames(
   fromGame:       Game,
   toGameId:       string,
@@ -169,11 +119,26 @@ export async function linkGames(
   gameNumbers:    Record<string, number>
 ): Promise<ServiceResult<true>> {
   return withAdminAuth(async () => {
+    // 1. If this game is already pointing somewhere else, cleanly severe that link
     if (fromGame.next_game_id) {
       const unlinkResult = await _unlink(fromGame, allGames, gameNumbers)
       if (!unlinkResult.ok) return unlinkResult
     }
 
+    // 2. If the slot we are trying to link to is currently occupied by bad template data, clear it!
+    const toGame = allGames.find(g => g.id === toGameId)
+    if (toGame) {
+      const currentText = toGame[slot]
+      if (currentText && currentText.startsWith('Winner of Game #')) {
+        const oldFeederNum = parseInt(currentText.replace('Winner of Game #', ''), 10)
+        const oldFeeder = allGames.find(g => gameNumbers[g.id] === oldFeederNum)
+        if (oldFeeder && oldFeeder.id !== fromGame.id) {
+          await _unlink(oldFeeder, allGames, gameNumbers)
+        }
+      }
+    }
+
+    // 3. Create the new clean link
     const { error: e1 } = await supabase
       .from('games')
       .update({ next_game_id: toGameId })
@@ -190,7 +155,6 @@ export async function linkGames(
   })
 }
 
-/** Removes the link from fromGame, reverting the target slot to 'TBD'. */
 export async function unlinkGame(
   fromGame:    Game,
   allGames:    Game[],
@@ -232,14 +196,6 @@ async function _unlink(
   return { ok: true, data: true }
 }
 
-// ─────────────────────────────────────────────────────────────
-// § Delete
-// ─────────────────────────────────────────────────────────────
-
-/**
- * Deletes a game, removing associated picks, clearing feeder links,
- * and reverting any "Winner of Game #N" slots in the next game.
- */
 export async function deleteGame(
   game:        Game,
   allGames:    Game[],
