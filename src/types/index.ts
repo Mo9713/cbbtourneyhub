@@ -6,6 +6,16 @@ export type ThemeKey         = 'ember' | 'ice' | 'plasma' | 'forest'
 export type ActiveView       = 'home' | 'bracket' | 'leaderboard' | 'admin' | 'settings'
 export type TemplateKey      = 'blank' | 'standard' | 'bigdance'
 
+/**
+ * UI rendering mode. Stored on Profile and persisted to Supabase.
+ * 'dark'  — current default, dark slate palette
+ * 'light' — inverted, light-background palette
+ *
+ * This is SEPARATE from ThemeKey (ember/ice/plasma/forest). A user can
+ * pick "ember" theme in either light or dark mode.
+ */
+export type UIMode = 'light' | 'dark'
+
 // ── Scoring ───────────────────────────────────────────────────
 /**
  * Custom scoring config stored on a Tournament.
@@ -42,6 +52,22 @@ export interface Profile {
   theme:          ThemeKey
   avatar_url:     string | null
   favorite_team:  string | null
+  /**
+   * Light or dark mode preference. Defaults to 'dark'.
+   * Persisted to Supabase `profiles.ui_mode`.
+   */
+  ui_mode:        UIMode
+  /**
+   * IANA timezone identifier for UI display ONLY.
+   * e.g. 'America/New_York', 'America/Chicago', 'Europe/London', 'UTC'
+   *
+   * ⚠️  NEVER pass this into isPicksLocked() or any epoch comparison.
+   *     It is used exclusively by formatting functions (formatInUserTz,
+   *     isoToInputInTz) to render timestamps in the user's local time.
+   *
+   * NULL = fall back to app default (America/Chicago).
+   */
+  timezone:       string | null
 }
 
 export interface Tournament {
@@ -75,7 +101,10 @@ export interface Pick {
   user_id:           string
   game_id:           string
   predicted_winner:  string
-  /** Predicted total score for the championship team. Only relevant when tournament.requires_tiebreaker = true. */
+  /**
+   * Predicted total score for the championship team.
+   * Only relevant when tournament.requires_tiebreaker = true.
+   */
   tiebreaker_score:  number | null
 }
 
