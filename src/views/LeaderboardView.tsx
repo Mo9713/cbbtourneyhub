@@ -1,28 +1,32 @@
 // src/views/LeaderboardView.tsx
+
 import { BarChart2, Shield, ExternalLink, TrendingUp } from 'lucide-react'
 import { useTheme }              from '../utils/theme'
 import { useAuthContext }        from '../context/AuthContext'
 import {
   useLeaderboardContext,
   useLeaderboardFilter,
-  useSnoopTarget,
 } from '../context/LeaderboardContext'
 import { useTournamentList }     from '../context/TournamentContext'
 import Avatar                    from '../components/Avatar'
 
-export default function LeaderboardView() {
+interface LeaderboardViewProps {
+  /** Called when an admin clicks a player row to open their bracket. */
+  onSnoop: (targetId: string) => void
+}
+
+export default function LeaderboardView({ onSnoop }: LeaderboardViewProps) {
   const theme   = useTheme()
   const medals  = ['🥇', '🥈', '🥉']
 
   const { profile }                               = useAuthContext()
   const { leaderboard }                           = useLeaderboardContext()
   const { selectedTournaments, toggleTournament } = useLeaderboardFilter()
-  const { setSnoopTargetId }                      = useSnoopTarget()
   const { tournaments }                           = useTournamentList()
 
-  const maxPoints  = leaderboard[0]?.points ?? 0
-  const isAdmin    = profile?.is_admin ?? false
-  const currentId  = profile?.id ?? ''
+  const maxPoints = leaderboard[0]?.points ?? 0
+  const isAdmin   = profile?.is_admin ?? false
+  const currentId = profile?.id ?? ''
 
   return (
     <div className="flex flex-col h-full">
@@ -110,52 +114,61 @@ export default function LeaderboardView() {
                     }
                   </div>
 
-                  {/* Player — shows favorite_team badge via showTeam */}
+                  {/* Player */}
                   <button
-                    onClick={() => isAdmin && !isMe ? setSnoopTargetId(entry.profile.id) : undefined}
-                    className={`flex items-center gap-3 min-w-0 text-left
-                      ${isAdmin && !isMe ? 'cursor-pointer group' : 'cursor-default'}`}
+                    onClick={() => isAdmin && !isMe ? onSnoop(entry.profile.id) : undefined}
+                    className={`flex items-center gap-2.5 min-w-0 text-left ${isAdmin && !isMe ? 'cursor-pointer group' : 'cursor-default'}`}
                   >
-                    <div className="flex-shrink-0">
-                      <Avatar profile={entry.profile} size="sm" showTeam />
-                    </div>
-                    <div className="min-w-0 flex-1">
+                    <Avatar profile={entry.profile} size={28} showTeam />
+                    <div className="min-w-0">
                       <div className="flex items-center gap-1.5">
                         <span className={`text-sm font-semibold truncate ${isMe ? theme.accent : 'text-white'}`}>
                           {entry.profile.display_name}
+                          {isMe && <span className="text-[10px] ml-1 opacity-60">(you)</span>}
                         </span>
                         {isAdmin && !isMe && (
                           <ExternalLink size={10} className="text-slate-600 group-hover:text-slate-400 flex-shrink-0 transition-colors" />
                         )}
                       </div>
-                      <div className="w-full max-w-[120px] h-1 bg-slate-800 rounded-full overflow-hidden mt-1.5">
-                        <div className={`h-full ${theme.bar} rounded-full transition-all`} style={{ width: `${barW}%` }} />
+                      {/* Points bar */}
+                      <div className="w-full h-1 bg-slate-800 rounded-full mt-1 overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all ${theme.bar}`}
+                          style={{ width: `${barW}%` }}
+                        />
                       </div>
                     </div>
                   </button>
 
                   {/* Score */}
                   <div className="text-right">
-                    <span className={`text-lg font-extrabold font-display ${isMe ? theme.accentB : 'text-white'}`}>
+                    <span className={`text-sm font-bold ${isMe ? theme.accent : 'text-white'}`}>
                       {entry.points}
                     </span>
-                    <span className="text-[10px] text-slate-600 block">pts</span>
+                    <span className="text-[10px] text-slate-600 ml-0.5">pts</span>
                   </div>
 
                   {/* Accuracy */}
                   <div className="text-right">
-                    <span className="text-sm font-bold text-slate-300">
+                    <span className="text-sm font-semibold text-slate-300">
+                      {entry.total > 0 ? `${pct}%` : '—'}
+                    </span>
+                    <div className="text-[10px] text-slate-600">
                       {entry.correct}/{entry.total}
-                    </span>
-                    <span className="text-[10px] text-slate-600 block flex items-center justify-end gap-0.5">
-                      <TrendingUp size={8} /> {pct}%
-                    </span>
+                    </div>
                   </div>
 
                   {/* Max possible */}
                   <div className="text-right">
-                    <span className="text-sm font-bold text-slate-400">{entry.maxPossible}</span>
-                    <span className="text-[10px] text-slate-600 block">ceiling</span>
+                    <span className="text-sm font-semibold text-slate-500">
+                      {entry.maxPossible ?? '—'}
+                    </span>
+                    {entry.maxPossible !== undefined && (
+                      <div className="flex items-center justify-end gap-0.5 text-[10px] text-slate-600">
+                        <TrendingUp size={8} />
+                        max
+                      </div>
+                    )}
                   </div>
                 </div>
               )

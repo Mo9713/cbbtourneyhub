@@ -1,20 +1,4 @@
 // src/hooks/useRealtimeSync.ts
-// ─────────────────────────────────────────────────────────────
-// Subscribes to all three critical Supabase tables on a single
-// channel and dispatches to the appropriate context loaders.
-//
-// DESIGN: the hook accepts zero arguments and reads contexts
-// directly. This moves the wiring out of App.tsx entirely and
-// makes the dependency graph explicit at the hook boundary.
-//
-// CHANNEL LIFECYCLE: the channel is created only when `profile`
-// exists (authenticated) and torn down on sign-out. Navigation
-// events (selectedTournament / activeView / snoopTargetId)
-// intentionally do NOT trigger a re-subscription — instead, a
-// ref pattern lets handlers always read the latest values
-// without the channel being destroyed and rebuilt on every tab
-// switch or tournament selection.
-// ─────────────────────────────────────────────────────────────
 
 import { useEffect, useRef } from 'react'
 import { supabase }                from '../services/supabaseClient'
@@ -23,7 +7,7 @@ import { useTournamentContext }    from '../context/TournamentContext'
 import { useBracketContext }       from '../context/BracketContext'
 import { useLeaderboardContext }   from '../context/LeaderboardContext'
 
-export function useRealtimeSync(): void {
+export function useRealtimeSync(snoopTargetId: string | null): void {
   const { profile } = useAuthContext()
 
   const {
@@ -33,12 +17,10 @@ export function useRealtimeSync(): void {
     loadGames,
   } = useTournamentContext()
 
-  const { loadPicks, loadAllMyPicks } = useBracketContext()
-  const { snoopTargetId, loadLeaderboard } = useLeaderboardContext()
+  const { loadPicks, loadAllMyPicks }  = useBracketContext()
+  const { loadLeaderboard }            = useLeaderboardContext()
 
-  // ── Mutable refs: handlers read the latest nav state ─────────
-  // These are updated synchronously on every render so callbacks
-  // always see current values without being in the effect's deps.
+  // ── Mutable refs: handlers always read the latest nav state ──
   const selectedRef = useRef(selectedTournament)
   const activeRef   = useRef(activeView)
   const snoopRef    = useRef(snoopTargetId)
@@ -52,9 +34,6 @@ export function useRealtimeSync(): void {
     const channel = supabase.channel('app-realtime')
 
       // ── tournaments ──────────────────────────────────────────
-      // UPDATE only: covers publish / lock / rename / config changes.
-      // INSERT is not expected (app creates tournaments via service,
-      // not from other clients). DELETE is not real-time visible.
       .on('postgres_changes', {
         event: 'UPDATE', schema: 'public', table: 'tournaments',
       }, () => {
@@ -62,10 +41,6 @@ export function useRealtimeSync(): void {
       })
 
       // ── games ─────────────────────────────────────────────────
-      // Wildcard: INSERT (admin adds game), UPDATE (winner set, team
-      // name edited, sort_order changed), DELETE (game removed).
-      // Reads tournament_id from the payload so only the affected
-      // tournament's slice of gamesCache is refreshed.
       .on('postgres_changes', {
         event: '*', schema: 'public', table: 'games',
       }, (payload: any) => {
@@ -81,11 +56,6 @@ export function useRealtimeSync(): void {
       })
 
       // ── picks ─────────────────────────────────────────────────
-      // Wildcard: INSERT (new pick), UPDATE (tiebreaker score edit),
-      // DELETE (pick removed by user or cascade). Refreshes the
-      // active tournament's picks and the user's full pick history.
-      // Leaderboard query only runs when the tab is visible or a
-      // snoop session is active.
       .on('postgres_changes', {
         event: '*', schema: 'public', table: 'picks',
       }, () => {
@@ -100,9 +70,6 @@ export function useRealtimeSync(): void {
 
     return () => { supabase.removeChannel(channel) }
 
-    // Loaders are stable useCallback refs — safe to include in deps
-    // without causing extra re-subscriptions. Channel only rebuilds
-    // when the authenticated user changes (sign-in / sign-out).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile?.id, loadTournaments, loadGames, loadPicks, loadAllMyPicks, loadLeaderboard])
 }

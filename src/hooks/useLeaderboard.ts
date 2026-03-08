@@ -1,4 +1,18 @@
 // src/hooks/useLeaderboard.ts
+// ─────────────────────────────────────────────────────────────
+// Owns all leaderboard data: raw picks, games, profiles, and
+// the derived standings computation.
+//
+// ── Removed in Phase 1 refactor ──────────────────────────────
+//   snoopTargetId / setSnoopTargetId — previously lived here
+//   and caused every LeaderboardContext subscriber to re-render
+//   whenever the snoop modal opened or closed. Snoop open/close
+//   is now local state in AppShell. The snoopTargetId value is
+//   passed as a prop to LeaderboardProvider solely to trigger
+//   the loadLeaderboard() call when snoop is activated from a
+//   non-leaderboard view (e.g., the bracket view).
+// ─────────────────────────────────────────────────────────────
+
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 
 import * as pickService    from '../services/pickService'
@@ -18,10 +32,6 @@ export interface LeaderboardState {
   selectedTournaments: Set<string>
   toggleTournament:    (id: string) => void
 
-  // ── Snoop modal ─────────────────────────────────────────────
-  snoopTargetId:       string | null
-  setSnoopTargetId:    (id: string | null) => void
-
   loadLeaderboard:     () => Promise<void>
 }
 
@@ -37,22 +47,16 @@ export function useLeaderboard(
   const [selectedTournaments, setSelectedTournaments] = useState<Set<string>>(
     () => new Set<string>()
   )
-  const [snoopTargetId, setSnoopTargetId] = useState<string | null>(null)
 
   // Tracks IDs already seeded into the filter so new tournaments
   // added at runtime are included automatically (Bug C fix).
   const knownIdsRef = useRef<Set<string>>(new Set())
 
-  // ── Bug C fix: seed filter for newly added tournaments ──────
-  // Old code guarded on `size === 0` so tournaments created or
-  // published after the initial load were silently excluded.
-  // This effect diffs incoming IDs against a stable ref so each
-  // new ID is added exactly once regardless of when it appears.
   useEffect(() => {
     if (tournaments.length === 0) return
 
-    const incoming  = tournaments.map(t => t.id)
-    const newIds    = incoming.filter(id => !knownIdsRef.current.has(id))
+    const incoming = tournaments.map(t => t.id)
+    const newIds   = incoming.filter(id => !knownIdsRef.current.has(id))
 
     if (newIds.length === 0) return
 
@@ -88,7 +92,7 @@ export function useLeaderboard(
     })
   }, [])
 
-  // ── Derived leaderboard (pure memo — no setState needed) ────
+  // ── Derived leaderboard ──────────────────────────────────────
 
   const leaderboard = useMemo((): LeaderboardEntry[] => {
     if (allProfiles.length === 0) return []
@@ -106,8 +110,6 @@ export function useLeaderboard(
     allProfiles,
     selectedTournaments,
     toggleTournament,
-    snoopTargetId,
-    setSnoopTargetId,
     loadLeaderboard,
   }
 }
