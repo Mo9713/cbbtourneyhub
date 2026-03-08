@@ -261,11 +261,22 @@ export function useBracket(
     const gameNums = computeGameNumbers(games)
     const fromGame = games.find(g => g.id === fromId)
     if (!fromGame) return 'Game not found'
+
+    // Optimistic UI: Snap the line instantly
+    patchGamesCache(tid, prev => prev.map(g => {
+      if (g.id === fromId) return { ...g, next_game_id: toId }
+      if (g.id === toId)   return { ...g, [slot]: `Winner of Game #${gameNums[fromId]}` }
+      return g
+    }))
+
     const result = await gameService.linkGames(fromGame, toId, slot, gameNums[fromId], games, gameNums)
-    if (!result.ok) return result.error
+    if (!result.ok) {
+      loadGames(tid) // rollback on error
+      return result.error
+    }
     loadGames(tid)
     return null
-  }, [loadGames])
+  }, [loadGames, patchGamesCache])
 
   const unlinkGame = useCallback(async (fromId: string): Promise<string | null> => {
     const tid = selectedTournamentRef.current?.id
@@ -274,11 +285,18 @@ export function useBracket(
     const gameNums = computeGameNumbers(games)
     const fromGame = games.find(g => g.id === fromId)
     if (!fromGame) return 'Game not found'
+
+    // Optimistic UI: Remove the line instantly
+    patchGamesCache(tid, prev => prev.map(g => g.id === fromId ? { ...g, next_game_id: null } : g))
+
     const result = await gameService.unlinkGame(fromGame, games, gameNums)
-    if (!result.ok) return result.error
+    if (!result.ok) {
+      loadGames(tid) // rollback on error
+      return result.error
+    }
     loadGames(tid)
     return null
-  }, [loadGames])
+  }, [loadGames, patchGamesCache])
 
   return {
     picks, myPickCounts, saveTiebreaker, makePick,

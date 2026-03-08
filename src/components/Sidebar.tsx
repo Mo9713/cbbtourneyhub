@@ -54,12 +54,12 @@ export default function Sidebar({ onClose, onOpenAddTournament, onToggleDesktop 
   return (
     <div className={`flex flex-col w-64 h-full ${theme.sidebarBg} border-r border-slate-800 overflow-hidden`}>
 
-      {/* Logo & Close Toggle */}
+      {/* Logo */}
       <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between">
         <div className="flex items-center gap-2.5">
           <Trophy size={18} className={theme.accent} />
           <span className={`font-display text-lg font-bold uppercase tracking-widest ${theme.accent}`}>
-            Predictor Hub
+            Bracket Hub
           </span>
         </div>
         {onToggleDesktop && (
@@ -74,20 +74,22 @@ export default function Sidebar({ onClose, onOpenAddTournament, onToggleDesktop 
 
       {/* Nav */}
       <nav className="px-3 py-3 space-y-0.5 border-b border-slate-800">
-        {navItems.map(({ view, label, icon }) => (
-          <button
-            key={view}
-            onClick={() => nav(() => view === 'home' ? navigateHome() : navigateTo(view))}
-            className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all
-              ${activeView === view
-                ? `${theme.bg} ${theme.accent}`
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-              }`}
-          >
-            {icon}
-            {label}
-          </button>
-        ))}
+        {/* We use the Avatar component directly in the nav list! */}
+        <button onClick={() => nav(() => navigateHome())}
+          className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all ${activeView === 'home' ? `${theme.bg} ${theme.accent}` : 'text-slate-400 hover:text-white hover:bg-slate-800/60'}`}>
+          <Home size={16} /> Home
+        </button>
+        <button onClick={() => nav(() => navigateTo('leaderboard'))}
+          className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all ${activeView === 'leaderboard' ? `${theme.bg} ${theme.accent}` : 'text-slate-400 hover:text-white hover:bg-slate-800/60'}`}>
+          <BarChart2 size={16} /> Leaderboard
+        </button>
+        <button onClick={() => nav(() => navigateTo('settings'))}
+          className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all ${activeView === 'settings' ? `${theme.bg} ${theme.accent}` : 'text-slate-400 hover:text-white hover:bg-slate-800/60'}`}>
+          <div className="w-4 h-4 rounded-full overflow-hidden flex-shrink-0 border border-slate-700">
+             <Avatar profile={profile} size="sm" />
+          </div> 
+          Profile
+        </button>
       </nav>
 
       {/* Tournaments */}

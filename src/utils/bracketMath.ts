@@ -240,12 +240,8 @@ export function deriveChampion(
     return directPick
   }
 
-  // 3. A real team that has propagated into an effective slot
-  if (eff) {
-    if (eff.team1 && !isTBDName(eff.team1)) return eff.team1
-    if (eff.team2 && !isTBDName(eff.team2)) return eff.team2
-  }
-
+  // 3. No champion determined yet. 
+  // (We intentionally DO NOT fallback to checking the slots here so it doesn't trigger prematurely)
   return null
 }
 

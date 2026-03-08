@@ -119,26 +119,13 @@ export async function linkGames(
   gameNumbers:    Record<string, number>
 ): Promise<ServiceResult<true>> {
   return withAdminAuth(async () => {
-    // 1. If this game is already pointing somewhere else, cleanly severe that link
+    // 1. If this game is already pointing somewhere else, cleanly severe that old link
     if (fromGame.next_game_id) {
       const unlinkResult = await _unlink(fromGame, allGames, gameNumbers)
       if (!unlinkResult.ok) return unlinkResult
     }
 
-    // 2. If the slot we are trying to link to is currently occupied by bad template data, clear it!
-    const toGame = allGames.find(g => g.id === toGameId)
-    if (toGame) {
-      const currentText = toGame[slot]
-      if (currentText && currentText.startsWith('Winner of Game #')) {
-        const oldFeederNum = parseInt(currentText.replace('Winner of Game #', ''), 10)
-        const oldFeeder = allGames.find(g => gameNumbers[g.id] === oldFeederNum)
-        if (oldFeeder && oldFeeder.id !== fromGame.id) {
-          await _unlink(oldFeeder, allGames, gameNumbers)
-        }
-      }
-    }
-
-    // 3. Create the new clean link
+    // 2. Create the new clean link (this safely overwrites whatever bad text was in the slot)
     const { error: e1 } = await supabase
       .from('games')
       .update({ next_game_id: toGameId })

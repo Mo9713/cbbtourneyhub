@@ -117,6 +117,8 @@ export function useTournaments(profile: Profile | null): TournamentsState {
 
   // ── Boot ──────────────────────────────────────────────────
 
+  // ── Boot ──────────────────────────────────────────────────
+
   useEffect(() => {
     if (profile) loadTournaments()
   }, [profile, loadTournaments])
@@ -126,8 +128,33 @@ export function useTournaments(profile: Profile | null): TournamentsState {
     tournaments.forEach(t => {
       if (!gamesCacheRef.current[t.id]) loadGames(t.id)
     })
+    
+    // Restore navigation state from sessionStorage after tournaments load!
+    const saved = sessionStorage.getItem('app_nav_state')
+    if (saved && !selectedRef.current) {
+      try {
+        const { tid, view } = JSON.parse(saved)
+        const t = tournaments.find(x => x.id === tid)
+        
+        if (t) {
+          // If the tournament still exists, restore it and the view
+          dispatch({ type: 'REPLACE_SELECTED', tournament: t, view: view || 'bracket' })
+        } else if (view && view !== 'bracket' && view !== 'admin') {
+          // If there is no tournament, but we were on a generic page like 'leaderboard', restore that
+          dispatch({ type: 'NAVIGATE_TO', view })
+        }
+      } catch (e) {}
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tournaments, profile, loadGames])
+
+  // Save navigation state to sessionStorage whenever it changes
+  useEffect(() => {
+    sessionStorage.setItem('app_nav_state', JSON.stringify({
+      tid: nav.selectedTournament?.id || null,
+      view: nav.activeView
+    }))
+  }, [nav.selectedTournament?.id, nav.activeView])
 
   // ── Re-sync selected tournament after list refresh ────────
 

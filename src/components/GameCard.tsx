@@ -3,6 +3,7 @@ import { CheckCircle, EyeOff } from 'lucide-react'
 import { useTheme }            from '../utils/theme'
 import { useBracketView }      from '../context/BracketViewContext'
 import { useTournamentContext } from '../context/TournamentContext'
+import { getScore }            from '../utils/helpers'
 import type { Game, Pick }     from '../types'
 
 const isTBDName = (n: string) =>
@@ -27,12 +28,8 @@ export default function GameCard({
     { name: effectiveTeam2, key: 'team2' as const },
   ]
 
-  // Read dynamically from config
-  const getScoreFallback = (r: number) => {
-    if (r <= 0) return 0; if (r === 1 || r === 2) return 1;
-    let a = 1, b = 1; for (let i = 3; i <= r; i++) { const c = a + b; a = b; b = c; } return b;
-  }
-  const pts = selectedTournament?.scoring_config?.[game.round_num] ?? getScoreFallback(game.round_num)
+  // Strictly uses the imported helper or the live database config
+  const pts = selectedTournament?.scoring_config?.[String(game.round_num)] ?? getScore(game.round_num)
 
   return (
     <div className="relative bg-slate-900/50 backdrop-blur border border-slate-800/80 rounded-xl overflow-hidden w-full flex-shrink-0 shadow-sm hover:border-slate-700 transition-all">

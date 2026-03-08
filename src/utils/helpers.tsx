@@ -11,7 +11,18 @@ export function fibonacci(n: number): number {
   return b
 }
 
-export const getScore = (r: number) => fibonacci(r + 1)
+export function getScore(r: number): number {
+  if (r <= 0) return 0;
+  if (r === 1) return 1;
+  if (r === 2) return 2;
+  let a = 1, b = 2;
+  for (let i = 3; i <= r; i++) {
+    const c = a + b;
+    a = b;
+    b = c;
+  }
+  return b;
+}
 export { resolveScore } from '../types'
 
 export function getRoundLabel(roundNum: number, maxRound: number): string {

@@ -1,6 +1,6 @@
 // src/views/BracketView/MatchupColumn.tsx
 import { useTheme }          from '../../utils/theme'
-import { getRoundLabel }     from '../../utils/helpers'
+import { getRoundLabel, getScore }     from '../../utils/helpers'
 import GameCard              from '../../components/GameCard'
 import type { Game, Pick, Tournament } from '../../types'
 
@@ -20,16 +20,11 @@ export default function MatchupColumn({
   const pickMap = new Map(picks.map(p => [p.game_id, p]))
   const label   = tournament.round_names?.[round - 1] || getRoundLabel(round, maxRound)
 
-  // Read from the live scoring config, fallback to default math if missing
-  const getScoreFallback = (r: number) => {
-    if (r <= 0) return 0; if (r === 1 || r === 2) return 1;
-    let a = 1, b = 1; for (let i = 3; i <= r; i++) { const c = a + b; a = b; b = c; } return b;
-  }
-  const pts = tournament.scoring_config?.[round] ?? getScoreFallback(round)
+  // Strictly uses the imported helper or the live database config
+  const pts = tournament.scoring_config?.[String(round)] ?? getScore(round)
 
   return (
-    <div className="flex flex-col items-center gap-2 flex-shrink-0 w-52">
-      {/* ── Copied styling from AdminBracketGrid ── */}
+    <div className="flex flex-col items-center gap-3 flex-shrink-0 w-52">
       <div className="text-center pb-3 border-b border-slate-800/80 mb-2 w-full">
         <h3 className={`font-display text-sm font-bold uppercase tracking-widest ${theme.accent}`}>
           {label}
