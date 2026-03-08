@@ -90,6 +90,30 @@ export async function deletePick(pickId: string): Promise<ServiceResult<true>> {
   })
 }
 
+/**
+ * Cascade-deletes all picks belonging to the authenticated user
+ * for a given set of downstream game IDs. Called by makePick()
+ * whenever a feeder pick changes or is removed.
+ *
+ * Uses a single DELETE … IN (…) query rather than per-ID deletes
+ * to keep it atomic and network-efficient. Returns the deleted IDs
+ * so the caller can prune its local state without a re-fetch.
+ */
+export async function deletePicksForGames(
+  gameIds: string[],
+): Promise<ServiceResult<string[]>> {
+  if (gameIds.length === 0) return { ok: true, data: [] }
+  return withAuth(async (user) => {
+    const { error } = await supabase
+      .from('picks')
+      .delete()
+      .eq('user_id', user.id)        // never touch another user's rows
+      .in('game_id', gameIds)
+    if (error) return { ok: false, error: error.message }
+    return { ok: true, data: gameIds }
+  })
+}
+
 // ── Tie-Breaker ───────────────────────────────────────────────
 
 /**

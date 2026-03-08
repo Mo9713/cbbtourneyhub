@@ -1,6 +1,6 @@
 // src/components/Sidebar.tsx
 import { useMemo } from 'react'
-import { Trophy, Plus, AlertTriangle, Settings, Shield, Home, BarChart2, LogOut } from 'lucide-react'
+import { Trophy, Plus, AlertTriangle, Settings, Shield, Home, BarChart2, LogOut, Moon } from 'lucide-react'
 
 import { useTheme }            from '../utils/theme'
 import { useAuthContext }      from '../context/AuthContext'
@@ -20,7 +20,7 @@ const statusDot = (s: string) =>
 export default function Sidebar({ onClose }: SidebarProps) {
   const theme = useTheme()
 
-  const { profile, signOut }   = useAuthContext()
+  const { profile, signOut, updateUIMode }   = useAuthContext()
   const {
     tournaments,
     selectedTournament,
@@ -158,6 +158,16 @@ export default function Sidebar({ onClose }: SidebarProps) {
           </button>
         </div>
       )}
+
+      {/* Theme Toggle */}
+      <div className="px-3 py-2 border-t border-slate-800">
+        <button
+          onClick={() => updateUIMode(profile.ui_mode === 'dark' ? 'light' : 'dark')}
+          className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-slate-500 hover:text-slate-300 hover:bg-white/5 text-xs font-semibold transition-all"
+        >
+          <Moon size={13} /> Toggle Theme
+        </button>
+      </div>
 
       {/* Sign out */}
       <div className="p-3 border-t border-slate-800">

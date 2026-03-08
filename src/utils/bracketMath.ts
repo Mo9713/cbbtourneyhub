@@ -19,6 +19,38 @@
 import type { Game, Pick } from '../types'
 import { isTBDName }        from './helpers'
 
+
+/**
+ * Follows the next_game_id chain from a given game and returns
+ * every downstream game ID in traversal order (closest first).
+ *
+ * Used by makePick() to determine which picks must be cascade-deleted
+ * when a feeder pick is changed or toggled off.
+ *
+ * The bracket's next_game_id structure is a DAG that converges to
+ * the championship, so there are no cycles and traversal always
+ * terminates. Each game feeds into at most one downstream game.
+ *
+ * @param startGame  - The game whose pick is being changed/removed.
+ * @param allGames   - All games in the active tournament.
+ * @returns          - Ordered array of game IDs downstream of startGame
+ *                     (does NOT include startGame.id itself).
+ */
+export function collectDownstreamGameIds(
+  startGame: Game,
+  allGames:  Game[],
+): string[] {
+  const gameById = new Map(allGames.map(g => [g.id, g]))
+  const downstream: string[] = []
+  let currentId = startGame.next_game_id
+
+  while (currentId) {
+    downstream.push(currentId)
+    currentId = gameById.get(currentId)?.next_game_id ?? null
+  }
+
+  return downstream
+}
 // ─────────────────────────────────────────────────────────────
 // § 1. Game Numbering
 // ─────────────────────────────────────────────────────────────

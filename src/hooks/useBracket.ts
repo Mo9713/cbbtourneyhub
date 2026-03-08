@@ -1,10 +1,10 @@
 // src/hooks/useBracket.ts
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'  // add useRef
 
 import * as pickService  from '../services/pickService'
 import * as gameService  from '../services/gameService'
-import { computeGameNumbers } from '../utils/bracketMath'
-import { isPicksLocked }      from '../utils/time'
+import { computeGameNumbers, collectDownstreamGameIds } from '../utils/bracketMath'  // add collectDownstreamGameIds
+import { isPicksLocked } from '../utils/time'
 
 import type { Profile, Tournament, Game, Pick } from '../types'
 
@@ -31,7 +31,6 @@ export interface BracketState {
 export function useBracket(
   profile:            Profile | null,
   selectedTournament: Tournament | null,
-  /** Live reference to the games cache from TournamentContext. */
   gamesCache:         Record<string, Game[]>,
   loadGames:          (tid: string) => Promise<void>,
 ): BracketState {
@@ -39,12 +38,18 @@ export function useBracket(
   const [picks,      setPicks]      = useState<Pick[]>([])
   const [allMyPicks, setAllMyPicks] = useState<Pick[]>([])
 
-  // ── Derived: games for the active tournament ────────────────
-  // Read directly from gamesCache so this hook doesn't maintain
-  // its own parallel copy. BracketView will consume this same slice.
   const activeGames: Game[] = selectedTournament
     ? (gamesCache[selectedTournament.id] ?? [])
     : []
+
+  // ── Stable refs: let makePick read current values without
+  //    being in its dependency array. This prevents makePick
+  //    from being re-created after every pick action (picks) or
+  //    every games cache update (activeGames).
+  const picksRef      = useRef(picks)
+  const activeGamesRef = useRef(activeGames)
+  picksRef.current      = picks
+  activeGamesRef.current = activeGames
 
   // ── Loaders ─────────────────────────────────────────────────
 
@@ -83,24 +88,60 @@ export function useBracket(
     if (!profile || !selectedTournament) return 'Not ready'
     if (isPicksLocked(selectedTournament, profile.is_admin)) return 'Picks are locked'
 
-    const existing = picks.find(p => p.game_id === game.id)
+    // Read fresh values from refs — never stale, never in dep array.
+    const currentPicks = picksRef.current
+    const currentGames = activeGamesRef.current
+    const existing     = currentPicks.find(p => p.game_id === game.id)
 
-    // Toggle off if re-picking the same team
+    // All downstream game IDs that must be wiped whenever THIS game's pick changes.
+    const downstreamIds = collectDownstreamGameIds(game, currentGames)
+    const downstreamSet = new Set(downstreamIds)
+
+    // ── TOGGLE OFF: user clicked the same team again ──────────
     if (existing?.predicted_winner === team) {
-      const result = await pickService.deletePick(existing.id)
-      if (!result.ok) return result.error
-      setPicks(prev      => prev.filter(p => p.id !== existing.id))
-      setAllMyPicks(prev => prev.filter(p => p.id !== existing.id))
+      // Delete this pick AND cascade-delete all downstream picks
+      // in a single batch before touching local state.
+      const [deleteResult, cascadeResult] = await Promise.all([
+        pickService.deletePick(existing.id),
+        pickService.deletePicksForGames(downstreamIds),
+      ])
+      if (!deleteResult.ok)  return deleteResult.error
+      if (!cascadeResult.ok) return cascadeResult.error
+
+      // Remove the toggled pick and all downstream picks from local state.
+      const removedIds = new Set([existing.id])
+      setPicks(prev      => prev.filter(p => !removedIds.has(p.id) && !downstreamSet.has(p.game_id)))
+      setAllMyPicks(prev => prev.filter(p => !removedIds.has(p.id) && !downstreamSet.has(p.game_id)))
       return null
     }
 
-    const result = await pickService.savePick(game.id, team)
-    if (!result.ok) return result.error
+    // ── CHANGE OR NEW PICK ────────────────────────────────────
+    // Step 1: Cascade-delete downstream picks FIRST. If this fails,
+    // we abort entirely — the DB is still consistent (no new pick written).
+    if (downstreamIds.length > 0) {
+      const cascadeResult = await pickService.deletePicksForGames(downstreamIds)
+      if (!cascadeResult.ok) return cascadeResult.error
+    }
 
-    setPicks(prev      => [...prev.filter(p => p.game_id !== game.id), result.data])
-    setAllMyPicks(prev => [...prev.filter(p => p.game_id !== game.id), result.data])
+    // Step 2: Save the new/changed pick.
+    const saveResult = await pickService.savePick(game.id, team)
+    if (!saveResult.ok) return saveResult.error
+
+    // Step 3: Update local state atomically.
+    // Replace this game's pick and strip all downstream picks in one pass.
+    setPicks(prev => [
+      ...prev.filter(p => p.game_id !== game.id && !downstreamSet.has(p.game_id)),
+      saveResult.data,
+    ])
+    setAllMyPicks(prev => [
+      ...prev.filter(p => p.game_id !== game.id && !downstreamSet.has(p.game_id)),
+      saveResult.data,
+    ])
     return null
-  }, [profile, selectedTournament, picks])
+
+  // profile and selectedTournament are the only true external dependencies now.
+  // picks and activeGames are read via refs to break the self-defeating re-creation cycle.
+  }, [profile, selectedTournament])
 
   // ── Game mutations (admin) ───────────────────────────────────
 
