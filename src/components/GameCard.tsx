@@ -1,10 +1,10 @@
 // src/components/GameCard.tsx
-import { CheckCircle, Circle, X, EyeOff } from 'lucide-react'
-import { useTheme } from '../utils/theme'
-import type { Game, Pick } from '../types'
+import { CheckCircle, EyeOff } from 'lucide-react'
+import { useTheme }            from '../utils/theme'
+import { useBracketView }      from '../context/BracketViewContext'
+import type { Game, Pick }     from '../types'
 
 function getScore(r: number): number {
-  // Fibonacci scoring
   if (r <= 0) return 0
   if (r === 1 || r === 2) return 1
   let a = 1, b = 1
@@ -16,21 +16,18 @@ const isTBDName = (n: string) =>
   !n || n === 'TBD' || n === 'BYE' || n.startsWith('Winner of Game')
 
 interface GameCardProps {
-  game: Game
-  userPick: Pick | undefined
+  game:           Game
+  userPick:       Pick | undefined
   effectiveTeam1: string
   effectiveTeam2: string
-  isLocked: boolean
-  onPick: (game: Game, team: string) => void
-  readOnly?: boolean
-  ownerName?: string
 }
 
 export default function GameCard({
   game, userPick, effectiveTeam1, effectiveTeam2,
-  isLocked, onPick, readOnly, ownerName,
 }: GameCardProps) {
-  const theme = useTheme()
+  const theme                          = useTheme()
+  const { isLocked, readOnly, onPick } = useBracketView()
+
   const teams = [
     { name: effectiveTeam1, key: 'team1' as const },
     { name: effectiveTeam2, key: 'team2' as const },
@@ -49,7 +46,9 @@ export default function GameCard({
             </span>
           )}
           {!game.actual_winner && userPick && (
-            <span className={`text-[10px] font-semibold uppercase tracking-widest ${theme.accent}`}>Picked</span>
+            <span className={`text-[10px] font-semibold uppercase tracking-widest ${theme.accent}`}>
+              Picked
+            </span>
           )}
           {readOnly && (
             <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest flex items-center gap-1">
@@ -67,34 +66,31 @@ export default function GameCard({
         const pickedWrong = isPicked && isLoser
 
         return (
-          <button key={key}
+          <button
+            key={key}
             disabled={isLocked || isTBD || !!game.actual_winner || readOnly}
             onClick={() => !isTBD && !readOnly && onPick(game, name)}
             className={`w-full text-left px-3 py-2.5 flex items-center gap-2 transition-all group
               ${isTBD || readOnly ? 'cursor-default' : 'cursor-pointer'}
-              ${isWinner    ? 'bg-emerald-500/15 border-l-2 border-l-emerald-400' : ''}
-              ${pickedWrong ? 'bg-rose-500/10 border-l-2 border-l-rose-500' : ''}
-              ${isPicked && !game.actual_winner ? `${theme.bg} border-l-2 ${theme.borderB.replace('border-', 'border-l-')}` : ''}
-              ${!isPicked && !isWinner && !isTBD && !isLocked && !game.actual_winner && !readOnly
-                ? 'hover:bg-slate-800/80' : ''}
-            `}>
-            <div className="flex-shrink-0 w-3.5">
-              {isWinner    && <CheckCircle size={13} className="text-emerald-400" />}
-              {pickedWrong && <X           size={13} className="text-rose-400" />}
-              {isPicked && !game.actual_winner && <Circle size={13} className={`${theme.accent} fill-current`} />}
-              {!isPicked && !isWinner && (
-                <Circle size={13} className="text-slate-700 group-hover:text-slate-500 transition-colors" />
-              )}
-            </div>
-            <span className={`flex-1 text-sm font-semibold truncate leading-tight ${
-              isTBD       ? 'text-slate-600 italic' :
-              isWinner    ? 'text-emerald-300' :
-              pickedWrong ? 'text-rose-300/60 line-through' :
-              isPicked    ? theme.accentB :
-                            'text-slate-200 group-hover:text-white transition-colors'
-            }`}>
-              {isTBD ? '—' : name}
+              ${isWinner    ? 'bg-emerald-500/10'
+              : isPicked    ? `${theme.bg}`
+              : pickedWrong ? 'bg-rose-500/5'
+              :               'hover:bg-slate-800/60'
+              } border-b border-slate-800/60 last:border-0`}
+          >
+            <span className={`flex-1 text-sm font-medium truncate
+              ${isTBD       ? 'text-slate-600 italic'
+              : isWinner    ? 'text-emerald-400 font-bold'
+              : pickedWrong ? 'text-rose-400/70 line-through'
+              : isPicked    ? theme.accent
+              :               'text-slate-200'
+              }`}>
+              {name || 'TBD'}
             </span>
+            {isWinner  && <CheckCircle size={12} className="text-emerald-400 flex-shrink-0" />}
+            {isPicked && !isWinner && !isLoser && (
+              <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${theme.bgMd}`} />
+            )}
           </button>
         )
       })}

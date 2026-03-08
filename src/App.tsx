@@ -1,68 +1,39 @@
 // src/App.tsx
-// ─────────────────────────────────────────────────────────────
-// Provider stack + AppShell.
-//
-// ── Provider tree ─────────────────────────────────────────────
-//
-//   <AuthProvider>
-//     <TournamentProvider>
-//       <BracketProvider>
-//         <AppShell>                   ← owns layout + snoop state
-//           <LeaderboardProvider>      ← receives snoopTargetId prop
-//             <AppShellContent />      ← can safely read all contexts
-//           </LeaderboardProvider>
-//         </AppShell>
-//       </BracketProvider>
-//     </TournamentProvider>
-//   </AuthProvider>
-//
-// ── What AppShell owns ────────────────────────────────────────
-//   • useLayoutState  — sidebarOpen, mobileMenuOpen,
-//                       showAddTournament (pure UI toggles that
-//                       must NOT live in a data context)
-//   • snoopTargetId   — which user's bracket is being viewed
-//                       (open/close must NOT cause leaderboard
-//                        context to broadcast to all subscribers)
-//   • Toast queue      — ephemeral, no subscribers
-//   • ConfirmModal     — imperative dialog, no subscribers
-// ─────────────────────────────────────────────────────────────
-
 import { useState, useCallback, useMemo } from 'react'
 
-import ErrorBoundary       from './components/ErrorBoundary'
-import Sidebar             from './components/Sidebar'
-import MobileHeader        from './components/MobileHeader'
-import Toaster             from './components/Toaster'
-import ConfirmModal        from './components/ConfirmModal'
-import SnoopModal          from './components/SnoopModal'
-import AddTournamentModal  from './components/AddTournamentModal'
+import ErrorBoundary        from './components/ErrorBoundary'
+import Sidebar              from './components/Sidebar'
+import MobileHeader         from './components/MobileHeader'
+import Toaster              from './components/Toaster'
+import ConfirmModal         from './components/ConfirmModal'
+import SnoopModal           from './components/SnoopModal'
+import AddTournamentModal   from './components/AddTournamentModal'
 
 import { AuthProvider }        from './context/AuthContext'
 import { TournamentProvider }  from './context/TournamentContext'
 import { BracketProvider }     from './context/BracketContext'
 import { LeaderboardProvider } from './context/LeaderboardContext'
 
-import { useAuthContext }                              from './context/AuthContext'
-import { useTournamentContext, useTournamentList }     from './context/TournamentContext'
-import { useBracketContext, useGameMutations }         from './context/BracketContext'
-import { useLeaderboardData }                          from './context/LeaderboardContext'
+import { useAuthContext }                          from './context/AuthContext'
+import { useTournamentContext, useTournamentList } from './context/TournamentContext'
+import { useGameMutations }                        from './context/BracketContext'
+import { useLeaderboardData }                      from './context/LeaderboardContext'
 
-import { useRealtimeSync }   from './hooks/useRealtimeSync'
-import { useTheme }          from './utils/theme'
+import { useRealtimeSync } from './hooks/useRealtimeSync'
+import { useTheme }        from './utils/theme'
 
-import HomeView          from './views/HomeView'
-import SettingsView      from './views/SettingsView'
-import LeaderboardView   from './views/LeaderboardView'
-import BracketView       from './views/BracketView'
-import AdminBuilderView  from './views/AdminBuilderView'
+import HomeView         from './views/HomeView'
+import SettingsView     from './views/SettingsView'
+import LeaderboardView  from './views/LeaderboardView'
+import BracketView      from './views/BracketView'
+import AdminBuilderView from './views/AdminBuilderView'
 
 import type { Game, ToastMsg, ConfirmModalCfg, TemplateKey } from './types'
 
 // ─────────────────────────────────────────────────────────────
-// § 1. Local-state hooks (no context involvement)
+// § 1. Local-state hooks
 // ─────────────────────────────────────────────────────────────
 
-/** Ephemeral toast queue — no subscribers, no context needed. */
 function useToasts() {
   const [toasts, setToasts] = useState<ToastMsg[]>([])
   const push = useCallback((text: string, type: ToastMsg['type'] = 'success') => {
@@ -73,11 +44,6 @@ function useToasts() {
   return { toasts, push }
 }
 
-/**
- * Pure UI layout toggles. Previously lived in TournamentContext,
- * causing every sidebar toggle to broadcast a context update to
- * all tournament data subscribers. They belong here.
- */
 function useLayoutState() {
   const [sidebarOpen,       setSidebarOpen]       = useState(true)
   const [mobileMenuOpen,    setMobileMenuOpen]    = useState(false)
@@ -89,14 +55,54 @@ function useLayoutState() {
   const closeMobileMenu    = useCallback(() => setMobileMenuOpen(false),    [])
 
   return {
-    sidebarOpen,   setSidebarOpen,
+    sidebarOpen, setSidebarOpen,
     mobileMenuOpen, openMobileMenu, closeMobileMenu,
     showAddTournament, openAddTournament, closeAddTournament,
   }
 }
 
 // ─────────────────────────────────────────────────────────────
-// § 2. AppShell — owns layout + snoop state, mounts LeaderboardProvider
+// § 2. ViewRouter — extracted from AppShellContent
+// ─────────────────────────────────────────────────────────────
+
+interface ViewRouterProps {
+  push:               (text: string, type?: ToastMsg['type']) => void
+  onSnoop:            (id: string | null) => void
+  onDeleteGame:       (game: Game) => void
+  onDeleteTournament: () => void
+}
+
+function ViewRouter({ push, onSnoop, onDeleteGame, onDeleteTournament }: ViewRouterProps) {
+  const { profile, user, setProfile }      = useAuthContext()
+  const { activeView, selectedTournament } = useTournamentContext()
+
+  if (!profile) return null
+
+  switch (activeView) {
+    case 'admin':
+      return profile.is_admin
+        ? <AdminBuilderView onDeleteGame={onDeleteGame} onDeleteTournament={onDeleteTournament} />
+        : <BracketView />
+    case 'leaderboard':
+      return <LeaderboardView onSnoop={onSnoop} />
+    case 'settings':
+      return (
+        <SettingsView
+          profile={profile}
+          userEmail={user?.email ?? ''}
+          onProfileUpdate={setProfile}
+          push={push}
+        />
+      )
+    case 'home':
+      return <HomeView />
+    default:
+      return selectedTournament ? <BracketView /> : <HomeView />
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// § 3. AppShell — owns layout + snoop state
 // ─────────────────────────────────────────────────────────────
 
 function AppShell() {
@@ -115,7 +121,7 @@ function AppShell() {
 }
 
 // ─────────────────────────────────────────────────────────────
-// § 3. AppShellContent — all hooks that need full context access
+// § 4. AppShellContent
 // ─────────────────────────────────────────────────────────────
 
 interface AppShellContentProps {
@@ -129,21 +135,14 @@ function AppShellContent({ layout, snoopTargetId, setSnoopTargetId }: AppShellCo
   const { toasts, push } = useToasts()
   const [confirmModal, setConfirmModal] = useState<ConfirmModalCfg | null>(null)
 
-  // ── Context reads ─────────────────────────────────────────
-  const { profile, user, setProfile }             = useAuthContext()
-  const {
-    activeView, selectedTournament, gamesCache,
-    selectTournament, createTournament, deleteTournament,
-  }                                               = useTournamentContext()
-  const { tournaments }                           = useTournamentList()
-  const { deleteGame }                            = useGameMutations()
-  const { allMyPicks }                            = useBracketContext()
-  const { allProfiles, allPicks, allGames }       = useLeaderboardData()
+  const { profile }                      = useAuthContext()
+  const { selectedTournament, gamesCache,
+          createTournament, deleteTournament } = useTournamentContext()
+  const { tournaments }                  = useTournamentList()
+  const { deleteGame }                   = useGameMutations()
+  const { allProfiles, allPicks, allGames } = useLeaderboardData()
 
-  // Realtime channel — reads snoopTargetId from AppShell (not LeaderboardContext)
   useRealtimeSync(snoopTargetId)
-
-  // ── Confirm modal handlers ────────────────────────────────
 
   const handleDeleteGame = useCallback((game: Game) => {
     setConfirmModal({
@@ -185,78 +184,25 @@ function AppShellContent({ layout, snoopTargetId, setSnoopTargetId }: AppShellCo
     if (err) push(err, 'error'); else push(`"${name}" created!`, 'success')
   }, [createTournament, push])
 
-  // ── Snoop modal data ──────────────────────────────────────
   const snoopProfile = useMemo(
     () => snoopTargetId ? (allProfiles.find(p => p.id === snoopTargetId) ?? null) : null,
     [snoopTargetId, allProfiles]
   )
 
-  // ── View router ───────────────────────────────────────────
-  const renderView = () => {
-    if (!profile) return null
-    switch (activeView) {
-      case 'admin':
-        return profile.is_admin
-          ? <AdminBuilderView
-              onDeleteGame={handleDeleteGame}
-              onDeleteTournament={handleDeleteTournament}
-            />
-          : <BracketView />
-      case 'leaderboard':
-        return <LeaderboardView onSnoop={setSnoopTargetId} />
-      case 'settings':
-        return <SettingsView
-          profile={profile}
-          userEmail={user?.email ?? ''}
-          onProfileUpdate={setProfile}
-          push={push}
-        />
-      case 'home':
-        return <HomeView
-          tournaments={tournaments}
-          profile={profile}
-          allGames={gamesCache}
-          picks={allMyPicks}
-          onSelectTournament={selectTournament}
-        />
-      default:
-        return selectedTournament
-          ? <BracketView />
-          : <HomeView
-              tournaments={tournaments}
-              profile={profile}
-              allGames={gamesCache}
-              picks={allMyPicks}
-              onSelectTournament={selectTournament}
-            />
-    }
-  }
-
   return (
     <div className="flex h-screen overflow-hidden bg-slate-950 text-white">
 
-      {/* Desktop sidebar */}
       {layout.sidebarOpen && (
         <div className="hidden md:flex">
-          <Sidebar
-            onClose={() => {}}
-            onOpenAddTournament={layout.openAddTournament}
-          />
+          <Sidebar onClose={() => {}} onOpenAddTournament={layout.openAddTournament} />
         </div>
       )}
 
-      {/* Mobile sidebar overlay */}
       {layout.mobileMenuOpen && (
         <div className="md:hidden fixed inset-0 z-40 flex">
-          <div
-            className="absolute inset-0 bg-black/60"
-            onClick={layout.closeMobileMenu}
-          />
+          <div className="absolute inset-0 bg-black/60" onClick={layout.closeMobileMenu} />
           <div className="relative z-50">
-            <Sidebar
-              onClose={layout.closeMobileMenu}
-              onOpenAddTournament={layout.openAddTournament}
-            />
+            <Sidebar onClose={layout.closeMobileMenu} onOpenAddTournament={layout.openAddTournament} />
           </div>
         </div>
       )}
@@ -268,11 +214,15 @@ function AppShellContent({ layout, snoopTargetId, setSnoopTargetId }: AppShellCo
           logo={theme.logo}
         />
         <main className="flex-1 overflow-hidden">
-          {renderView()}
+          <ViewRouter
+            push={push}
+            onSnoop={setSnoopTargetId}
+            onDeleteGame={handleDeleteGame}
+            onDeleteTournament={handleDeleteTournament}
+          />
         </main>
       </div>
 
-      {/* ── Global overlays ── */}
       {snoopTargetId && snoopProfile && (
         <SnoopModal
           targetProfile={snoopProfile}
@@ -290,13 +240,12 @@ function AppShellContent({ layout, snoopTargetId, setSnoopTargetId }: AppShellCo
       )}
       {confirmModal && <ConfirmModal {...confirmModal} />}
       <Toaster toasts={toasts} />
-
     </div>
   )
 }
 
 // ─────────────────────────────────────────────────────────────
-// § 4. Root — provider stack
+// § 5. Root
 // ─────────────────────────────────────────────────────────────
 
 export default function App() {

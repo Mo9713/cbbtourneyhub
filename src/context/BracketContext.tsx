@@ -1,89 +1,63 @@
 // src/context/BracketContext.tsx
-// ─────────────────────────────────────────────────────────────
-// Bridges useBracket() into React context so any component in
-// the tree can consume picks, game actions, and the active
-// games list without prop drilling.
-//
-// ── Memoization strategy ──────────────────────────────────────
-//   • activeGames: useMemo on selectedTournament.id + gamesCache.
-//     Using .id (primitive) rather than the object reference means
-//     the memo is stable across the realtime SYNC_SELECTED re-syncs
-//     that replace the tournament object but keep the same ID.
-//   • context value: useMemo with every individual field from the
-//     bracket hook listed as a dep. All mutations are useCallback
-//     (stable refs); only picks/allMyPicks change on pick events.
-//     This ensures consumers only re-render when data they care
-//     about actually changes, not when BracketProvider re-renders
-//     due to a TournamentContext update.
-// ─────────────────────────────────────────────────────────────
-
 import { createContext, useContext, useMemo, type ReactNode } from 'react'
 
-import { useAuthContext }            from './AuthContext'
-import { useTournamentContext }      from './TournamentContext'
+import { useAuthContext }               from './AuthContext'
+import { useTournamentContext,
+         useInternalTournamentLoaders } from './TournamentContext'
 import { useBracket, type BracketState } from '../hooks/useBracket'
 
 import type { Game } from '../types'
 
-// ── Context shape ─────────────────────────────────────────────
+// ── Public context ────────────────────────────────────────────
 
 interface BracketContextValue extends BracketState {
-  /** Games for the currently selected tournament, sourced from gamesCache. */
   activeGames: Game[]
 }
 
 const BracketContext = createContext<BracketContextValue | null>(null)
 
+// ── Sync context (internal) ───────────────────────────────────
+
+interface BracketSyncValue {
+  loadPicks:      (tid: string) => Promise<void>
+  loadAllMyPicks: () => Promise<void>
+}
+
+const BracketSyncContext = createContext<BracketSyncValue | null>(null)
+
 // ── Provider ──────────────────────────────────────────────────
 
 export function BracketProvider({ children }: { children: ReactNode }) {
-  const { profile }                                   = useAuthContext()
-  const { selectedTournament, gamesCache, loadGames } = useTournamentContext()
+  const { profile }                                          = useAuthContext()
+  const { selectedTournament, gamesCache, patchGamesCache }  = useTournamentContext()
+  const { loadGames }                                        = useInternalTournamentLoaders()
 
-  const bracket = useBracket(profile, selectedTournament, gamesCache, loadGames)
+  const bracket = useBracket(profile, selectedTournament, gamesCache, loadGames, patchGamesCache)
 
-  // ── activeGames ───────────────────────────────────────────
-  // Keyed on selectedTournament?.id (primitive) so this stays
-  // stable during realtime tournament re-syncs that swap the
-  // object reference while keeping the same ID.
   const activeGames = useMemo(
     () => selectedTournament ? (gamesCache[selectedTournament.id] ?? []) : [],
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [selectedTournament?.id, gamesCache]
   )
 
-  // ── Stable context value ──────────────────────────────────
-  // Destructure bracket so we can list each field individually.
-  // All mutation callbacks are useCallback in useBracket (stable
-  // refs). Only picks and allMyPicks change with pick events.
-  const {
-    picks, allMyPicks,
-    loadPicks, loadAllMyPicks,
-    makePick, updateGame, setWinner,
-    addGameToRound, addNextRound,
-    deleteGame, linkGames, unlinkGame,
-  } = bracket
+  const { loadPicks, loadAllMyPicks, ...publicBracket } = bracket
+
+  const syncValue = useMemo<BracketSyncValue>(
+    () => ({ loadPicks, loadAllMyPicks }),
+    [loadPicks, loadAllMyPicks]
+  )
 
   const value = useMemo<BracketContextValue>(() => ({
-    picks, allMyPicks,
-    loadPicks, loadAllMyPicks,
-    makePick, updateGame, setWinner,
-    addGameToRound, addNextRound,
-    deleteGame, linkGames, unlinkGame,
+    ...publicBracket,
     activeGames,
-  }), [
-    picks, allMyPicks,
-    loadPicks, loadAllMyPicks,
-    makePick, updateGame, setWinner,
-    addGameToRound, addNextRound,
-    deleteGame, linkGames, unlinkGame,
-    activeGames,
-  ])
+  }), [publicBracket, activeGames])
 
   return (
-    <BracketContext.Provider value={value}>
-      {children}
-    </BracketContext.Provider>
+    <BracketSyncContext.Provider value={syncValue}>
+      <BracketContext.Provider value={value}>
+        {children}
+      </BracketContext.Provider>
+    </BracketSyncContext.Provider>
   )
 }
 
@@ -91,7 +65,14 @@ export function BracketProvider({ children }: { children: ReactNode }) {
 
 export function useBracketContext(): BracketContextValue {
   const ctx = useContext(BracketContext)
-  if (!ctx) throw new Error('useBracketContext() must be used inside <BracketProvider>')
+  if (!ctx) throw new Error('useBracketContext() must be inside <BracketProvider>')
+  return ctx
+}
+
+/** Internal — only useRealtimeSync should import this. */
+export function useInternalBracketLoaders(): BracketSyncValue {
+  const ctx = useContext(BracketSyncContext)
+  if (!ctx) throw new Error('useInternalBracketLoaders() must be inside <BracketProvider>')
   return ctx
 }
 
@@ -100,9 +81,9 @@ export function useActivePicks() {
   return { picks, makePick }
 }
 
-export function useAllMyPicks() {
-  const { allMyPicks } = useBracketContext()
-  return allMyPicks
+/** Per-tournament pick count. Replaces the raw allMyPicks array in public API. */
+export function useMyPickCounts(): Record<string, number> {
+  return useBracketContext().myPickCounts
 }
 
 export function useGameMutations() {
@@ -112,7 +93,6 @@ export function useGameMutations() {
     addGameToRound, addNextRound,
     deleteGame, linkGames, unlinkGame,
   } = useBracketContext()
-
   return {
     activeGames,
     updateGame, setWinner,

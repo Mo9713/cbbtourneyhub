@@ -1,24 +1,24 @@
 // src/views/BracketView/TiebreakerPanel.tsx
-import { useState, useEffect } from 'react'
-import { Hash, Check, Loader } from 'lucide-react'
-import { useTheme }            from '../../utils/theme'
-import * as pickService        from '../../services/pickService'
-import type { Game, Pick }     from '../../types'
+import { useState, useEffect }  from 'react'
+import { Hash, Check, Loader }  from 'lucide-react'
+import { useTheme }             from '../../utils/theme'
+import { useBracketContext }    from '../../context/BracketContext'
+import type { Game, Pick }      from '../../types'
 
 interface Props {
   champGame: Game
-  champPick: Pick      // guaranteed to exist before this renders
+  champPick: Pick
   isLocked:  boolean
 }
 
 export default function TiebreakerPanel({ champGame, champPick, isLocked }: Props) {
-  const theme = useTheme()
+  const theme             = useTheme()
+  const { saveTiebreaker } = useBracketContext()
 
-  const [input,   setInput]   = useState(champPick.tiebreaker_score?.toString() ?? '')
-  const [saving,  setSaving]  = useState(false)
-  const [saved,   setSaved]   = useState(false)
+  const [input,  setInput]  = useState(champPick.tiebreaker_score?.toString() ?? '')
+  const [saving, setSaving] = useState(false)
+  const [saved,  setSaved]  = useState(false)
 
-  // Sync if the pick updates externally (realtime)
   useEffect(() => {
     setInput(champPick.tiebreaker_score?.toString() ?? '')
   }, [champPick.tiebreaker_score])
@@ -27,14 +27,11 @@ export default function TiebreakerPanel({ champGame, champPick, isLocked }: Prop
     const val = parseInt(input, 10)
     if (!Number.isFinite(val) || val < 0) return
     setSaving(true)
-    await pickService.saveTiebreakerScore(champGame.id, champPick.predicted_winner, val)
+    const err = await saveTiebreaker(champGame.id, champPick.predicted_winner, val)
     setSaving(false)
+    if (err) return
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
-  }
-
-  const handleKey = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') handleSave()
   }
 
   const isValid = /^\d+$/.test(input.trim()) && parseInt(input, 10) >= 0
@@ -57,14 +54,13 @@ export default function TiebreakerPanel({ champGame, champPick, isLocked }: Prop
             min={0}
             value={input}
             onChange={e => { setInput(e.target.value); setSaved(false) }}
-            onKeyDown={handleKey}
+            onKeyDown={e => e.key === 'Enter' && handleSave()}
             disabled={isLocked}
             placeholder="e.g. 142"
             className={`w-20 text-center text-sm font-bold rounded-lg px-2 py-1.5 border transition-colors
               bg-slate-900 text-white placeholder-slate-700
-              ${isValid ? `border-slate-700 focus:border-slate-500` : 'border-red-500/50'}
-              disabled:opacity-40 disabled:cursor-not-allowed
-              focus:outline-none`}
+              ${isValid ? 'border-slate-700 focus:border-slate-500' : 'border-red-500/50'}
+              disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none`}
           />
           {!isLocked && (
             <button
@@ -72,14 +68,12 @@ export default function TiebreakerPanel({ champGame, champPick, isLocked }: Prop
               disabled={!isValid || saving}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all
                 ${saved
-                  ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-600/30'
-                  : `${theme.btn} text-white`
-                }
-                disabled:opacity-40 disabled:cursor-not-allowed`}
+                  ? 'bg-emerald-600 border-emerald-500 text-white border'
+                  : 'bg-slate-800 border border-slate-700 text-slate-300 hover:border-slate-500 disabled:opacity-40'
+                }`}
             >
-              {saving ? <Loader size={12} className="animate-spin" />
-                      : saved ? <Check size={12} /> : null}
-              {saving ? 'Saving…' : saved ? 'Saved' : 'Save'}
+              {saving ? <Loader size={11} className="animate-spin" /> : <Check size={11} />}
+              {saved ? 'Saved' : 'Save'}
             </button>
           )}
         </div>

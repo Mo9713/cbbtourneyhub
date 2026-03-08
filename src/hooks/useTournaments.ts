@@ -1,24 +1,15 @@
 // src/hooks/useTournaments.ts
-
 import {
-  useState,
-  useEffect,
-  useReducer,
-  useCallback,
-  useRef,
-  useMemo,
+  useState, useEffect, useReducer, useCallback, useRef, useMemo,
 } from 'react'
 
 import * as tournamentService from '../services/tournamentService'
 import * as gameService       from '../services/gameService'
 
-import type {
-  Profile, Tournament, Game,
-  ActiveView, TemplateKey,
-} from '../types'
+import type { Profile, Tournament, Game, ActiveView, TemplateKey } from '../types'
 
 // ─────────────────────────────────────────────────────────────
-// § 1. Navigation Reducer (unchanged from Phase 1)
+// § 1. Navigation Reducer
 // ─────────────────────────────────────────────────────────────
 
 interface NavState {
@@ -56,13 +47,10 @@ function navReducer(state: NavState, action: NavAction): NavState {
   }
 }
 
-const INITIAL_NAV: NavState = {
-  selectedTournament: null,
-  activeView:         'home',
-}
+const INITIAL_NAV: NavState = { selectedTournament: null, activeView: 'home' }
 
 // ─────────────────────────────────────────────────────────────
-// § 2. Public Hook Shape (unchanged from Phase 1)
+// § 2. Public Interface
 // ─────────────────────────────────────────────────────────────
 
 export interface TournamentsState {
@@ -70,9 +58,12 @@ export interface TournamentsState {
   selectedTournament: Tournament | null
   gamesCache:         Record<string, Game[]>
   activeView:         ActiveView
+  // Optimistic patch — for consumers that immediately update the cache
+  patchGamesCache:    (tid: string, updater: (prev: Game[]) => Game[]) => void
   selectTournament:   (t: Tournament) => void
   navigateHome:       () => void
   navigateTo:         (view: ActiveView) => void
+  // Exposed in hook return for the sync context; NOT in public context value
   loadTournaments:    () => Promise<void>
   loadGames:          (tid: string) => Promise<void>
   createTournament:   (name: string, template: TemplateKey, teamCount?: number) => Promise<string | null>
@@ -84,33 +75,24 @@ export interface TournamentsState {
 }
 
 // ─────────────────────────────────────────────────────────────
-// § 3. Hook Implementation
+// § 3. Hook
 // ─────────────────────────────────────────────────────────────
 
 export function useTournaments(profile: Profile | null): TournamentsState {
 
-  const [nav, dispatch]  = useReducer(navReducer, INITIAL_NAV)
+  const [nav, dispatch]     = useReducer(navReducer, INITIAL_NAV)
   const [tournaments,  setTournaments]  = useState<Tournament[]>([])
   const [gamesCache,   setGamesCache]   = useState<Record<string, Game[]>>({})
 
-  // ── Refs ──────────────────────────────────────────────────
-  const selectedRef   = useRef<Tournament | null>(null)
-  selectedRef.current = nav.selectedTournament
+  const selectedRef     = useRef<Tournament | null>(null)
+  selectedRef.current   = nav.selectedTournament
 
-  // Phase 2: stable snapshot of gamesCache for the boot effect.
-  // Updated every render so effects always see the freshest value
-  // without needing gamesCache in their dependency arrays.
   const gamesCacheRef   = useRef(gamesCache)
   gamesCacheRef.current = gamesCache
 
-  // Phase 2: tracks which tournament IDs currently have an in-flight
-  // fetchGames call. Prevents concurrent duplicate fetches for the
-  // same tid when boot pre-warm and realtime events overlap.
-  const loadingTidsRef = useRef(new Set<string>())
+  const loadingTidsRef  = useRef(new Set<string>())
 
-  // ─────────────────────────────────────────────────────────
-  // § 3a. Data Loaders
-  // ─────────────────────────────────────────────────────────
+  // ── Loaders ───────────────────────────────────────────────
 
   const loadTournaments = useCallback(async () => {
     const result = await tournamentService.fetchTournaments()
@@ -118,94 +100,63 @@ export function useTournaments(profile: Profile | null): TournamentsState {
   }, [])
 
   const loadGames = useCallback(async (tid: string) => {
-    // Deduplicate: if a fetch for this tid is already in flight, skip.
-    // This prevents two concurrent writes to gamesCache[tid] when the
-    // boot pre-warm and a realtime event fire simultaneously.
     if (loadingTidsRef.current.has(tid)) return
     loadingTidsRef.current.add(tid)
-
     try {
       const result = await gameService.fetchGames(tid)
-      if (result.ok) {
-        setGamesCache(prev => ({ ...prev, [tid]: result.data }))
-      }
+      if (result.ok) setGamesCache(prev => ({ ...prev, [tid]: result.data }))
     } finally {
-      // Always clear the lock, even on error, so subsequent calls can retry.
       loadingTidsRef.current.delete(tid)
     }
   }, [])
 
-  // ─────────────────────────────────────────────────────────
-  // § 3b. Boot Sequence
-  // ─────────────────────────────────────────────────────────
+  // Optimistic cache patch — used by useBracket for immediate UI feedback
+  const patchGamesCache = useCallback((tid: string, updater: (prev: Game[]) => Game[]) => {
+    setGamesCache(prev => ({ ...prev, [tid]: updater(prev[tid] ?? []) }))
+  }, [])
+
+  // ── Boot ──────────────────────────────────────────────────
 
   useEffect(() => {
     if (profile) loadTournaments()
   }, [profile, loadTournaments])
 
-  // Pre-warm the games cache for every tournament.
-  // Phase 2: reads from gamesCacheRef (not gamesCache closure) so the
-  // guard `!gamesCacheRef.current[t.id]` always sees the live cache,
-  // preventing re-fetches for tournaments already loaded concurrently.
   useEffect(() => {
     if (!profile || tournaments.length === 0) return
     tournaments.forEach(t => {
       if (!gamesCacheRef.current[t.id]) loadGames(t.id)
     })
-    // gamesCacheRef is a ref — reading it here is stable, no dep needed.
-    // loadingTidsRef is also a ref — deduplication is handled inside loadGames.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tournaments, profile, loadGames])
 
-  // ─────────────────────────────────────────────────────────
-  // § 3c. Re-sync selectedTournament after list refresh
-  // ─────────────────────────────────────────────────────────
+  // ── Re-sync selected tournament after list refresh ────────
 
   useEffect(() => {
     const prev = selectedRef.current
     if (!prev) return
-
     const fresh = tournaments.find(t => t.id === prev.id)
-
-    if (!fresh) {
-      dispatch({ type: 'CLEAR_SELECTED' })
-      return
-    }
-
-    if (fresh !== prev) {
-      dispatch({ type: 'SYNC_SELECTED', fresh })
-    }
+    if (!fresh) { dispatch({ type: 'CLEAR_SELECTED' }); return }
+    if (fresh !== prev) dispatch({ type: 'SYNC_SELECTED', fresh })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tournaments])
 
-  // ─────────────────────────────────────────────────────────
-  // § 3d. Navigation Actions
-  // ─────────────────────────────────────────────────────────
+  // ── Navigation ────────────────────────────────────────────
 
   const selectTournament = useCallback((t: Tournament) => {
     dispatch({ type: 'SELECT_TOURNAMENT', tournament: t })
   }, [])
 
-  const navigateHome = useCallback(() => {
-    dispatch({ type: 'NAVIGATE_HOME' })
-  }, [])
+  const navigateHome = useCallback(() => dispatch({ type: 'NAVIGATE_HOME' }), [])
 
-  const navigateTo = useCallback((view: ActiveView) => {
-    dispatch({ type: 'NAVIGATE_TO', view })
-  }, [])
+  const navigateTo   = useCallback((view: ActiveView) => dispatch({ type: 'NAVIGATE_TO', view }), [])
 
-  // ─────────────────────────────────────────────────────────
-  // § 3e. Tournament Mutations
-  // ─────────────────────────────────────────────────────────
+  // ── Tournament Mutations ──────────────────────────────────
 
   const createTournament = useCallback(async (
-    name:      string,
-    template:  TemplateKey,
-    teamCount: number = 16
+    name: string, template: TemplateKey, teamCount: number = 16,
   ): Promise<string | null> => {
     const result = await tournamentService.createTournament({ name, template, teamCount })
     if (!result.ok) return result.error
-
     await loadGames(result.data.id)
     await loadTournaments()
     dispatch({ type: 'REPLACE_SELECTED', tournament: result.data, view: 'admin' })
@@ -215,10 +166,8 @@ export function useTournaments(profile: Profile | null): TournamentsState {
   const publishTournament = useCallback(async (): Promise<string | null> => {
     const t = selectedRef.current
     if (!t) return 'No tournament selected'
-
     const result = await tournamentService.publishTournament(t.id)
     if (!result.ok) return result.error
-
     dispatch({ type: 'REPLACE_SELECTED', tournament: result.data })
     await loadTournaments()
     return null
@@ -227,10 +176,8 @@ export function useTournaments(profile: Profile | null): TournamentsState {
   const lockTournament = useCallback(async (): Promise<string | null> => {
     const t = selectedRef.current
     if (!t) return 'No tournament selected'
-
     const result = await tournamentService.lockTournament(t.id)
     if (!result.ok) return result.error
-
     dispatch({ type: 'REPLACE_SELECTED', tournament: result.data })
     await loadTournaments()
     return null
@@ -239,58 +186,44 @@ export function useTournaments(profile: Profile | null): TournamentsState {
   const renameTournament = useCallback(async (newName: string): Promise<string | null> => {
     const t = selectedRef.current
     if (!t) return 'No tournament selected'
-
     const result = await tournamentService.updateTournament(t.id, { name: newName })
     if (!result.ok) return result.error
-
     dispatch({ type: 'REPLACE_SELECTED', tournament: result.data })
     await loadTournaments()
     return null
   }, [loadTournaments])
 
-  const updateTournament = useCallback(async (
-    updates: Partial<Tournament>
-  ): Promise<string | null> => {
+  const updateTournament = useCallback(async (updates: Partial<Tournament>): Promise<string | null> => {
     const t = selectedRef.current
     if (!t) return 'No tournament selected'
-
     const result = await tournamentService.updateTournament(t.id, updates)
     if (!result.ok) return result.error
-
     dispatch({ type: 'REPLACE_SELECTED', tournament: result.data })
     await loadTournaments()
     return null
   }, [loadTournaments])
 
-  const deleteTournament = useCallback(async (
-    gameIds: string[]
-  ): Promise<string | null> => {
+  const deleteTournament = useCallback(async (gameIds: string[]): Promise<string | null> => {
     const t = selectedRef.current
     if (!t) return 'No tournament selected'
-
     const result = await tournamentService.deleteTournament(t.id, gameIds)
     if (!result.ok) return result.error
-
     setGamesCache(prev => {
       const next = { ...prev }
       delete next[t.id]
       return next
     })
-
     dispatch({ type: 'NAVIGATE_HOME' })
     await loadTournaments()
     return null
   }, [loadTournaments])
-
-  // ─────────────────────────────────────────────────────────
-  // § 3f. Stable Return Object
-  // ─────────────────────────────────────────────────────────
 
   return useMemo<TournamentsState>(() => ({
     tournaments,
     selectedTournament: nav.selectedTournament,
     gamesCache,
     activeView:         nav.activeView,
+    patchGamesCache,
     selectTournament,
     navigateHome,
     navigateTo,
@@ -303,20 +236,10 @@ export function useTournaments(profile: Profile | null): TournamentsState {
     updateTournament,
     deleteTournament,
   }), [
-    tournaments,
-    nav.selectedTournament,
-    nav.activeView,
-    gamesCache,
-    selectTournament,
-    navigateHome,
-    navigateTo,
-    loadTournaments,
-    loadGames,
-    createTournament,
-    publishTournament,
-    lockTournament,
-    renameTournament,
-    updateTournament,
-    deleteTournament,
+    tournaments, nav.selectedTournament, nav.activeView, gamesCache,
+    patchGamesCache, selectTournament, navigateHome, navigateTo,
+    loadTournaments, loadGames,
+    createTournament, publishTournament, lockTournament,
+    renameTournament, updateTournament, deleteTournament,
   ])
 }

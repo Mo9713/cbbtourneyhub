@@ -1,123 +1,73 @@
 // src/context/TournamentContext.tsx
-// ─────────────────────────────────────────────────────────────
-// Context for tournament list data, navigation state, game
-// cache, and tournament-level mutations.
-//
-// Provider tree position: SECOND — inside <AuthProvider>,
-// outside <BracketProvider>.
-//
-//   <AuthProvider>
-//     <TournamentProvider>        ← this file
-//       <BracketProvider>
-//         <AppShell />            ← AppShell owns LeaderboardProvider
-//       </BracketProvider>
-//     </TournamentProvider>
-//   </AuthProvider>
-//
-// ── What this context owns ────────────────────────────────────
-//   • Tournament list (all statuses)
-//   • Selected tournament + active view (via nav reducer)
-//   • Games cache (all tournaments, pre-warmed on boot)
-//   • Tournament-level mutations: create, publish, lock, rename,
-//     update, delete
-//   • loadTournaments + loadGames (for realtime hook)
-//
-// ── What this context does NOT own ───────────────────────────
-//   • Layout UI toggles (sidebarOpen, mobileMenuOpen,
-//     showAddTournament) → useLayoutState() in App.tsx
-//   • Picks for the active tournament  → BracketContext
-//   • Game mutations (set winner, link, etc.) → BracketContext
-//   • Leaderboard data and filter state → LeaderboardContext
-//   • Snoop modal state (snoopTargetId) → AppShell local state
-//   • User profile / auth               → AuthContext
-// ─────────────────────────────────────────────────────────────
-
-import {
-  createContext,
-  useContext,
-  type ReactNode,
-} from 'react'
-
-import { useAuthContext }                        from './AuthContext'
+import { createContext, useContext, useMemo, type ReactNode } from 'react'
+import { useAuthContext }                       from './AuthContext'
 import { useTournaments, type TournamentsState } from '../hooks/useTournaments'
 import type { ActiveView, Game, Tournament }      from '../types'
 
-type TournamentContextValue = TournamentsState
+// ── Public context ────────────────────────────────────────────
+// loadTournaments and loadGames are intentionally excluded here.
+// They are only available via useInternalTournamentLoaders(),
+// which is imported exclusively by useRealtimeSync and BracketContext.
+
+type TournamentContextValue = Omit<TournamentsState, 'loadTournaments' | 'loadGames'>
 
 const TournamentContext = createContext<TournamentContextValue | null>(null)
+
+// ── Sync context (internal) ───────────────────────────────────
+
+interface TournamentSyncValue {
+  loadTournaments: () => Promise<void>
+  loadGames:       (tid: string) => Promise<void>
+}
+
+const TournamentSyncContext = createContext<TournamentSyncValue | null>(null)
 
 // ── Provider ──────────────────────────────────────────────────
 
 export function TournamentProvider({ children }: { children: ReactNode }) {
   const { profile } = useAuthContext()
+  const state       = useTournaments(profile)
 
-  // useTournaments returns a useMemo-wrapped object — its reference
-  // only changes when actual tournament/navigation data changes.
-  // No extra useMemo wrapper is needed in this Provider.
-  const state = useTournaments(profile)
+  const { loadTournaments, loadGames, ...publicState } = state
+
+  const syncValue = useMemo<TournamentSyncValue>(
+    () => ({ loadTournaments, loadGames }),
+    [loadTournaments, loadGames]
+  )
 
   return (
-    <TournamentContext.Provider value={state}>
-      {children}
-    </TournamentContext.Provider>
+    <TournamentSyncContext.Provider value={syncValue}>
+      <TournamentContext.Provider value={publicState}>
+        {children}
+      </TournamentContext.Provider>
+    </TournamentSyncContext.Provider>
   )
 }
 
-// ── Primary consumer hook ─────────────────────────────────────
+// ── Consumer hooks ────────────────────────────────────────────
 
 export function useTournamentContext(): TournamentContextValue {
   const ctx = useContext(TournamentContext)
-  if (!ctx) {
-    throw new Error(
-      'useTournamentContext() was called outside of <TournamentProvider>.\n' +
-      'Ensure the provider order in main.tsx is:\n' +
-      '  <AuthProvider>\n' +
-      '    <TournamentProvider>\n' +
-      '      ...\n' +
-      '    </TournamentProvider>\n' +
-      '  </AuthProvider>'
-    )
-  }
+  if (!ctx) throw new Error('useTournamentContext() must be inside <TournamentProvider>')
   return ctx
 }
 
-// ── Focused selector hooks ────────────────────────────────────
-//
-// Each calls useTournamentContext() internally and subscribes to
-// the same single context. They exist as named contracts that
-// document which slice of state each consumer actually needs.
-
-export function useSelectedTournament(): {
-  tournament:       Tournament | null
-  selectTournament: (t: Tournament) => void
-  navigateHome:     () => void
-} {
-  const { selectedTournament, selectTournament, navigateHome } = useTournamentContext()
-  return { tournament: selectedTournament, selectTournament, navigateHome }
+/** Internal — only useRealtimeSync and BracketContext should import this. */
+export function useInternalTournamentLoaders(): TournamentSyncValue {
+  const ctx = useContext(TournamentSyncContext)
+  if (!ctx) throw new Error('useInternalTournamentLoaders() must be inside <TournamentProvider>')
+  return ctx
 }
 
-export function useActiveView(): {
-  activeView:       ActiveView
-  navigateTo:       (view: ActiveView) => void
-  selectTournament: (t: Tournament) => void
-  navigateHome:     () => void
-} {
-  const { activeView, navigateTo, selectTournament, navigateHome } = useTournamentContext()
-  return { activeView, navigateTo, selectTournament, navigateHome }
+/** Focused hook for components that only need the tournament list. */
+export function useTournamentList() {
+  const { tournaments } = useTournamentContext()
+  return { tournaments }
 }
 
-export function useGamesCache(): {
-  gamesCache: Record<string, Game[]>
-  loadGames:  (tid: string) => Promise<void>
-} {
-  const { gamesCache, loadGames } = useTournamentContext()
-  return { gamesCache, loadGames }
-}
-
-export function useTournamentList(): {
-  tournaments:     Tournament[]
-  loadTournaments: () => Promise<void>
-} {
-  const { tournaments, loadTournaments } = useTournamentContext()
-  return { tournaments, loadTournaments }
+/** Focused hook for components that only need navigation. */
+export function useTournamentNav() {
+  const { selectedTournament, activeView, selectTournament, navigateHome, navigateTo } =
+    useTournamentContext()
+  return { selectedTournament, activeView, selectTournament, navigateHome, navigateTo }
 }
