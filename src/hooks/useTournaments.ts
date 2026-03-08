@@ -1,25 +1,4 @@
 // src/hooks/useTournaments.ts
-// ─────────────────────────────────────────────────────────────
-// Internal hook that owns the tournament list, game cache,
-// and all navigation state for the app shell.
-//
-// Consumed exclusively by TournamentContext.tsx.
-// Do NOT import this hook directly in components or views.
-// Use useTournamentContext() from TournamentContext.tsx instead.
-//
-// ── What this hook owns ───────────────────────────────────────
-//   • Tournament list + selected tournament
-//   • Games cache (all tournaments, pre-warmed on boot)
-//   • Navigation state (activeView) via atomic reducer
-//   • All tournament-level mutations
-//
-// ── What this hook does NOT own ──────────────────────────────
-//   • Layout toggles (sidebarOpen, mobileMenuOpen, showAddTournament)
-//     → These are ephemeral UI state local to AppShell. Putting
-//       them here caused layout-toggle events to broadcast a
-//       TournamentContext update to every subscriber in the tree.
-//       They now live in useLayoutState() inside App.tsx.
-// ─────────────────────────────────────────────────────────────
 
 import {
   useState,
@@ -39,7 +18,7 @@ import type {
 } from '../types'
 
 // ─────────────────────────────────────────────────────────────
-// § 1. Navigation Reducer
+// § 1. Navigation Reducer (unchanged from Phase 1)
 // ─────────────────────────────────────────────────────────────
 
 interface NavState {
@@ -83,26 +62,19 @@ const INITIAL_NAV: NavState = {
 }
 
 // ─────────────────────────────────────────────────────────────
-// § 2. Public Hook Shape
+// § 2. Public Hook Shape (unchanged from Phase 1)
 // ─────────────────────────────────────────────────────────────
 
 export interface TournamentsState {
-  // ── Data ───────────────────────────────────────────────────
   tournaments:        Tournament[]
   selectedTournament: Tournament | null
   gamesCache:         Record<string, Game[]>
-
-  // ── Navigation ─────────────────────────────────────────────
   activeView:         ActiveView
   selectTournament:   (t: Tournament) => void
   navigateHome:       () => void
   navigateTo:         (view: ActiveView) => void
-
-  // ── Data Loaders ───────────────────────────────────────────
   loadTournaments:    () => Promise<void>
   loadGames:          (tid: string) => Promise<void>
-
-  // ── Tournament Mutations ───────────────────────────────────
   createTournament:   (name: string, template: TemplateKey, teamCount?: number) => Promise<string | null>
   publishTournament:  () => Promise<string | null>
   lockTournament:     () => Promise<string | null>
@@ -117,18 +89,24 @@ export interface TournamentsState {
 
 export function useTournaments(profile: Profile | null): TournamentsState {
 
-  // ── Navigation state (atomic via reducer) ──────────────────
-  const [nav, dispatch] = useReducer(navReducer, INITIAL_NAV)
+  const [nav, dispatch]  = useReducer(navReducer, INITIAL_NAV)
+  const [tournaments,  setTournaments]  = useState<Tournament[]>([])
+  const [gamesCache,   setGamesCache]   = useState<Record<string, Game[]>>({})
 
-  // ── Data state ─────────────────────────────────────────────
-  const [tournaments, setTournaments] = useState<Tournament[]>([])
-  const [gamesCache,  setGamesCache]  = useState<Record<string, Game[]>>({})
-
-  // ── Stable ref for selected tournament ─────────────────────
-  // Lets effects and mutations read the latest value without
-  // being listed in their dependency arrays.
-  const selectedRef = useRef<Tournament | null>(null)
+  // ── Refs ──────────────────────────────────────────────────
+  const selectedRef   = useRef<Tournament | null>(null)
   selectedRef.current = nav.selectedTournament
+
+  // Phase 2: stable snapshot of gamesCache for the boot effect.
+  // Updated every render so effects always see the freshest value
+  // without needing gamesCache in their dependency arrays.
+  const gamesCacheRef   = useRef(gamesCache)
+  gamesCacheRef.current = gamesCache
+
+  // Phase 2: tracks which tournament IDs currently have an in-flight
+  // fetchGames call. Prevents concurrent duplicate fetches for the
+  // same tid when boot pre-warm and realtime events overlap.
+  const loadingTidsRef = useRef(new Set<string>())
 
   // ─────────────────────────────────────────────────────────
   // § 3a. Data Loaders
@@ -140,9 +118,20 @@ export function useTournaments(profile: Profile | null): TournamentsState {
   }, [])
 
   const loadGames = useCallback(async (tid: string) => {
-    const result = await gameService.fetchGames(tid)
-    if (result.ok) {
-      setGamesCache(prev => ({ ...prev, [tid]: result.data }))
+    // Deduplicate: if a fetch for this tid is already in flight, skip.
+    // This prevents two concurrent writes to gamesCache[tid] when the
+    // boot pre-warm and a realtime event fire simultaneously.
+    if (loadingTidsRef.current.has(tid)) return
+    loadingTidsRef.current.add(tid)
+
+    try {
+      const result = await gameService.fetchGames(tid)
+      if (result.ok) {
+        setGamesCache(prev => ({ ...prev, [tid]: result.data }))
+      }
+    } finally {
+      // Always clear the lock, even on error, so subsequent calls can retry.
+      loadingTidsRef.current.delete(tid)
     }
   }, [])
 
@@ -154,16 +143,17 @@ export function useTournaments(profile: Profile | null): TournamentsState {
     if (profile) loadTournaments()
   }, [profile, loadTournaments])
 
-  // Pre-warm the games cache for every tournament so the sidebar's
-  // missing-picks indicator and HomeView cards have data immediately.
+  // Pre-warm the games cache for every tournament.
+  // Phase 2: reads from gamesCacheRef (not gamesCache closure) so the
+  // guard `!gamesCacheRef.current[t.id]` always sees the live cache,
+  // preventing re-fetches for tournaments already loaded concurrently.
   useEffect(() => {
     if (!profile || tournaments.length === 0) return
     tournaments.forEach(t => {
-      if (!gamesCache[t.id]) loadGames(t.id)
+      if (!gamesCacheRef.current[t.id]) loadGames(t.id)
     })
-    // gamesCache intentionally omitted: we only want to run when
-    // tournaments change, not on every cache update. The guard
-    // `!gamesCache[t.id]` prevents duplicate fetches.
+    // gamesCacheRef is a ref — reading it here is stable, no dep needed.
+    // loadingTidsRef is also a ref — deduplication is handled inside loadGames.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tournaments, profile, loadGames])
 
@@ -218,7 +208,6 @@ export function useTournaments(profile: Profile | null): TournamentsState {
 
     await loadGames(result.data.id)
     await loadTournaments()
-
     dispatch({ type: 'REPLACE_SELECTED', tournament: result.data, view: 'admin' })
     return null
   }, [loadGames, loadTournaments])
@@ -296,16 +285,6 @@ export function useTournaments(profile: Profile | null): TournamentsState {
   // ─────────────────────────────────────────────────────────
   // § 3f. Stable Return Object
   // ─────────────────────────────────────────────────────────
-  //
-  // Wrapping in useMemo ensures TournamentContext.Provider only
-  // receives a new object reference when actual data changes.
-  // All callbacks are useCallback (stable refs). State values
-  // (tournaments, gamesCache, nav.*) change only on real events.
-  //
-  // Without this memo, every render of TournamentProvider —
-  // including those triggered by AuthContext parent re-renders —
-  // would create a new object, broadcasting a context update to
-  // every subscriber even though nothing actually changed.
 
   return useMemo<TournamentsState>(() => ({
     tournaments,

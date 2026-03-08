@@ -1,23 +1,20 @@
 // src/hooks/useBracket.ts
-import { useState, useEffect, useCallback, useRef } from 'react'  // add useRef
 
-import * as pickService  from '../services/pickService'
-import * as gameService  from '../services/gameService'
-import { computeGameNumbers, collectDownstreamGameIds } from '../utils/bracketMath'  // add collectDownstreamGameIds
-import { isPicksLocked } from '../utils/time'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+
+import * as pickService           from '../services/pickService'
+import * as gameService           from '../services/gameService'
+import { computeGameNumbers,
+         collectDownstreamGameIds } from '../utils/bracketMath'
+import { isPicksLocked }           from '../utils/time'
 
 import type { Profile, Tournament, Game, Pick } from '../types'
 
 export interface BracketState {
-  /** Picks scoped to the active tournament's games only. */
   picks:          Pick[]
-  /** All picks for the current user, across every tournament. Used by Sidebar + HomeView. */
   allMyPicks:     Pick[]
-
   loadPicks:      (tid: string) => Promise<void>
   loadAllMyPicks: () => Promise<void>
-
-  // ── Pick actions — return error string or null ──────────────
   makePick:            (game: Game, team: string) => Promise<string | null>
   updateGame:          (id: string, updates: Partial<Game>) => Promise<string | null>
   setWinner:           (game: Game, winner: string) => Promise<string | null>
@@ -38,69 +35,106 @@ export function useBracket(
   const [picks,      setPicks]      = useState<Pick[]>([])
   const [allMyPicks, setAllMyPicks] = useState<Pick[]>([])
 
-  const activeGames: Game[] = selectedTournament
-    ? (gamesCache[selectedTournament.id] ?? [])
-    : []
+  // ── Memoized active games ─────────────────────────────────
+  // Keyed on selectedTournament?.id (primitive) so this stays
+  // stable across SYNC_SELECTED re-syncs that replace the
+  // tournament object reference while the ID stays the same.
+  const activeGames = useMemo(
+    () => selectedTournament ? (gamesCache[selectedTournament.id] ?? []) : [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [selectedTournament?.id, gamesCache]
+  )
 
-  // ── Stable refs: let makePick read current values without
-  //    being in its dependency array. This prevents makePick
-  //    from being re-created after every pick action (picks) or
-  //    every games cache update (activeGames).
-  const picksRef      = useRef(picks)
-  const activeGamesRef = useRef(activeGames)
-  picksRef.current      = picks
-  activeGamesRef.current = activeGames
+  // ── Refs ─────────────────────────────────────────────────
+  // Updated every render — closures inside useCallback always
+  // see the latest values without being in dependency arrays.
+  const picksRef              = useRef(picks)
+  const activeGamesRef        = useRef(activeGames)
+  const selectedTournamentRef = useRef(selectedTournament)
+  picksRef.current              = picks
+  activeGamesRef.current        = activeGames
+  selectedTournamentRef.current = selectedTournament
 
-  // ── Loaders ─────────────────────────────────────────────────
+  // Version counter: each loadPicks call captures the version at
+  // start; if it doesn't match on return, the response is stale.
+  const loadPicksVersionRef = useRef(0)
+
+  // Mounted guard: prevents setState on unmounted components
+  // during sign-out or fast tournament switching.
+  const mountedRef = useRef(true)
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
+
+  // ── Loaders ───────────────────────────────────────────────
 
   const loadPicks = useCallback(async (tid: string) => {
-    const games = gamesCache[tid] ?? []
-    if (games.length === 0) return
-    const result = await pickService.fetchPicksForGames(games.map(g => g.id))
+    // Guard 1: skip stale realtime calls for a tournament the user
+    // has already navigated away from.
+    if (!selectedTournamentRef.current || tid !== selectedTournamentRef.current.id) return
+
+    const version = ++loadPicksVersionRef.current
+    const gameIds = activeGamesRef.current.map(g => g.id)
+    if (gameIds.length === 0) return
+
+    const result = await pickService.fetchPicksForGames(gameIds)
+
+    // Guard 2: a newer loadPicks call started while we were awaiting.
+    if (version !== loadPicksVersionRef.current) return
+    // Guard 3: the component unmounted during the await.
+    if (!mountedRef.current) return
+
     if (result.ok && profile) {
       setPicks(result.data.filter(p => p.user_id === profile.id))
     }
-  }, [profile, gamesCache])
+  }, [profile])
+  // ↑ Note: profile is the only true dep. activeGamesRef and
+  //   selectedTournamentRef are read via refs — intentionally
+  //   not in the dep array. gamesCache is no longer a dep.
 
   const loadAllMyPicks = useCallback(async () => {
     if (!profile) return
+
     const result = await pickService.fetchMyPicks()
+
+    if (!mountedRef.current) return
     if (result.ok) setAllMyPicks(result.data)
   }, [profile])
 
-  // ── Boot: load all-my-picks once on mount ───────────────────
+  // ── Boot: load all-my-picks once on mount ─────────────────
   useEffect(() => {
     if (profile) loadAllMyPicks()
   }, [profile, loadAllMyPicks])
 
-  // ── Load picks only when games cache is warm ─────
+  // ── Reload picks when this tournament's games become available ─
+  // Dep is `activeGames` (memoized on this tournament's games only),
+  // NOT `gamesCache` (the whole cache). This fires only when the
+  // currently-selected tournament's game list actually changes —
+  // not when other tournaments' games load during the boot pre-warm.
   useEffect(() => {
     if (!selectedTournament || activeGames.length === 0) return
     loadPicks(selectedTournament.id)
-  }, [selectedTournament?.id, gamesCache, loadPicks])
+  }, [selectedTournament?.id, activeGames, loadPicks])
 
-  // ── Pick mutations ──────────────────────────────────────────
+  // ── Pick mutations ────────────────────────────────────────
 
   const makePick = useCallback(async (
     game: Game,
     team: string,
   ): Promise<string | null> => {
-    if (!profile || !selectedTournament) return 'Not ready'
-    if (isPicksLocked(selectedTournament, profile.is_admin)) return 'Picks are locked'
+    if (!profile || !selectedTournamentRef.current) return 'Not ready'
+    if (isPicksLocked(selectedTournamentRef.current, profile.is_admin)) return 'Picks are locked'
 
-    // Read fresh values from refs — never stale, never in dep array.
     const currentPicks = picksRef.current
     const currentGames = activeGamesRef.current
     const existing     = currentPicks.find(p => p.game_id === game.id)
 
-    // All downstream game IDs that must be wiped whenever THIS game's pick changes.
     const downstreamIds = collectDownstreamGameIds(game, currentGames)
     const downstreamSet = new Set(downstreamIds)
 
-    // ── TOGGLE OFF: user clicked the same team again ──────────
+    // ── Toggle off ────────────────────────────────────────
     if (existing?.predicted_winner === team) {
-      // Delete this pick AND cascade-delete all downstream picks
-      // in a single batch before touching local state.
       const [deleteResult, cascadeResult] = await Promise.all([
         pickService.deletePick(existing.id),
         pickService.deletePicksForGames(downstreamIds),
@@ -108,27 +142,22 @@ export function useBracket(
       if (!deleteResult.ok)  return deleteResult.error
       if (!cascadeResult.ok) return cascadeResult.error
 
-      // Remove the toggled pick and all downstream picks from local state.
       const removedIds = new Set([existing.id])
       setPicks(prev      => prev.filter(p => !removedIds.has(p.id) && !downstreamSet.has(p.game_id)))
       setAllMyPicks(prev => prev.filter(p => !removedIds.has(p.id) && !downstreamSet.has(p.game_id)))
       return null
     }
 
-    // ── CHANGE OR NEW PICK ────────────────────────────────────
-    // Step 1: Cascade-delete downstream picks FIRST. If this fails,
-    // we abort entirely — the DB is still consistent (no new pick written).
+    // ── Change or new pick ────────────────────────────────
+    // Cascade delete first: if it fails, the DB is still clean.
     if (downstreamIds.length > 0) {
       const cascadeResult = await pickService.deletePicksForGames(downstreamIds)
       if (!cascadeResult.ok) return cascadeResult.error
     }
 
-    // Step 2: Save the new/changed pick.
     const saveResult = await pickService.savePick(game.id, team)
     if (!saveResult.ok) return saveResult.error
 
-    // Step 3: Update local state atomically.
-    // Replace this game's pick and strip all downstream picks in one pass.
     setPicks(prev => [
       ...prev.filter(p => p.game_id !== game.id && !downstreamSet.has(p.game_id)),
       saveResult.data,
@@ -138,108 +167,101 @@ export function useBracket(
       saveResult.data,
     ])
     return null
+  }, [profile])
 
-  // profile and selectedTournament are the only true external dependencies now.
-  // picks and activeGames are read via refs to break the self-defeating re-creation cycle.
-  }, [profile, selectedTournament])
-
-  // ── Game mutations (admin) ───────────────────────────────────
+  // ── Game mutations (admin) ────────────────────────────────
 
   const updateGame = useCallback(async (
-    id: string,
+    id:      string,
     updates: Partial<Game>,
   ): Promise<string | null> => {
-    if (!selectedTournament) return 'No tournament selected'
+    const tid = selectedTournamentRef.current?.id
+    if (!tid) return 'No tournament selected'
     const result = await gameService.updateGame(id, updates)
     if (!result.ok) return result.error
-    await loadGames(selectedTournament.id)
+    await loadGames(tid)
     return null
-  }, [selectedTournament, loadGames])
+  }, [loadGames])
 
   const setWinner = useCallback(async (
-    game: Game,
+    game:   Game,
     winner: string,
   ): Promise<string | null> => {
-    if (!selectedTournament) return 'No tournament selected'
-    const gameNumbers = computeGameNumbers(activeGames)
-    const result = await gameService.setWinner(game, winner, activeGames, gameNumbers)
+    const tid = selectedTournamentRef.current?.id
+    if (!tid) return 'No tournament selected'
+    const gameNums = computeGameNumbers(activeGamesRef.current)
+    const result   = await gameService.setWinner(game, winner, activeGamesRef.current, gameNums)
     if (!result.ok) return result.error
-    await loadGames(selectedTournament.id)
+    await loadGames(tid)
     return null
-  }, [selectedTournament, activeGames, loadGames])
+  }, [loadGames])
 
   const addGameToRound = useCallback(async (round: number): Promise<string | null> => {
-    if (!selectedTournament) return 'No tournament selected'
-    const roundGames = activeGames.filter(g => g.round_num === round)
-    const maxOrder   = roundGames.length > 0
-      ? Math.max(...roundGames.map(g => g.sort_order ?? 0))
-      : -1
-    const result = await gameService.addGameToRound(selectedTournament.id, round, maxOrder + 1)
+    const t = selectedTournamentRef.current
+    if (!t) return 'No tournament selected'
+    const sortOrder = (activeGamesRef.current.filter(g => g.round_num === round).length)
+    const result    = await gameService.addGameToRound(t.id, round, sortOrder)
     if (!result.ok) return result.error
-    await loadGames(selectedTournament.id)
+    await loadGames(t.id)
     return null
-  }, [selectedTournament, activeGames, loadGames])
+  }, [loadGames])
 
   const addNextRound = useCallback(async (): Promise<string | null> => {
-    if (!selectedTournament) return 'No tournament selected'
-    const nextRound = activeGames.length > 0
-      ? Math.max(...activeGames.map(g => g.round_num)) + 1
-      : 1
-    const result = await gameService.addGameToRound(selectedTournament.id, nextRound, 0)
+    const t = selectedTournamentRef.current
+    if (!t) return 'No tournament selected'
+    const games   = activeGamesRef.current
+    const maxRound = games.length > 0 ? Math.max(...games.map(g => g.round_num)) : 0
+    const result   = await gameService.addGameToRound(t.id, maxRound + 1, 0)
     if (!result.ok) return result.error
-    await loadGames(selectedTournament.id)
+    await loadGames(t.id)
     return null
-  }, [selectedTournament, activeGames, loadGames])
+  }, [loadGames])
 
   const deleteGame = useCallback(async (game: Game): Promise<string | null> => {
-    if (!selectedTournament) return 'No tournament selected'
-    const gameNumbers = computeGameNumbers(activeGames)
-    const result = await gameService.deleteGame(game, activeGames, gameNumbers)
+    const tid = selectedTournamentRef.current?.id
+    if (!tid) return 'No tournament selected'
+    const gameNums = computeGameNumbers(activeGamesRef.current)
+    const result   = await gameService.deleteGame(game, activeGamesRef.current, gameNums)
     if (!result.ok) return result.error
-    await loadGames(selectedTournament.id)
+    await loadGames(tid)
     return null
-  }, [selectedTournament, activeGames, loadGames])
+  }, [loadGames])
 
   const linkGames = useCallback(async (
     fromId: string,
     toId:   string,
     slot:   'team1_name' | 'team2_name',
   ): Promise<string | null> => {
-    if (!selectedTournament) return 'No tournament selected'
-    const fromGame    = activeGames.find(g => g.id === fromId)
+    const tid = selectedTournamentRef.current?.id
+    if (!tid) return 'No tournament selected'
+    const games    = activeGamesRef.current
+    const gameNums = computeGameNumbers(games)
+    const fromGame = games.find(g => g.id === fromId)
     if (!fromGame) return 'Game not found'
-    const gameNumbers = computeGameNumbers(activeGames)
-    const result = await gameService.linkGames(
-      fromGame, toId, slot, gameNumbers[fromId], activeGames, gameNumbers,
-    )
+    const result = await gameService.linkGames(fromGame, toId, slot, gameNums[fromId], games, gameNums)
     if (!result.ok) return result.error
-    await loadGames(selectedTournament.id)
+    await loadGames(tid)
     return null
-  }, [selectedTournament, activeGames, loadGames])
+  }, [loadGames])
 
   const unlinkGame = useCallback(async (fromId: string): Promise<string | null> => {
-    if (!selectedTournament) return 'No tournament selected'
-    const fromGame    = activeGames.find(g => g.id === fromId)
+    const tid = selectedTournamentRef.current?.id
+    if (!tid) return 'No tournament selected'
+    const games    = activeGamesRef.current
+    const gameNums = computeGameNumbers(games)
+    const fromGame = games.find(g => g.id === fromId)
     if (!fromGame) return 'Game not found'
-    const gameNumbers = computeGameNumbers(activeGames)
-    const result = await gameService.unlinkGame(fromGame, activeGames, gameNumbers)
+    const result = await gameService.unlinkGame(fromGame, games, gameNums)
     if (!result.ok) return result.error
-    await loadGames(selectedTournament.id)
+    await loadGames(tid)
     return null
-  }, [selectedTournament, activeGames, loadGames])
+  }, [loadGames])
 
   return {
-    picks,
-    allMyPicks,
-    loadPicks,
-    loadAllMyPicks,
-    makePick,
-    updateGame,
-    setWinner,
-    addGameToRound,
-    addNextRound,
-    deleteGame,
-    linkGames,
-    unlinkGame,
+    picks, allMyPicks,
+    loadPicks, loadAllMyPicks,
+    makePick, updateGame, setWinner,
+    addGameToRound, addNextRound,
+    deleteGame, linkGames, unlinkGame,
   }
 }

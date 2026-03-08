@@ -1,8 +1,10 @@
 // src/views/AdminBuilderView/AdminBracketGrid.tsx
+
 import { useRef, useState, useCallback, useLayoutEffect } from 'react'
 import { Plus, Link2, X }         from 'lucide-react'
 import { getRoundLabel }           from '../../utils/helpers'
 import { getScore }                from '../../utils/helpers'
+import { resolveAdvancingSlot }    from '../../utils/bracketMath' // <-- ADDED IMPORT
 import AdminGameCard               from './AdminGameCard'
 import AdminSvgConnectors          from './AdminSvgConnectors'
 import type { Tournament, Game, SVGLine } from '../../types'
@@ -42,8 +44,7 @@ export default function AdminBracketGrid({
 
   // ── SVG line measurement ───────────────────────────────────
   // Queries DOM for [data-out], [data-in1], [data-in2] attributes on
-  // AdminGameCard dots, then resolves which in-slot each feeder targets
-  // using the same 3-step text-match / fallback logic as BracketView.
+  // AdminGameCard dots, then resolves which in-slot each feeder targets.
   const recomputeLines = useCallback(() => {
     const container = bracketRef.current
     if (!container) return
@@ -60,39 +61,9 @@ export default function AdminBracketGrid({
       const outX = oR.left + oR.width  / 2 - cRect.left + container.scrollLeft
       const outY = oR.top  + oR.height / 2 - cRect.top  + container.scrollTop
 
-      // ── Slot resolution (mirrors BracketView/index.tsx effectiveNames) ──
-      // PRIMARY:   text-match "Winner of Game #N" placeholder in next game's slot
-      // SECONDARY: winner name already replaced the placeholder → match by name
-      // FALLBACK:  sort feeders by sort_order+id, pick index 0 = in1, 1 = in2
-      const nextGame   = games.find(g => g.id === game.next_game_id)
-      const winnerText = `Winner of Game #${gameNumbers[game.id]}`
-      let slot: 'in1' | 'in2'
-
-      if (nextGame) {
-        if (
-          nextGame.team1_name === winnerText ||
-          (game.actual_winner && nextGame.team1_name === game.actual_winner)
-        ) {
-          slot = 'in1'
-        } else if (
-          nextGame.team2_name === winnerText ||
-          (game.actual_winner && nextGame.team2_name === game.actual_winner)
-        ) {
-          slot = 'in2'
-        } else {
-          // Fallback: sort feeders, position in sorted list = slot index
-          const feeders = games
-            .filter(g => g.next_game_id === game.next_game_id)
-            .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.id.localeCompare(b.id))
-          slot = feeders.findIndex(f => f.id === game.id) === 0 ? 'in1' : 'in2'
-        }
-      } else {
-        // nextGame not yet in local state — use fallback
-        const feeders = games
-          .filter(g => g.next_game_id === game.next_game_id)
-          .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.id.localeCompare(b.id))
-        slot = feeders.findIndex(f => f.id === game.id) === 0 ? 'in1' : 'in2'
-      }
+      // ── Slot resolution (Centralized) ──
+      // Replaced 25 lines of duplicate logic with this single call
+      const slot = resolveAdvancingSlot(game, games, gameNumbers)
 
       const inEl = container.querySelector<HTMLElement>(`[data-${slot}="${game.next_game_id}"]`)
       if (!inEl) continue

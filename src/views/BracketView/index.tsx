@@ -1,23 +1,26 @@
 // src/views/BracketView/index.tsx
-import { useState, useMemo } from 'react'
-import { useTheme }            from '../../utils/theme'
-import { isPicksLocked }       from '../../utils/time'
-import { computeGameNumbers }  from '../../utils/bracketMath'
-import { isTBDName, BD_REGIONS, getRoundLabel, statusLabel, statusIcon } from '../../utils/helpers'
-import { useAuthContext }       from '../../context/AuthContext'
-import { useTournamentContext } from '../../context/TournamentContext'
-import { useBracketContext }    from '../../context/BracketContext'
-import GameCard                 from '../../components/GameCard'
-import BracketHeader            from './BracketHeader'
-import BracketGrid              from './BracketGrid'
-import ChampionCallout          from './ChampionCallout'
-import TiebreakerPanel          from './TiebreakerPanel'
+
+import { useState, useMemo }        from 'react'
+import { useTheme }                  from '../../utils/theme'
+import { isPicksLocked }             from '../../utils/time'
+import { BD_REGIONS }                from '../../utils/helpers'
+import {
+  deriveEffectiveNames,
+  deriveChampion,
+}                                    from '../../utils/bracketMath'
+import { useAuthContext }            from '../../context/AuthContext'
+import { useTournamentContext }      from '../../context/TournamentContext'
+import { useBracketContext }         from '../../context/BracketContext'
+import BracketHeader                 from './BracketHeader'
+import BracketGrid                   from './BracketGrid'
+import ChampionCallout               from './ChampionCallout'
+import TiebreakerPanel               from './TiebreakerPanel'
 import type { Game, Pick, Tournament } from '../../types'
 
 interface BracketViewProps {
   /** When true: read-only snoop mode. Provided externally by SnoopModal. */
-  readOnly?:  boolean
-  ownerName?: string
+  readOnly?:           boolean
+  ownerName?:          string
   /** Override data for snoop mode — SnoopModal injects the target user's picks. */
   overridePicks?:      Pick[]
   overrideTournament?: Tournament
@@ -25,18 +28,19 @@ interface BracketViewProps {
 }
 
 export default function BracketView({
-  readOnly     = false,
+  readOnly          = false,
   ownerName,
   overridePicks,
   overrideTournament,
   overrideGames,
 }: BracketViewProps) {
-  const theme   = useTheme()
-  const { profile }                          = useAuthContext()
-  const { selectedTournament, gamesCache }   = useTournamentContext()
-  const { picks: contextPicks, makePick }    = useBracketContext()
+  const theme = useTheme()
 
-  // Snoop mode uses injected data; normal mode uses context data
+  const { profile }                        = useAuthContext()
+  const { selectedTournament, gamesCache } = useTournamentContext()
+  const { picks: contextPicks, makePick }  = useBracketContext()
+
+  // Snoop mode uses injected data; normal mode uses context data.
   const tournament = overrideTournament ?? selectedTournament
   const games      = overrideGames ?? (tournament ? (gamesCache[tournament.id] ?? []) : [])
   const picks      = overridePicks ?? contextPicks
@@ -48,83 +52,43 @@ export default function BracketView({
   const isLocked   = isPicksLocked(tournament, profile.is_admin) || tournament.status === 'draft'
   const isBigDance = games.some(g => g.region)
 
-  const gameNumbers = useMemo(() => computeGameNumbers(games), [games])
+  // ── Bracket derivations — from the canonical bracketMath functions ──
+  //
+  // deriveEffectiveNames propagates picks and actual_winners forward
+  // through the bracket tree. deriveChampion reads the final game from
+  // that output. Both functions are pure and memoized on games + picks.
+  //
+  // NOTE: effectiveNames is the same object whether the user is in
+  // normal or snoop mode — the `picks` variable above is already
+  // pointing to the correct source for each mode.
+  const effectiveNames = useMemo(
+    () => deriveEffectiveNames(games, picks),
+    [games, picks]
+  )
 
-  // ── effectiveNames: propagate picks/winners into downstream slots ─
-  const effectiveNames = useMemo(() => {
-    const names: Record<string, { team1: string; team2: string }> = {}
-    games.forEach(g => { names[g.id] = { team1: g.team1_name, team2: g.team2_name } })
+  const champion = useMemo(
+    () => deriveChampion(games, picks, effectiveNames),
+    [games, picks, effectiveNames]
+  )
 
-    const pickMap = new Map(picks.map(p => [p.game_id, p.predicted_winner]))
-    const sorted  = [...games].sort((a, b) =>
-      a.round_num !== b.round_num ? a.round_num - b.round_num : (a.sort_order ?? 0) - (b.sort_order ?? 0)
-    )
-
-    for (const game of sorted) {
-      if (!game.next_game_id) continue
-
-      const currentTeam1 = names[game.id]?.team1 ?? game.team1_name
-      const currentTeam2 = names[game.id]?.team2 ?? game.team2_name
-      const slotsAreReal = !isTBDName(currentTeam1) && !isTBDName(currentTeam2)
-
-      let userPick = pickMap.get(game.id)
-      
-      // GHOST PICK FIX: Ignore the pick if it doesn't match the advancing teams!
-      if (userPick && userPick !== currentTeam1 && userPick !== currentTeam2) {
-        userPick = undefined
-      }
-
-      const winner = game.actual_winner ?? (slotsAreReal ? userPick : undefined)
-      if (!winner) continue
-
-      const nextGame = games.find(g => g.id === game.next_game_id)
-      if (!nextGame) continue
-
-      const winnerText = `Winner of Game #${gameNumbers[game.id]}`
-
-      // PRIMARY: slot text match
-      if (nextGame.team1_name === winnerText || (game.actual_winner && nextGame.team1_name === game.actual_winner)) {
-        names[nextGame.id] = { ...names[nextGame.id], team1: winner }
-      } else if (nextGame.team2_name === winnerText || (game.actual_winner && nextGame.team2_name === game.actual_winner)) {
-        names[nextGame.id] = { ...names[nextGame.id], team2: winner }
-      } else {
-        // FALLBACK: sort_order index
-        const feeders = games
-          .filter(g => g.next_game_id === game.next_game_id)
-          .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.id.localeCompare(b.id))
-        if (feeders[0]?.id === game.id) names[nextGame.id] = { ...names[nextGame.id], team1: winner }
-        else                             names[nextGame.id] = { ...names[nextGame.id], team2: winner }
-      }
-    }
-    return names
-  }, [games, picks, gameNumbers])
-
-  // ── Champion derivation ─────────────────────────────
-  const maxRound = games.length ? Math.max(...games.map(g => g.round_num)) : 1
-  const champion = useMemo((): string | null => {
-    const champGame = games.find(g => g.round_num === maxRound && !g.next_game_id)
-                   ?? games.find(g => g.round_num === maxRound)
-    if (!champGame) return null
-    if (champGame.actual_winner) return champGame.actual_winner
-    
-    // Get the actual names currently sitting in the final game card
-    const currentTeam1 = effectiveNames[champGame.id]?.team1 ?? champGame.team1_name
-    const currentTeam2 = effectiveNames[champGame.id]?.team2 ?? champGame.team2_name
-    const pick = picks.find(p => p.game_id === champGame.id)?.predicted_winner
-    
-    // Strict gate: user must explicitly pick one of the valid advancing teams
-    if (pick && (pick === currentTeam1 || pick === currentTeam2)) return pick
-    return null
-  }, [games, picks, maxRound, effectiveNames])
-
+  // ── View-layer layout: championship game reference ────────────
+  // Needed to conditionally render TiebreakerPanel and to locate
+  // the current user's championship pick. This is a view concern
+  // (which DOM element to show), not a bracket-logic concern.
+  const maxRound  = games.length > 0 ? Math.max(...games.map(g => g.round_num)) : 1
   const champGame = games.find(g => g.round_num === maxRound && !g.next_game_id)
                  ?? games.find(g => g.round_num === maxRound)
+  const champPick = champGame
+    ? picks.find(p => p.game_id === champGame.id) ?? null
+    : null
 
-  const champPick  = champGame ? picks.find(p => p.game_id === champGame.id) ?? null : null
   const pickedCount = picks.length
   const totalGames  = games.length
 
-  // Rounds for the current region (or all, for non-BigDance)
+  // ── View-layer layout: region filter + round grouping ─────────
+  // These are rendering concerns — how to divide games into columns
+  // and filter by Big Dance region tab. They are NOT bracket-math
+  // and intentionally live here rather than in bracketMath.ts.
   const displayGames = useMemo(() => {
     if (!isBigDance || !selectedRegion) return games
     return games.filter(g => g.region === selectedRegion)
@@ -138,7 +102,9 @@ export default function BracketView({
     })
     return Array.from(map.entries())
       .sort(([a], [b]) => a - b)
-      .map(([round, gs]) => [round, gs.sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))] as [number, Game[]])
+      .map(([round, gs]) => (
+        [round, gs.sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))] as [number, Game[]]
+      ))
   }, [displayGames])
 
   const handlePick = async (game: Game, team: string) => {
@@ -162,14 +128,22 @@ export default function BracketView({
           <button
             onClick={() => setSelectedRegion(null)}
             className={`px-4 py-2 text-xs font-bold rounded-t-lg transition-all border-b-2 flex-shrink-0
-              ${!selectedRegion ? `${theme.accent} border-current` : 'text-slate-500 border-transparent hover:text-slate-300'}`}
+              ${!selectedRegion
+                ? `${theme.accent} border-current`
+                : 'text-slate-500 border-transparent hover:text-slate-300'
+              }`}
           >
             All
           </button>
           {BD_REGIONS.map(r => (
-            <button key={r} onClick={() => setSelectedRegion(r)}
+            <button
+              key={r}
+              onClick={() => setSelectedRegion(r)}
               className={`px-4 py-2 text-xs font-bold rounded-t-lg transition-all border-b-2 flex-shrink-0
-                ${selectedRegion === r ? `${theme.accent} border-current` : 'text-slate-500 border-transparent hover:text-slate-300'}`}
+                ${selectedRegion === r
+                  ? `${theme.accent} border-current`
+                  : 'text-slate-500 border-transparent hover:text-slate-300'
+                }`}
             >
               {r}
             </button>
