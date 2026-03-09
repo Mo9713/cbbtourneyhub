@@ -1,7 +1,7 @@
-// src/services/gameService.ts
-import { supabase, withAdminAuth } from './supabaseClient'
-import { resolveAdvancingSlot }    from '../utils/bracketMath'
-import type { Game, ServiceResult } from '../types'
+// src.services.gameService.ts
+import { supabase, withAdminAuth } from '../../lib/supabaseClient'
+import { resolveAdvancingSlot }    from '../../shared/utils/bracketMath'
+import type { Game, ServiceResult } from '../../shared/types'
 
 function advancingSlotToDbColumn(
   game:        Game,
@@ -119,7 +119,7 @@ export async function linkGames(
   gameNumbers:    Record<string, number>
 ): Promise<ServiceResult<true>> {
   return withAdminAuth(async () => {
-    // 1. If this game is already pointing somewhere else, cleanly severe that old link
+    // 1. If this game is already pointing somewhere else, cleanly sever that old link
     if (fromGame.next_game_id) {
       const unlinkResult = await _unlink(fromGame, allGames, gameNumbers)
       if (!unlinkResult.ok) return unlinkResult
@@ -222,3 +222,7 @@ export async function deleteGame(
     return { ok: true, data: true }
   })
 }
+
+
+
+

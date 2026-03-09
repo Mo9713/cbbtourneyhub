@@ -1,13 +1,13 @@
-// src/views/AdminBuilderView/AdminBracketGrid.tsx
+// src.views.AdminBuilderView.AdminBracketGrid.tsx
 
 import { useRef, useState, useCallback, useLayoutEffect } from 'react'
 import { Plus, Link2, X }         from 'lucide-react'
-import { getRoundLabel }           from '../../utils/helpers'
-import { getScore }                from '../../utils/helpers'
-import { resolveAdvancingSlot }    from '../../utils/bracketMath' // <-- ADDED IMPORT
+import { getRoundLabel }           from '../../../shared/utils/helpers'
+import { getScore }                from '../../../shared/utils/helpers'
+import { resolveAdvancingSlot }    from '../../../shared/utils/bracketMath' // <-- ADDED IMPORT
 import AdminGameCard               from './AdminGameCard'
 import AdminSvgConnectors          from './AdminSvgConnectors'
-import type { Tournament, Game, SVGLine } from '../../types'
+import type { Tournament, Game, SVGLine } from '../../../shared/types'
 
 interface Props {
   tournament:     Tournament
@@ -194,3 +194,7 @@ export default function AdminBracketGrid({
     </>
   )
 }
+
+
+
+

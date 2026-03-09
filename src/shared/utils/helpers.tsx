@@ -1,7 +1,7 @@
-// src/utils/helpers.tsx
+// src.utils.helpers.tsx
 import React from 'react'
 import { Globe, Edit3, Lock } from 'lucide-react'
-import type { Game, TournamentStatus } from '../types'
+import type { Game, TournamentStatus } from '../../shared/types'
 
 export function fibonacci(n: number): number {
   if (n <= 0) return 0
@@ -23,7 +23,7 @@ export function getScore(r: number): number {
   }
   return b;
 }
-export { resolveScore } from '../types'
+export { resolveScore } from '../../shared/types'
 
 export function getRoundLabel(roundNum: number, maxRound: number): string {
   const gap = maxRound - roundNum
@@ -42,7 +42,7 @@ export const statusDot = (s: TournamentStatus) =>
   s === 'open' ? 'bg-emerald-400' : s === 'draft' ? 'bg-amber-400' : 'bg-slate-600'
 
 export const statusLabel = (s: TournamentStatus) =>
-  s === 'open' ? 'Open' : s === 'draft' ? 'Draft' : 'Locked'
+  s === 'open' ? 'Open' : s === 'draft' ? 'Drart' : 'Locked'
 
 export function statusIcon(s: TournamentStatus): React.ReactNode {
   if (s === 'open')  return <Globe size={11} className="text-emerald-400" />
@@ -60,3 +60,6 @@ export function computeGameNumbers(games: Game[]): Record<string, number> {
 }
 
 export const BD_REGIONS = ['East', 'West', 'South', 'Midwest', 'Final Four']
+
+
+

@@ -1,4 +1,4 @@
-// src/features/tournament/index.ts
+// src.features.tournament.index.ts
 export {
   TournamentProvider,
   useTournamentContext,
@@ -6,7 +6,9 @@ export {
   useTournamentNav,
   useInternalTournamentLoaders,
 } from './TournamentContext'
+export { tournamentKeys } from './queries'
 
 export { default as HomeView }            from './HomeView'
 export { default as AdminBuilderView }    from './AdminBuilderView'
 export { default as AddTournamentModal }  from './AddTournamentModal'
+

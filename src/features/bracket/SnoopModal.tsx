@@ -1,31 +1,39 @@
 // src/components/SnoopModal.tsx
 import { useState, useMemo } from 'react'
-import BracketView from '../views/BracketView'
+import BracketView from './BracketView'
 import { X } from 'lucide-react'
-import type { Profile, Tournament, Game, Pick } from '../types'
+import type { Profile, Tournament, Game, Pick } from '../../shared/types'
 
 interface Props {
   targetProfile: Profile
   tournaments:   Tournament[]
-  gamesCache:    Record<string, Game[]> // <--- Now uses the fast cache
+  gamesCache:    Record<string, Game[]>
   allPicks:      Pick[]
   onClose:       () => void
 }
 
 export default function SnoopModal({ targetProfile, tournaments, gamesCache, allPicks, onClose }: Props) {
   const [selectedTid, setSelectedTid] = useState<string | null>(
-    tournaments.find(t => t.status !== 'draft')?.id ?? tournaments[0]?.id ?? null
+    tournaments.find(t => t.status !== 'draft')?.id ?? tournaments[0]?.id ?? null,
   )
 
   const targetPicks = useMemo(() =>
     allPicks.filter(p => p.user_id === targetProfile.id),
-    [allPicks, targetProfile.id]
+    [allPicks, targetProfile.id],
   )
 
-  // Memoizing these stops the infinite loop CPU spin!
-  const selectedTournament = useMemo(() => tournaments.find(t => t.id === selectedTid), [tournaments, selectedTid])
-  const selectedGames      = useMemo(() => selectedTid ? (gamesCache[selectedTid] ?? []) : [], [selectedTid, gamesCache])
-  const selectedPicks      = useMemo(() => targetPicks.filter(p => selectedGames.some(g => g.id === p.game_id)), [targetPicks, selectedGames])
+  const selectedTournament = useMemo(
+    () => tournaments.find(t => t.id === selectedTid),
+    [tournaments, selectedTid],
+  )
+  const selectedGames = useMemo(
+    () => selectedTid ? (gamesCache[selectedTid] ?? []) : [],
+    [selectedTid, gamesCache],
+  )
+  const selectedPicks = useMemo(
+    () => targetPicks.filter(p => selectedGames.some(g => g.id === p.game_id)),
+    [targetPicks, selectedGames],
+  )
 
   return (
     <div

@@ -1,12 +1,7 @@
-// src/components/AuthForm.tsx
+// src.components.AuthForm.tsx
 import { useState } from 'react'
-import { createClient } from '@supabase/supabase-js'
 import { Trophy, Zap } from 'lucide-react'
-
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL ?? '',
-  import.meta.env.VITE_SUPABASE_ANON_KEY ?? ''
-)
+import { supabase } from '../../lib/supabaseClient'
 
 type AuthMode = 'signin' | 'signup' | 'forgot'
 
@@ -127,3 +122,4 @@ export default function AuthForm({ onAuth }: { onAuth: () => void }) {
     </div>
   )
 }
+

@@ -1,19 +1,19 @@
-// src/context/TournamentContext.tsx
+// src.context.TournamentContext.tsx
 import {
   createContext, useContext, useMemo, useCallback, type ReactNode,
 } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 
-import { useAuthContext }  from './AuthContext'
-import { useUIStore }      from '../store/uiStore'
+import { useAuthContext }  from '../auth'
+import { useUIStore }      from '../../store/uiStore'
 import {
   useTournamentListQuery,
   useAllTournamentGames,
   tournamentKeys,
-}                          from '../features/tournament/queries'
-import * as api            from '../features/tournament/api'
+}                          from './queries'
+import * as api            from './api'
 
-import type { ActiveView, Game, Tournament, TemplateKey } from '../types'
+import type { ActiveView, Game, Tournament, TemplateKey } from '../../shared/types'
 
 // ── Context shape ─────────────────────────────────────────────
 
@@ -215,3 +215,6 @@ export function useTournamentNav() {
     useTournamentContext()
   return { selectedTournament, activeView, selectTournament, navigateHome, navigateTo }
 }
+
+
+

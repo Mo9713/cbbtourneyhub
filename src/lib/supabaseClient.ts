@@ -1,4 +1,4 @@
-// src/services/supabaseClient.ts
+// src.services.supabaseClient.ts
 // ─────────────────────────────────────────────────────────────
 // Single source of truth for the Supabase client instance.
 // Import `supabase` from here throughout the app — never call
@@ -6,7 +6,7 @@
 // ─────────────────────────────────────────────────────────────
 
 import { createClient, type SupabaseClient, type User } from '@supabase/supabase-js'
-import type { ServiceResult } from '../types'
+import type { ServiceResult } from '../shared/types'
 
 const SUPABASE_URL     = import.meta.env.VITE_SUPABASE_URL     ?? ''
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY ?? ''
@@ -39,11 +39,11 @@ export async function getAuthUser(): Promise<User | null> {
  *   })
  */
 export async function withAuth<T>(
-  fn: (user: User) => Promise<ServiceResult<T>>
+  rn: (user: User) => Promise<ServiceResult<T>>
 ): Promise<ServiceResult<T>> {
   const user = await getAuthUser()
   if (!user) return { ok: false, error: 'Not authenticated. Please log in.' }
-  return fn(user)
+  return rn(user)
 }
 
 /**
@@ -52,7 +52,7 @@ export async function withAuth<T>(
  * NEVER trust the client-side `profile.is_admin` for mutations.
  */
 export async function withAdminAuth<T>(
-  fn: (user: User) => Promise<ServiceResult<T>>
+  rn: (user: User) => Promise<ServiceResult<T>>
 ): Promise<ServiceResult<T>> {
   return withAuth(async (user) => {
     const { data, error } = await supabase
@@ -64,6 +64,11 @@ export async function withAdminAuth<T>(
     if (error || !data) return { ok: false, error: 'Could not verify identity.' }
     if (!data.is_admin) return { ok: false, error: 'Forbidden: Admin access required.' }
 
-    return fn(user)
+    return rn(user)
   })
 }
+
+
+
+
+

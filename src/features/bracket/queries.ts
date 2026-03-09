@@ -1,10 +1,10 @@
-// src/features/bracket/queries.ts
+// src.features.bracket.queries.ts
 import {
   useQuery, useMutation, useQueryClient,
 } from '@tanstack/react-query'
-import { collectDownstreamGameIds } from '../../utils/bracketMath'
+import { collectDownstreamGameIds } from '../../shared/utils/bracketMath'
 import * as api from './api'
-import type { Game, Pick } from '../../types'
+import type { Game, Pick } from '../../shared/types'
 
 // ── Query Keys ────────────────────────────────────────────────
 
@@ -84,7 +84,7 @@ export function useMakePick() {
         return null
       }
 
-      // New/changed pick: cascade first, then save
+      // New.changed pick: cascade first, then save
       await unwrap(api.deletePicksForGames(downstreamIds))
       return unwrap(api.savePick(game.id, team))
     },
@@ -140,3 +140,4 @@ export function useSaveTiebreaker() {
     },
   })
 }
+

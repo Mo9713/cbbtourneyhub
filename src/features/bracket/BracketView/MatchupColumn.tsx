@@ -1,8 +1,8 @@
-// src/views/BracketView/MatchupColumn.tsx
-import { useTheme }              from '../../utils/theme'
-import { getRoundLabel, getScore } from '../../utils/helpers'
-import GameCard                  from '../../components/GameCard'
-import type { Game, Pick, Tournament } from '../../types'
+// src.views.BracketView.MatchupColumn.tsx
+import { useTheme }              from '../../../shared/utils/theme'
+import { getRoundLabel, getScore } from '../../../shared/utils/helpers'
+import GameCard                  from '../GameCard'
+import type { Game, Pick, Tournament } from '../../../shared/types'
 
 interface Props {
   round:          number
@@ -45,3 +45,4 @@ export default function MatchupColumn({
     </div>
   )
 }
+

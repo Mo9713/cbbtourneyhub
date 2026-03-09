@@ -1,11 +1,11 @@
-// src/views/AdminBuilderView/AdminHeader.tsx
+// src.views.AdminBuilderView.AdminHeader.tsx
 import { useState, useEffect } from 'react'
 import {
   Plus, Lock, Globe, AlertTriangle, Edit3,
   RefreshCw, Trash2, X, ChevronRight,
 } from 'lucide-react'
-import { isoToInputCST, cstInputToISO } from '../../utils/time'
-import type { Tournament, Game }        from '../../types'
+import { isoToInputCST, cstInputToISO } from '../../../shared/utils/time'
+import type { Tournament, Game }        from '../../../shared/types'
 
 interface Props {
   tournament:         Tournament
@@ -168,3 +168,9 @@ export default function AdminHeader({
     </div>
   )
 }
+
+
+
+
+
+

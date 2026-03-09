@@ -1,4 +1,4 @@
-// src/components/Sidebar.tsx
+// src.components.Sidebar.tsx
 import { useMemo }             from 'react'
 import {
   Trophy, Plus, AlertTriangle, Settings,
@@ -6,9 +6,9 @@ import {
 } from 'lucide-react'
 
 import { useTheme }             from '../utils/theme'
-import { useAuthContext }       from '../context/AuthContext'
-import { useTournamentContext } from '../context/TournamentContext'
-import { useBracketPickCounts } from '../context/BracketContext'
+import { useAuthContext }       from '../../features/auth'
+import { useTournamentContext } from '../../features/tournament'
+import { useBracketPickCounts } from '../../features/bracket'
 import Avatar                   from './Avatar'
 import type { ActiveView }      from '../types'
 
@@ -160,3 +160,5 @@ export default function Sidebar({ onClose, onOpenAddTournament, onToggleDesktop 
     </div>
   )
 }
+
+

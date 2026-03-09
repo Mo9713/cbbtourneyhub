@@ -1,20 +1,20 @@
-// src/views/BracketView/index.tsx
+// src.views.BracketView.index.tsx
 import { useState, useMemo }       from 'react'
-import { useTheme }                 from '../../utils/theme'
-import { isPicksLocked }            from '../../utils/time'
-import { BD_REGIONS }               from '../../utils/helpers'
-import { deriveEffectiveNames, deriveChampion } from '../../utils/bracketMath'
-import { useAuthContext }           from '../../context/AuthContext'
-import { useTournamentContext }     from '../../context/TournamentContext'
-import { useBracketContext, useGameMutations }         from '../../context/BracketContext'
-import { BracketViewProvider }      from '../../context/BracketViewContext'
-import { useMyPicks, useMakePick }  from '../../features/bracket/queries'
-import { buildPickMap, sortedRounds, getChampGame } from '../../features/bracket/selectors'
+import { useTheme }                 from '../../../shared/utils/theme'
+import { isPicksLocked }            from '../../../shared/utils/time'
+import { BD_REGIONS }               from '../../../shared/utils/helpers'
+import { deriveEffectiveNames, deriveChampion } from '../../../shared/utils/bracketMath'
+import { useAuthContext }           from '../../auth'
+import { useTournamentContext }     from '../../tournament'
+import { useBracketContext, useGameMutations }         from '..'
+import { BracketViewProvider }      from '../BracketViewContext'
+import { useMyPicks, useMakePick }  from '../queries'
+import { buildPickMap, sortedRounds, getChampGame } from '../selectors'
 import BracketHeader                from './BracketHeader'
 import BracketGrid                  from './BracketGrid'
 import ChampionCallout              from './ChampionCallout'
 import TiebreakerPanel              from './TiebreakerPanel'
-import type { Game, Pick, Tournament } from '../../types'
+import type { Game, Pick, Tournament } from '../../../shared/types'
 
 
 interface BracketViewProps {
@@ -41,7 +41,7 @@ export default function BracketView({
   const tournament = overrideTournament ?? selectedTournament
   const games      = overrideGames ?? (tournament ? (gamesCache[tournament.id] ?? []) : [])
 
-  // Picks — from TanStack cache or override (snoop/read-only mode)
+  // Picks — from TanStack cache or override (snoop.read-only mode)
   const { data: queryPicks = [] } = useMyPicks(tournament?.id ?? null, games)
   const picks                     = overridePicks ?? queryPicks
 
@@ -135,3 +135,5 @@ export default function BracketView({
     </BracketViewProvider>
   )
 }
+
+

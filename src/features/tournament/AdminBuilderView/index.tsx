@@ -1,13 +1,13 @@
-// src/views/AdminBuilderView/index.tsx
+// src.views.AdminBuilderView.index.tsx
 import { useState, useMemo, useCallback, useEffect } from 'react'
-import { useTournamentContext } from '../../context/TournamentContext'
-import { useBracketContext }    from '../../context/BracketContext'
-import { computeGameNumbers }   from '../../utils/bracketMath'
-import { BD_REGIONS }           from '../../utils/helpers'
+import { useTournamentContext } from '../TournamentContext'
+import { useBracketContext }    from '../../bracket'
+import { computeGameNumbers }   from '../../../shared/utils/bracketMath'
+import { BD_REGIONS }           from '../../../shared/utils/helpers'
 import AdminHeader              from './AdminHeader'
 import TournamentConfigPanel    from './TournamentConfigPanel'
 import AdminBracketGrid         from './AdminBracketGrid'
-import type { Game, Tournament } from '../../types'
+import type { Game, Tournament } from '../../../shared/types'
 
 interface Props {
   onDeleteGame:       (game: Game) => void
@@ -28,7 +28,7 @@ export default function AdminBuilderView({ onDeleteGame, onDeleteTournament }: P
 
   const games: Game[] = tournament ? (gamesCache[tournament.id] ?? []) : []
 
-  // 2. Grab everything bracket/mutation-related from ONE hook
+  // 2. Grab everything bracket.mutation-related from ONE hook
   const {
     updateGame,
     setWinner,
@@ -198,3 +198,5 @@ export default function AdminBuilderView({ onDeleteGame, onDeleteTournament }: P
     </div>
   )
 }
+
+

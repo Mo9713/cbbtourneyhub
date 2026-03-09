@@ -1,6 +1,6 @@
-// src/store/uiStore.ts
+// src.store.uiStore.ts
 import { create } from 'zustand'
-import type { ActiveView, ConfirmModalCfg, ToastMsg } from '../types'
+import type { ActiveView, ConfirmModalCfg, ToastMsg } from '../shared/types'
 
 // ── Future Feature Placeholders ───────────────────────────────
 // Feature 3: Visual Bracket Layout Engine
@@ -111,3 +111,7 @@ export const useUIStore = create<UIStore>((set) => ({
   },
   dismissToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
 }))
+
+
+
+

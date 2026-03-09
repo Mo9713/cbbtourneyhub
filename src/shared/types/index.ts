@@ -1,4 +1,4 @@
-// src/shared/types/index.ts
+// src.shared.types.index.ts
 
 // ── Primitives ────────────────────────────────────────────────
 export type TournamentStatus = 'draft' | 'open' | 'locked'
@@ -34,10 +34,6 @@ export interface Profile {
   theme:         ThemeKey
   avatar_url:    string | null
   ui_mode:       UIMode
-  /**
-   * IANA timezone for display only. Never use in lock/epoch math.
-   * NULL = fall back to app default (America/Chicago).
-   */
   timezone:      string | null
 }
 

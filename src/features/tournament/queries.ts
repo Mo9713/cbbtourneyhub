@@ -1,7 +1,7 @@
-// src/features/tournament/queries.ts
+// src.features.tournament.queries.ts
 import { useQuery, useQueries, useQueryClient } from '@tanstack/react-query'
 import * as api from './api'
-import type { Game, Tournament } from '../../types'
+import type { Game, Tournament } from '../../shared/types'
 
 // ── Query Keys ────────────────────────────────────────────────
 
@@ -48,3 +48,4 @@ export function useAllTournamentGames(tournaments: Tournament[]) {
     })),
   })
 }
+

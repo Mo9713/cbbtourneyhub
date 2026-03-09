@@ -1,6 +1,6 @@
 // src/views/BracketView/BracketGrid.tsx
 import MatchupColumn from './MatchupColumn'
-import type { Game, Pick, Tournament } from '../../types'
+import type { Game, Pick, Tournament } from '../../../shared/types'
 
 interface Props {
   rounds:         [number, Game[]][]

@@ -1,13 +1,13 @@
-// src/views/SettingsView.tsx
+// src.views.SettingsView.tsx
 import { useState } from 'react'
 import { User as UserIcon, Palette, Key, Check, Image } from 'lucide-react'
-import { useTheme, THEMES } from '../utils/theme'
-import type { ThemeConfig } from '../utils/theme'
-import type { Profile, ToastMsg, ThemeKey } from '../types'
+import { useTheme, THEMES } from '../../shared/utils/theme'
+import type { ThemeConfig } from '../../shared/utils/theme'
+import type { Profile, ToastMsg, ThemeKey } from '../../shared/types'
 
 // ── Services ─────────────────────────────────────────────────
-import { supabase }         from '../services/supabaseClient'
-import * as profileService  from '../services/profileService'
+import { supabase }         from '../../lib/supabaseClient'
+import * as profileService  from './profileService'
 
 interface Props {
   profile:         Profile
@@ -33,7 +33,6 @@ export default function SettingsView({ profile, userEmail, onProfileUpdate, push
     const result = await profileService.updateMyProfile({
       display_name:  displayName.trim() || profile.display_name,
       avatar_url:    avatarUrl.trim() || null,
-      // favorite_team removed here
     })
     if (result.ok) {
       onProfileUpdate(result.data)
@@ -98,7 +97,7 @@ export default function SettingsView({ profile, userEmail, onProfileUpdate, push
                   <Image size={10} /> Avatar Image URL
                 </label>
                 <input value={avatarUrl} onChange={e => setAvatarUrl(e.target.value)}
-                  placeholder="https://example.com/your-photo.jpg" className={inputCls} />
+                  placeholder="https://example.com.your-photo.jpg" className={inputCls} />
                 {avatarUrl.trim() && (
                   <div className="mt-2 flex items-center gap-2">
                     <img src={avatarUrl.trim()} alt="Avatar preview"
@@ -175,3 +174,5 @@ export default function SettingsView({ profile, userEmail, onProfileUpdate, push
     </div>
   )
 }
+
+

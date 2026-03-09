@@ -1,4 +1,4 @@
-// src/shared/components/index.ts
+// src.shared.components.index.ts
 export { default as Avatar }         from './Avatar'
 export { default as Toaster }        from './Toaster'
 export { default as ConfirmModal }   from './ConfirmModal'

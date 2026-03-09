@@ -1,4 +1,4 @@
-// src/lib/queryClient.ts
+// src.lib.queryClient.ts
 import { QueryClient } from '@tanstack/react-query'
 
 export const queryClient = new QueryClient({
@@ -10,8 +10,9 @@ export const queryClient = new QueryClient({
       refetchOnWindowFocus: false,
     },
     mutations: {
-      // Mutations never retry — pick/game writes must be explicit
+      // Mutations never retry — pick.game writes must be explicit
       retry: 0,
     },
   },
 })
+

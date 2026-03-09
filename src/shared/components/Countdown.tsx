@@ -1,4 +1,4 @@
-// src/components/Countdown.tsx
+// src.components.Countdown.tsx
 import { useState, useEffect } from 'react'
 import { Lock, Clock, AlertTriangle } from 'lucide-react'
 import { useTheme } from '../utils/theme'
@@ -146,3 +146,5 @@ export default function Countdown({ tournament, isAdmin, timezone }: Props) {
     </div>
   )
 }
+
+

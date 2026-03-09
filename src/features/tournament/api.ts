@@ -1,15 +1,15 @@
 // src/features/tournament/api.ts
 // Direct Supabase calls only. No classes, no abstraction layers.
-import { supabase, withAdminAuth }    from '../../services/supabaseClient'
+import { supabase, withAdminAuth } from '../../lib/supabaseClient'
 import {
   generateStandardTemplate,
   generateBigDanceTemplate,
   linkTemplateSlots,
-}                                     from '../../services/templateService'
+} from './templateService'
 import type {
   Tournament, Game, TournamentStatus,
-  ServiceResult, TemplateKey, ScoringConfig,
-} from '../../types'
+  ServiceResult, TemplateKey,
+} from '../../shared/types'
 
 // ── Reads ─────────────────────────────────────────────────────
 

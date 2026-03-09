@@ -1,21 +1,21 @@
-// src/utils/time.ts
+// src/shared/utils/time.ts
 // ─────────────────────────────────────────────────────────────
 // All timestamp utilities for the bracket app.
 //
 // ╔══════════════════════════════════════════════════════════╗
-// ║  CRITICAL ARCHITECTURE RULE — READ BEFORE EDITING       ║
+// ║  CRITICAL ARCHITECTURE RULE — READ BEFORE EDITING        ║
 // ╠══════════════════════════════════════════════════════════╣
-// ║  Lock / unlock MATH uses ONLY epoch milliseconds:       ║
-// ║    • Date.now()       — current time as epoch ms        ║
-// ║    • Date.parse(iso)  — UTC ISO string → epoch ms       ║
-// ║  These are spec-guaranteed to be timezone-agnostic.     ║
-// ║  isPicksLocked() NEVER receives a timezone preference.  ║
-// ║                                                         ║
-// ║  Timezone preferences are used ONLY in display fns:     ║
-// ║    • formatInUserTz()   — render a timestamp string     ║
-// ║    • isoToInputInTz()   — populate datetime-local input ║
-// ║    • inputInTzToISO()   — parse datetime-local input    ║
-// ║  The Countdown component uses tz for label text ONLY.   ║
+// ║  Lock / unlock MATH uses ONLY epoch milliseconds:        ║
+// ║    • Date.now()       — current time as epoch ms         ║
+// ║    • Date.parse(iso)  — UTC ISO string → epoch ms        ║
+// ║  These are spec-guaranteed to be timezone-agnostic.      ║
+// ║  isPicksLocked() NEVER receives a timezone preference.   ║
+// ║                                                          ║
+// ║  Timezone preferences are used ONLY in display fns:      ║
+// ║    • formatInUserTz()   — render a timestamp string      ║
+// ║    • isoToInputInTz()   — populate datetime-local input  ║
+// ║    • inputInTzToISO()   — parse datetime-local input     ║
+// ║  The Countdown component uses tz for label text ONLY.    ║
 // ╚══════════════════════════════════════════════════════════╝
 // ─────────────────────────────────────────────────────────────
 
@@ -142,7 +142,7 @@ export const DEFAULT_DISPLAY_TZ = 'America/Chicago'
  * Output example: "Mar 15, 7:00 PM CT"  (with tz abbreviation via timeZoneName: 'short')
  *
  * ⚠️  This is for DISPLAY ONLY. Never pass the returned string into Date() or
- *     use it for any comparison. It is a human-readable label, nothing more.
+ * use it for any comparison. It is a human-readable label, nothing more.
  */
 export function formatInUserTz(iso: string, timezone: string | null): string {
   const tz = timezone ?? DEFAULT_DISPLAY_TZ
@@ -240,12 +240,12 @@ export function isoToInputCST(iso: string | null): string {
  * IANA timezone) to a UTC ISO 8601 string for storage in Supabase.
  *
  * Algorithm:
- *   1. Parse the input as if it were UTC (naive anchor).
- *   2. Ask Intl what wall-clock time that UTC instant shows in the
- *      target timezone — this reveals the offset at that moment
- *      (correctly handles DST transitions).
- *   3. Compute: offsetMs = naiveUtc - what_tz_sees_as_utc
- *   4. Result:  trueUtc  = naiveUtc + offsetMs
+ * 1. Parse the input as if it were UTC (naive anchor).
+ * 2. Ask Intl what wall-clock time that UTC instant shows in the
+ * target timezone — this reveals the offset at that moment
+ * (correctly handles DST transitions).
+ * 3. Compute: offsetMs = naiveUtc - what_tz_sees_as_utc
+ * 4. Result:  trueUtc  = naiveUtc + offsetMs
  *
  * This handles DST ambiguity by always picking the first occurrence
  * (standard time), which is correct for bracket scheduling use cases.
@@ -268,8 +268,8 @@ export function inputInTzToISO(local: string, timezone: string | null): string |
 
   // Step 4: offset = (naiveUtc) - (what tz shows as UTC)
   //         trueUtc = naiveUtc_as_localInput + offset
-  const offsetMs    = naiveUtc.getTime() - wallAsUtcMs
-  const localAsUtc  = new Date(`${local}:00Z`)
+  const offsetMs   = naiveUtc.getTime() - wallAsUtcMs
+  const localAsUtc = new Date(`${local}:00Z`)
 
   return new Date(localAsUtc.getTime() + offsetMs).toISOString()
 }
@@ -302,31 +302,31 @@ export interface TimezoneOption {
  */
 export const TIMEZONE_OPTIONS: TimezoneOption[] = [
   // ── United States ──────────────────────────────────────────
-  { label: 'Eastern Time — New York (ET)',        value: 'America/New_York'    },
-  { label: 'Central Time — Chicago (CT)',         value: 'America/Chicago'     },
-  { label: 'Mountain Time — Denver (MT)',         value: 'America/Denver'      },
-  { label: 'Mountain Time — Phoenix (no DST)',    value: 'America/Phoenix'     },
-  { label: 'Pacific Time — Los Angeles (PT)',     value: 'America/Los_Angeles' },
-  { label: 'Alaska Time (AKT)',                   value: 'America/Anchorage'   },
-  { label: 'Hawaii Time (HT)',                    value: 'Pacific/Honolulu'    },
+  { label: 'Eastern Time — New York (ET)',       value: 'America/New_York'    },
+  { label: 'Central Time — Chicago (CT)',        value: 'America/Chicago'     },
+  { label: 'Mountain Time — Denver (MT)',        value: 'America/Denver'      },
+  { label: 'Mountain Time — Phoenix (no DST)',   value: 'America/Phoenix'     },
+  { label: 'Pacific Time — Los Angeles (PT)',    value: 'America/Los_Angeles' },
+  { label: 'Alaska Time (AKT)',                  value: 'America/Anchorage'   },
+  { label: 'Hawaii Time (HT)',                   value: 'Pacific/Honolulu'    },
   // ── Canada ─────────────────────────────────────────────────
-  { label: 'Atlantic Time — Halifax (AT)',        value: 'America/Halifax'     },
-  { label: 'Central Time — Winnipeg (CT)',        value: 'America/Winnipeg'    },
-  { label: 'Pacific Time — Vancouver (PT)',       value: 'America/Vancouver'   },
+  { label: 'Atlantic Time — Halifax (AT)',       value: 'America/Halifax'     },
+  { label: 'Central Time — Winnipeg (CT)',       value: 'America/Winnipeg'    },
+  { label: 'Pacific Time — Vancouver (PT)',      value: 'America/Vancouver'   },
   // ── UTC ─────────────────────────────────────────────────────
-  { label: 'UTC (Coordinated Universal Time)',    value: 'UTC'                 },
+  { label: 'UTC (Coordinated Universal Time)',   value: 'UTC'                 },
   // ── Europe ─────────────────────────────────────────────────
-  { label: 'London (GMT / BST)',                  value: 'Europe/London'       },
-  { label: 'Paris / Berlin (CET / CEST)',         value: 'Europe/Paris'        },
-  { label: 'Helsinki / Kyiv (EET / EEST)',        value: 'Europe/Helsinki'     },
+  { label: 'London (GMT / BST)',                 value: 'Europe/London'       },
+  { label: 'Paris / Berlin (CET / CEST)',        value: 'Europe/Paris'        },
+  { label: 'Helsinki / Kyiv (EET / EEST)',       value: 'Europe/Helsinki'     },
   // ── Asia / Pacific ─────────────────────────────────────────
-  { label: 'Dubai (GST, UTC+4)',                  value: 'Asia/Dubai'          },
-  { label: 'India (IST, UTC+5:30)',               value: 'Asia/Kolkata'        },
-  { label: 'Bangkok / Jakarta (ICT, UTC+7)',      value: 'Asia/Bangkok'        },
-  { label: 'China / Singapore (CST, UTC+8)',      value: 'Asia/Shanghai'       },
-  { label: 'Japan / Korea (JST, UTC+9)',          value: 'Asia/Tokyo'          },
-  { label: 'Sydney (AEST / AEDT)',                value: 'Australia/Sydney'    },
-  { label: 'Auckland (NZST / NZDT)',              value: 'Pacific/Auckland'    },
+  { label: 'Dubai (GST, UTC+4)',                 value: 'Asia/Dubai'          },
+  { label: 'India (IST, UTC+5:30)',              value: 'Asia/Kolkata'        },
+  { label: 'Bangkok / Jakarta (ICT, UTC+7)',     value: 'Asia/Bangkok'        },
+  { label: 'China / Singapore (CST, UTC+8)',     value: 'Asia/Shanghai'       },
+  { label: 'Japan / Korea (JST, UTC+9)',         value: 'Asia/Tokyo'          },
+  { label: 'Sydney (AEST / AEDT)',               value: 'Australia/Sydney'    },
+  { label: 'Auckland (NZST / NZDT)',             value: 'Pacific/Auckland'    },
 ]
 
 /**

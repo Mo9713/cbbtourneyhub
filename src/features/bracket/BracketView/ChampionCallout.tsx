@@ -1,6 +1,6 @@
-// src/views/BracketView/ChampionCallout.tsx
+// src.views.BracketView.ChampionCallout.tsx
 import { Crown } from 'lucide-react'
-import { useTheme } from '../../utils/theme'
+import { useTheme } from '../../../shared/utils/theme'
 
 interface Props {
   /** null = user has not yet picked the championship game → render nothing. */
@@ -10,7 +10,7 @@ interface Props {
 }
 
 // Returns null when champion is null, which is the visual half of the
-// Premature Champion fix. The logic half lives in BracketView/index.tsx.
+// Premature Champion fix. The logic half lives in BracketView.index.tsx.
 export default function ChampionCallout({ champion, readOnly, ownerName }: Props) {
   if (!champion) return null
 
@@ -31,3 +31,8 @@ export default function ChampionCallout({ champion, readOnly, ownerName }: Props
     </div>
   )
 }
+
+
+
+
+

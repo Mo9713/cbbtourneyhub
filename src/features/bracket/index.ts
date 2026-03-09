@@ -1,4 +1,4 @@
-// src/features/bracket/index.ts
+// src.features.bracket.index.ts
 // GameCard, MatchupColumn, BracketGrid — internal, not exported.
 
 export {
@@ -8,6 +8,8 @@ export {
   useInternalBracketLoaders,
   useBracketPickCounts,
 } from './BracketContext'
+export { pickKeys } from './queries'
 
 export { default as BracketView } from './BracketView'
 export { default as SnoopModal }  from './SnoopModal'
+

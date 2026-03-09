@@ -1,8 +1,8 @@
-// src/views/BracketView/TiebreakerPanel.tsx
+// src.views.BracketView.TiebreakerPanel.tsx
 import { useState, useEffect }  from 'react'
 import { Hash, Check, Loader }  from 'lucide-react'
-import { useTheme }             from '../../utils/theme'
-import type { Game, Pick }      from '../../types'
+import { useTheme }             from '../../../shared/utils/theme'
+import type { Game, Pick }      from '../../../shared/types'
 
 interface Props {
   champGame: Game
@@ -80,3 +80,4 @@ export default function TiebreakerPanel({ champGame, champPick, isLocked, onSave
     </div>
   )
 }
+

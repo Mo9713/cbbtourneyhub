@@ -1,4 +1,4 @@
-// src/hooks/useAuth.ts
+// src.hooks.useAuth.ts
 // ─────────────────────────────────────────────────────────────
 // Internal hook that owns the complete auth + profile lifecycle.
 //
@@ -15,16 +15,16 @@
 // What this hook does NOT do:
 //   - Apply CSS classes to the DOM  (AuthContext.tsx owns that side-effect)
 //   - Know about ThemeCtx           (AuthContext.tsx composes the providers)
-//   - Know about routing/views      (TournamentContext.tsx owns activeView)
+//   - Know about routing.views      (TournamentContext.tsx owns activeView)
 // ─────────────────────────────────────────────────────────────
 
 import { useState, useEffect, useCallback } from 'react'
 import type { User }                        from '@supabase/supabase-js'
 
-import { supabase }        from '../services/supabaseClient'
-import * as profileService from '../services/profileService'
+import { supabase }        from '../../lib/supabaseClient'
+import * as profileService from './profileService'
 
-import type { Profile, UIMode } from '../types'
+import type { Profile, UIMode } from '../../shared/types'
 
 // ── Public shape ──────────────────────────────────────────────
 
@@ -66,7 +66,7 @@ export interface AuthState {
    * Uses an optimistic update pattern (same as updateUIMode).
    *
    * DISPLAY ONLY — this value must never be passed into isPicksLocked()
-   * or any epoch comparison. See src/utils/time.ts for the architecture rule.
+   * or any epoch comparison. See src.utils.time.ts for the architecture rule.
    *
    * @param tz  IANA timezone string, or null to reset to app default
    * @returns   error string on failure, null on success
@@ -233,3 +233,9 @@ export function useAuth(): AuthState {
     signOut,
   }
 }
+
+
+
+
+
+

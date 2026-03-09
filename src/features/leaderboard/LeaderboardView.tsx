@@ -1,12 +1,12 @@
-// src/views/LeaderboardView.tsx
+// src.views.LeaderboardView.tsx
 import { useState, useMemo }         from 'react'
 import { BarChart2, Shield }         from 'lucide-react'
-import { useTheme }                  from '../utils/theme'
-import { useAuthContext }            from '../context/AuthContext'
-import { useTournamentList }         from '../context/TournamentContext'
-import { useLeaderboardRaw }         from '../features/leaderboard/queries'
-import { computeLeaderboard }        from '../features/leaderboard/selectors'
-import Avatar                        from '../components/Avatar'
+import { useTheme }                  from '../../shared/utils/theme'
+import { useAuthContext }            from '../auth'
+import { useTournamentList }         from '../tournament'
+import { useLeaderboardRaw }         from './queries'
+import { computeLeaderboard }        from './selectors'
+import Avatar                        from '../../shared/components/Avatar'
 
 interface LeaderboardViewProps {
   onSnoop: (targetId: string) => void
@@ -183,3 +183,5 @@ export default function LeaderboardView({ onSnoop }: LeaderboardViewProps) {
     </div>
   )
 }
+
+

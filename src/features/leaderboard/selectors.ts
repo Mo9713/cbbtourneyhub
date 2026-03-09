@@ -1,6 +1,6 @@
-// src/features/leaderboard/selectors.ts
-import { resolveScore } from '../../types'
-import type { Pick, Game, Profile, Tournament } from '../../types'
+// src.features.leaderboard.selectors.ts
+import { resolveScore } from '../../shared/types'
+import type { Pick, Game, Profile, Tournament } from '../../shared/types'
 
 export interface LeaderboardEntry {
   profile:     Profile

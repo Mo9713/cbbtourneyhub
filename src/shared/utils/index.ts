@@ -1,4 +1,4 @@
-// src/shared/utils/index.ts
+// src.shared.utils.index.ts
 // Theme
 export { useTheme, ThemeCtx, THEMES }             from './theme'
 export type { ThemeConfig }                        from './theme'

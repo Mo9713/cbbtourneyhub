@@ -1,8 +1,8 @@
-// src/components/AddTournamentModal.tsx
+// src.components.AddTournamentModal.tsx
 import { useState } from 'react'
 import { X } from 'lucide-react'
-import { useTheme } from '../utils/theme'
-import type { TemplateKey } from '../types'
+import { useTheme } from '../../shared/utils/theme'
+import type { TemplateKey } from '../../shared/types'
 
 interface Props {
   onClose: () => void
@@ -107,3 +107,4 @@ export default function AddTournamentModal({ onClose, onCreate }: Props) {
     </div>
   )
 }
+

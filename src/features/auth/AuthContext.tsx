@@ -1,4 +1,4 @@
-// src/context/AuthContext.tsx
+// src.context.AuthContext.tsx
 
 import {
   createContext,
@@ -8,12 +8,12 @@ import {
   type ReactNode,
 } from 'react'
 
-import { ThemeCtx, THEMES }      from '../utils/theme'
-import { useAuth, type AuthState } from '../hooks/useAuth'
+import { ThemeCtx, THEMES }      from '../../shared/utils/theme'
+import { useAuth, type AuthState } from './useAuth'
 
-import AuthForm from '../components/AuthForm'
+import AuthForm from './AuthForm'
 
-import { supabase }  from '../services/supabaseClient'
+import { supabase }  from '../../lib/supabaseClient'
 
 type AuthContextValue = AuthState
 
@@ -128,3 +128,6 @@ export function useProfile(): NonNullable<AuthState['profile']> {
 
   return profile!
 }
+
+
+

@@ -1,13 +1,13 @@
-// src/views/HomeView.tsx
+// src.views.HomeView.tsx
 import { useMemo }             from 'react'
-import { useTheme }            from '../utils/theme'
-import { isPicksLocked }       from '../utils/time'
-import { statusLabel, statusIcon } from '../utils/helpers'
-import { useAuthContext }          from '../context/AuthContext'
-import { useTournamentContext }    from '../context/TournamentContext'
+import { useTheme }            from '../../shared/utils/theme'
+import { isPicksLocked }       from '../../shared/utils/time'
+import { statusLabel, statusIcon } from '../../shared/utils/helpers'
+import { useAuthContext }          from '../auth'
+import { useTournamentContext }    from './TournamentContext'
 // THE FIX: Import the renamed hook
-import { useBracketPickCounts }    from '../context/BracketContext'
-import type { Tournament }         from '../types'
+import { useBracketPickCounts }    from '../bracket'
+import type { Tournament }         from '../../shared/types'
 
 export default function HomeView() {
   const theme = useTheme()
@@ -109,3 +109,5 @@ export default function HomeView() {
     </div>
   )
 }
+
+

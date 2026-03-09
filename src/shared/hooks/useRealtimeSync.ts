@@ -1,13 +1,13 @@
-// src/hooks/useRealtimeSync.ts
+// src.hooks.useRealtimeSync.ts
 import { useEffect, useRef }          from 'react'
 import { useQueryClient }             from '@tanstack/react-query'
-import { supabase }                   from '../services/supabaseClient'
-import { tournamentKeys }             from '../features/tournament/queries'
-import { pickKeys }                   from '../features/bracket/queries'
-import { leaderboardKeys }            from '../features/leaderboard/queries'
-import { useAuthContext }             from '../context/AuthContext'
-import { useUIStore }                 from '../store/uiStore'
-import { useInternalBracketLoaders }  from '../context/BracketContext'
+import { supabase }                   from '../../lib/supabaseClient'
+import { tournamentKeys }             from '../../features/tournament'
+import { pickKeys }                   from '../../features/bracket'
+import { leaderboardKeys }            from '../../features/leaderboard'
+import { useAuthContext }             from '../../features/auth'
+import { useUIStore }                 from '../../store/uiStore'
+import { useInternalBracketLoaders }  from '../../features/bracket'
 
 export function useRealtimeSync(): void {
   const qc                            = useQueryClient()
@@ -66,3 +66,6 @@ export function useRealtimeSync(): void {
     return () => { supabase.removeChannel(channel) }
   }, [profile?.id, qc, loadPicks, loadAllMyPicks])
 }
+
+
+

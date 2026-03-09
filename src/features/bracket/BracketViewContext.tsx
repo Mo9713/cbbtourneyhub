@@ -1,6 +1,6 @@
-// src/context/BracketViewContext.tsx
+// src.context.BracketViewContext.tsx
 import { createContext, useContext, type ReactNode } from 'react'
-import type { Game } from '../types'
+import type { Game } from '../../shared/types'
 
 export interface BracketViewContextValue {
   isLocked:  boolean
@@ -27,3 +27,4 @@ export function useBracketView(): BracketViewContextValue {
   if (!ctx) throw new Error('useBracketView() must be inside <BracketViewProvider>')
   return ctx
 }
+

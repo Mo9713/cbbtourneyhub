@@ -1,9 +1,9 @@
-// src/features/leaderboard/api.ts
-import { supabase, withAuth } from '../../services/supabaseClient'
-import type { Pick, Game, Profile, ServiceResult } from '../../types'
+// src.features.leaderboard.api.ts
+import { supabase, withAuth } from '../../lib/supabaseClient'
+import type { Pick, Game, Profile, ServiceResult } from '../../shared/types'
 
 // All three fetches run in parallel — called as one unit in the query.
-// RLS allows all authenticated users to read picks/games/profiles.
+// RLS allows all authenticated users to read picks.games.profiles.
 
 async function fetchAllPicks(): Promise<ServiceResult<Pick[]>> {
   return withAuth(async () => {
@@ -52,3 +52,4 @@ export async function fetchLeaderboardData(): Promise<ServiceResult<LeaderboardR
     },
   }
 }
+

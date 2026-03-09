@@ -1,10 +1,10 @@
-// src/components/GameCard.tsx
+// src.components.GameCard.tsx
 import { CheckCircle, EyeOff } from 'lucide-react'
-import { useTheme }            from '../utils/theme'
-import { useBracketView }      from '../context/BracketViewContext'
-import { useTournamentContext } from '../context/TournamentContext'
-import { getScore }            from '../utils/helpers'
-import type { Game, Pick }     from '../types'
+import { useTheme }            from '../../shared/utils/theme'
+import { useBracketView }      from './BracketViewContext'
+import { useTournamentContext } from '../tournament'
+import { getScore }            from '../../shared/utils/helpers'
+import type { Game, Pick }     from '../../shared/types'
 
 const isTBDName = (n: string) =>
   !n || n === 'TBD' || n === 'BYE' || n.startsWith('Winner of Game')
@@ -95,3 +95,5 @@ export default function GameCard({
     </div>
   )
 }
+
+

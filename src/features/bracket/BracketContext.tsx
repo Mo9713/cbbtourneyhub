@@ -1,19 +1,19 @@
-// src/context/BracketContext.tsx
+// src.context.BracketContext.tsx
 import { createContext, useContext, useMemo, useCallback, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 
-import { useAuthContext }              from './AuthContext'
-import { useTournamentContext }        from './TournamentContext'
-import { tournamentKeys }              from '../features/tournament/queries'
-import { pickKeys }                    from '../features/bracket/queries'
+import { useAuthContext }              from '../auth'
+import { useTournamentContext }        from '../tournament'
+import { tournamentKeys }              from '../tournament'
+import { pickKeys }                    from './queries'
 
-import { useMyPickCounts as useMyPickCountsQuery } from '../features/bracket/queries'
+import { useMyPickCounts as useMyPickCountsQuery } from './queries'
 
-import * as gameService                from '../services/gameService'
-import { computeGameNumbers, collectDownstreamGameIds } from '../utils/bracketMath'
-import { isPicksLocked }               from '../utils/time'
-import * as bracketApi from '../features/bracket/api'
-import type { Game } from '../types'
+import * as gameService                from './gameService'
+import { computeGameNumbers, collectDownstreamGameIds } from '../../shared/utils/bracketMath'
+import { isPicksLocked }               from '../../shared/utils/time'
+import * as bracketApi from './api'
+import type { Game } from '../../shared/types'
 
 // ── Context shape ─────────────────────────────────────────────
 
@@ -203,3 +203,6 @@ export function useBracketPickCounts() {
   const { gamesCache } = useTournamentContext()
   return useMyPickCountsQuery(gamesCache) 
 }
+
+
+

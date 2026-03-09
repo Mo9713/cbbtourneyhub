@@ -1,6 +1,6 @@
-// src/components/ConfirmModal.tsx
+// src.components.ConfirmModal.tsx
 import { AlertCircle } from 'lucide-react'
-import type { ConfirmModalCfg } from '../types'
+import type { ConfirmModalCfg } from '../../shared/types'
 
 export default function ConfirmModal({
   title, message, confirmLabel = 'Confirm', dangerous, onConfirm, onCancel,
@@ -37,3 +37,6 @@ export default function ConfirmModal({
     </div>
   )
 }
+
+
+

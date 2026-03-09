@@ -1,12 +1,12 @@
-// src/services/templateService.ts
+// src.services.templateService.ts
 // ─────────────────────────────────────────────────────────────
 // Generates the full game graph for bracket templates.
 // These are admin-only operations — they only fire during
 // tournament creation, inside createTournament().
 // ─────────────────────────────────────────────────────────────
 
-import { supabase } from './supabaseClient'
-import type { ServiceResult } from '../types'
+import { supabase } from '../../lib/supabaseClient'
+import type { ServiceResult } from '../../shared/types'
 
 const BD_REGIONS = ['East', 'West', 'South', 'Midwest', 'Final Four']
 
@@ -204,3 +204,4 @@ export async function linkTemplateSlots(
 
   return { ok: true, data: true }
 }
+

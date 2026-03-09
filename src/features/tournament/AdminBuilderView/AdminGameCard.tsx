@@ -1,10 +1,10 @@
-// src/views/AdminBuilderView/AdminGameCard.tsx
+// src.views.AdminBuilderView.AdminGameCard.tsx
 import { useState, useEffect } from 'react'
 import {
   GripVertical, Unlink, Trash2, Target,
 } from 'lucide-react'
-import { getScore, isTBDName } from '../../utils/helpers'
-import type { Game }           from '../../types'
+import { getScore, isTBDName } from '../../../shared/utils/helpers'
+import type { Game }           from '../../../shared/types'
 
 interface Props {
   game:              Game
@@ -215,3 +215,8 @@ export default function AdminGameCard({
     </div>
   )
 }
+
+
+
+
+

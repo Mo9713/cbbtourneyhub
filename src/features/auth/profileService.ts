@@ -1,4 +1,4 @@
-// src/services/profileService.ts
+// src.services.profileService.ts
 // ─────────────────────────────────────────────────────────────
 // Reads and writes the `profiles` table.
 // Separated from auth concerns so components can import just
@@ -12,8 +12,8 @@
 //   - updateDisplayName, updateTheme retained for call-site compat.
 // ─────────────────────────────────────────────────────────────
 
-import { supabase, withAuth } from './supabaseClient'
-import type { Profile, ThemeKey, UIMode, ServiceResult } from '../types'
+import { supabase, withAuth } from '../../lib/supabaseClient'
+import type { Profile, ThemeKey, UIMode, ServiceResult } from '../../shared/types'
 
 // ── Read ──────────────────────────────────────────────────────
 
@@ -53,8 +53,7 @@ export async function updateMyProfile(
     | 'display_name'
     | 'theme'
     | 'avatar_url'
-    | 'favorite_team'
-    | 'ui_mode'       // ← NEW: light/dark mode preference
+    | 'ui_mode'       // ← NEW: light.dark mode preference
     | 'timezone'      // ← NEW: IANA display timezone (UI-only, never used in lock math)
   >>
 ): Promise<ServiceResult<Profile>> {
@@ -88,7 +87,7 @@ export async function updateTheme(theme: ThemeKey): Promise<ServiceResult<Profil
 }
 
 /**
- * Update UI mode (light/dark) for the authenticated user.
+ * Update UI mode (light.dark) for the authenticated user.
  *
  * AuthContext calls this and optimistically updates local state
  * before the async call resolves, reverting on failure.
@@ -100,12 +99,14 @@ export async function updateUIMode(mode: UIMode): Promise<ServiceResult<Profile>
 /**
  * Update the display timezone preference for the authenticated user.
  *
- * ⚠️  DISPLAY ONLY — this IANA string is never passed into lock/unlock
+ * ⚠️  DISPLAY ONLY — this IANA string is never passed into lock.unlock
  *     math (isPicksLocked, msUntilLock, etc.). It only controls how
  *     timestamps are formatted in the UI.
  *
- * Pass null to reset to the app default (America/Chicago).
+ * Pass null to reset to the app default (America.Chicago).
  */
 export async function updateTimezone(tz: string | null): Promise<ServiceResult<Profile>> {
   return updateMyProfile({ timezone: tz })
 }
+
+

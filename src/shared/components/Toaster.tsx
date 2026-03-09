@@ -1,6 +1,6 @@
-// src/components/Toaster.tsx
+// src.components.Toaster.tsx
 import { Check, X, Zap } from 'lucide-react'
-import type { ToastMsg } from '../types'
+import type { ToastMsg } from '../../shared/types'
 
 export default function Toaster({ toasts }: { toasts: ToastMsg[] }) {
   return (
@@ -20,3 +20,6 @@ export default function Toaster({ toasts }: { toasts: ToastMsg[] }) {
     </div>
   )
 }
+
+
+

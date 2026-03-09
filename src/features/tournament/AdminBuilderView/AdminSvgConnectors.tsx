@@ -1,7 +1,7 @@
-// src/views/AdminBuilderView/AdminSvgConnectors.tsx
+// src.views.AdminBuilderView.AdminSvgConnectors.tsx
 // Pure renderer: receives pre-computed line data and draws it.
 // All DOM measurement and slot resolution live in AdminBracketGrid.
-import type { SVGLine } from '../../types'
+import type { SVGLine } from '../../../shared/types'
 
 interface Props {
   lines: SVGLine[]
@@ -52,3 +52,7 @@ export default function AdminSvgConnectors({ lines, dims }: Props) {
     </svg>
   )
 }
+
+
+
+

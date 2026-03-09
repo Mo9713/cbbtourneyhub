@@ -1,11 +1,11 @@
-// src/views/BracketView/BracketHeader.tsx
+// src.views.BracketView.BracketHeader.tsx
 import { Eye, Lock, Clock } from 'lucide-react'
-import { useTheme }    from '../../utils/theme'
-import { statusLabel, statusIcon } from '../../utils/helpers'
-import { isPicksLocked, isBeforeUnlock } from '../../utils/time'
-import { useAuthContext } from '../../context/AuthContext'
-import Countdown from '../../components/Countdown'
-import type { Tournament } from '../../types'
+import { useTheme }    from '../../../shared/utils/theme'
+import { statusLabel, statusIcon } from '../../../shared/utils/helpers'
+import { isPicksLocked, isBeforeUnlock } from '../../../shared/utils/time'
+import { useAuthContext } from '../../auth'
+import Countdown from '../../../shared/components/Countdown'
+import type { Tournament } from '../../../shared/types'
 
 interface Props {
   tournament:  Tournament
@@ -89,3 +89,5 @@ export default function BracketHeader({ tournament, pickedCount, totalGames, rea
     </div>
   )
 }
+
+

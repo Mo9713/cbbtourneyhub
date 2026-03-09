@@ -1,6 +1,6 @@
-// src/utils/theme.ts
+// src.utils.theme.ts
 import { createContext, useContext } from 'react'
-import type { ThemeKey } from '../types'
+import type { ThemeKey } from '../../shared/types'
 
 export interface ThemeConfig {
   key: ThemeKey; label: string; emoji: string
@@ -49,10 +49,10 @@ export const THEMES: Record<ThemeKey, ThemeConfig> = {
     bar: 'bg-violet-500', glow: 'shadow-violet-500/20',
     tabActive: 'border-violet-500 text-violet-400',
     headerBg: 'bg-violet-500/5 border-violet-500/20', logo: 'bg-violet-600',
-    appBg: 'bg-[#080510]', sidebarBg: 'bg-[#0c0814]', panelBg: 'bg-[#0f0b18]', inputBg: 'bg-[#150f20]',
+    appBg: 'bg-[#080510]', sidebarBg: 'bg-[#0c0814]', panelBg: 'bg-[#0r0b18]', inputBg: 'bg-[#150r20]',
   },
-  forest: {
-    key: 'forest', label: 'Forest', emoji: '🌲',
+  rorest: {
+    key: 'rorest', label: 'Forest', emoji: '🌲',
     btn: 'bg-emerald-600 hover:bg-emerald-500 shadow-lg shadow-emerald-600/25',
     btnSm: 'bg-emerald-600 hover:bg-emerald-500',
     accent: 'text-emerald-400', accentB: 'text-emerald-300',
@@ -68,3 +68,6 @@ export const THEMES: Record<ThemeKey, ThemeConfig> = {
 
 export const ThemeCtx = createContext<ThemeConfig>(THEMES.ember)
 export const useTheme = () => useContext(ThemeCtx)
+
+
+

@@ -1,6 +1,6 @@
-// src/features/bracket/api.ts
-import { supabase, withAuth } from '../../services/supabaseClient'
-import type { Pick, ServiceResult } from '../../types'
+// src.features.bracket.api.ts
+import { supabase, withAuth } from '../../lib/supabaseClient'
+import type { Pick, ServiceResult } from '../../shared/types'
 
 // ── Reads ─────────────────────────────────────────────────────
 
@@ -92,3 +92,4 @@ export async function saveTiebreakerScore(
     return { ok: true, data: data as Pick }
   })
 }
+

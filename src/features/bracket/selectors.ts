@@ -1,6 +1,6 @@
-// src/features/bracket/selectors.ts
+// src.features.bracket.selectors.ts
 // Pure functions — no React, no hooks. Safe to call anywhere.
-import type { Game, Pick } from '../../types'
+import type { Game, Pick } from '../../shared/types'
 
 /** O(1) pick lookup — build once at the view boundary, pass down. */
 export function buildPickMap(picks: Pick[]): Map<string, Pick> {
