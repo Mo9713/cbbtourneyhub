@@ -1,27 +1,24 @@
 // src/views/BracketView/MatchupColumn.tsx
-import { useTheme }          from '../../utils/theme'
-import { getRoundLabel, getScore }     from '../../utils/helpers'
-import GameCard              from '../../components/GameCard'
+import { useTheme }              from '../../utils/theme'
+import { getRoundLabel, getScore } from '../../utils/helpers'
+import GameCard                  from '../../components/GameCard'
 import type { Game, Pick, Tournament } from '../../types'
 
 interface Props {
   round:          number
   games:          Game[]
   maxRound:       number
-  picks:          Pick[]
+  pickMap:        Map<string, Pick>   // pre-built — no allocation here
   effectiveNames: Record<string, { team1: string; team2: string }>
   tournament:     Tournament
 }
 
 export default function MatchupColumn({
-  round, games, maxRound, picks, effectiveNames, tournament,
+  round, games, maxRound, pickMap, effectiveNames, tournament,
 }: Props) {
-  const theme   = useTheme()
-  const pickMap = new Map(picks.map(p => [p.game_id, p]))
-  const label   = tournament.round_names?.[round - 1] || getRoundLabel(round, maxRound)
-
-  // Strictly uses the imported helper or the live database config
-  const pts = tournament.scoring_config?.[String(round)] ?? getScore(round)
+  const theme = useTheme()
+  const label = tournament.round_names?.[round - 1] || getRoundLabel(round, maxRound)
+  const pts   = tournament.scoring_config?.[String(round)] ?? getScore(round)
 
   return (
     <div className="flex flex-col items-center gap-3 flex-shrink-0 w-52">

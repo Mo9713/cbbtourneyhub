@@ -8,7 +8,7 @@ import {
 import { useTheme }             from '../utils/theme'
 import { useAuthContext }       from '../context/AuthContext'
 import { useTournamentContext } from '../context/TournamentContext'
-import { useMyPickCounts }      from '../context/BracketContext'
+import { useBracketPickCounts } from '../context/BracketContext'
 import Avatar                   from './Avatar'
 import type { ActiveView }      from '../types'
 
@@ -29,7 +29,7 @@ export default function Sidebar({ onClose, onOpenAddTournament, onToggleDesktop 
     tournaments, selectedTournament, gamesCache,
     activeView, selectTournament, navigateTo, navigateHome,
   } = useTournamentContext()
-  const myPickCounts = useMyPickCounts()
+  const myPickCounts = useBracketPickCounts()
 
   const missingPicks = useMemo(() => {
     const s = new Set<string>()

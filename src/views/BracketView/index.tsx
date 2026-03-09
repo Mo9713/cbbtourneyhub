@@ -1,19 +1,21 @@
 // src/views/BracketView/index.tsx
-import { useState, useMemo }        from 'react'
-import { useTheme }                  from '../../utils/theme'
-import { isPicksLocked }             from '../../utils/time'
-import { BD_REGIONS }                from '../../utils/helpers'
-import { deriveEffectiveNames,
-         deriveChampion }            from '../../utils/bracketMath'
-import { useAuthContext }            from '../../context/AuthContext'
-import { useTournamentContext }      from '../../context/TournamentContext'
-import { useBracketContext }         from '../../context/BracketContext'
-import { BracketViewProvider }       from '../../context/BracketViewContext'
-import BracketHeader                 from './BracketHeader'
-import BracketGrid                   from './BracketGrid'
-import ChampionCallout               from './ChampionCallout'
-import TiebreakerPanel               from './TiebreakerPanel'
+import { useState, useMemo }       from 'react'
+import { useTheme }                 from '../../utils/theme'
+import { isPicksLocked }            from '../../utils/time'
+import { BD_REGIONS }               from '../../utils/helpers'
+import { deriveEffectiveNames, deriveChampion } from '../../utils/bracketMath'
+import { useAuthContext }           from '../../context/AuthContext'
+import { useTournamentContext }     from '../../context/TournamentContext'
+import { useBracketContext, useGameMutations }         from '../../context/BracketContext'
+import { BracketViewProvider }      from '../../context/BracketViewContext'
+import { useMyPicks, useMakePick }  from '../../features/bracket/queries'
+import { buildPickMap, sortedRounds, getChampGame } from '../../features/bracket/selectors'
+import BracketHeader                from './BracketHeader'
+import BracketGrid                  from './BracketGrid'
+import ChampionCallout              from './ChampionCallout'
+import TiebreakerPanel              from './TiebreakerPanel'
 import type { Game, Pick, Tournament } from '../../types'
+
 
 interface BracketViewProps {
   readOnly?:           boolean
@@ -34,11 +36,16 @@ export default function BracketView({
 
   const { profile }                        = useAuthContext()
   const { selectedTournament, gamesCache } = useTournamentContext()
-  const { picks: contextPicks, makePick }  = useBracketContext()
+  const { saveTiebreaker }                 = useBracketContext()
 
   const tournament = overrideTournament ?? selectedTournament
   const games      = overrideGames ?? (tournament ? (gamesCache[tournament.id] ?? []) : [])
-  const picks      = overridePicks ?? contextPicks
+
+  // Picks — from TanStack cache or override (snoop/read-only mode)
+  const { data: queryPicks = [] } = useMyPicks(tournament?.id ?? null, games)
+  const picks                     = overridePicks ?? queryPicks
+
+  const { mutateAsync: makePick } = useMakePick()
 
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null)
 
@@ -47,35 +54,22 @@ export default function BracketView({
   const isLocked   = isPicksLocked(tournament, profile.is_admin) || tournament.status === 'draft'
   const isBigDance = games.some(g => g.region)
 
-  const effectiveNames = useMemo(() => deriveEffectiveNames(games, picks), [games, picks])
-  const champion       = useMemo(() => deriveChampion(games, picks, effectiveNames), [games, picks, effectiveNames])
-
-  const maxRound  = games.length > 0 ? Math.max(...games.map(g => g.round_num)) : 1
-  const champGame = games.find(g => g.round_num === maxRound && !g.next_game_id)
-                 ?? games.find(g => g.round_num === maxRound)
-  const champPick = champGame ? picks.find(p => p.game_id === champGame.id) ?? null : null
-
-  const displayGames = useMemo(() => {
-    if (!isBigDance || !selectedRegion) return games
-    return games.filter(g => g.region === selectedRegion)
-  }, [games, isBigDance, selectedRegion])
-
-  const rounds = useMemo(() => {
-    const map = new Map<number, Game[]>()
-    displayGames.forEach(g => {
-      if (!map.has(g.round_num)) map.set(g.round_num, [])
-      map.get(g.round_num)!.push(g)
-    })
-    return Array.from(map.entries())
-      .sort(([a], [b]) => a - b)
-      .map(([round, gs]) => (
-        [round, gs.sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))] as [number, Game[]]
-      ))
-  }, [displayGames])
+  // ── Selectors computed once at the boundary ───────────────
+  const pickMap      = useMemo(() => buildPickMap(picks),                               [picks])
+  const rounds       = useMemo(() => sortedRounds(games, isBigDance ? selectedRegion : null), [games, isBigDance, selectedRegion])
+  const effectiveNames = useMemo(() => deriveEffectiveNames(games, picks),              [games, picks])
+  const champion     = useMemo(() => deriveChampion(games, picks, effectiveNames),      [games, picks, effectiveNames])
+  const champGame    = useMemo(() => getChampGame(games),                               [games])
+  const champPick    = champGame ? picks.find(p => p.game_id === champGame.id) ?? null : null
 
   const handlePick = async (game: Game, team: string) => {
     if (readOnly || isLocked) return
-    await makePick(game, team)
+    const existingPick = pickMap.get(game.id)
+    await makePick({ game, team, tournamentId: tournament.id, games, existingPick })
+  }
+
+  const handleTiebreaker = async (gameId: string, predictedWinner: string, score: number) => {
+    return saveTiebreaker(gameId, predictedWinner, score)
   }
 
   return (
@@ -99,10 +93,7 @@ export default function BracketView({
             <button
               onClick={() => setSelectedRegion(null)}
               className={`px-4 py-2 text-xs font-bold rounded-t-lg transition-all border-b-2 flex-shrink-0
-                ${!selectedRegion
-                  ? `${theme.accent} border-current`
-                  : 'text-slate-500 border-transparent hover:text-slate-300'
-                }`}
+                ${!selectedRegion ? `${theme.accent} border-current` : 'text-slate-500 border-transparent hover:text-slate-300'}`}
             >
               All
             </button>
@@ -111,10 +102,7 @@ export default function BracketView({
                 key={r}
                 onClick={() => setSelectedRegion(r)}
                 className={`px-4 py-2 text-xs font-bold rounded-t-lg transition-all border-b-2 flex-shrink-0
-                  ${selectedRegion === r
-                    ? `${theme.accent} border-current`
-                    : 'text-slate-500 border-transparent hover:text-slate-300'
-                  }`}
+                  ${selectedRegion === r ? `${theme.accent} border-current` : 'text-slate-500 border-transparent hover:text-slate-300'}`}
               >
                 {r}
               </button>
@@ -124,7 +112,7 @@ export default function BracketView({
 
         <BracketGrid
           rounds={rounds}
-          picks={picks}
+          pickMap={pickMap}
           effectiveNames={effectiveNames}
           tournament={tournament}
         />
@@ -134,6 +122,7 @@ export default function BracketView({
             champGame={champGame}
             champPick={champPick}
             isLocked={isLocked}
+            onSave={handleTiebreaker}
           />
         )}
 

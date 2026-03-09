@@ -4,12 +4,12 @@ import type { Game, Pick, Tournament } from '../../types'
 
 interface Props {
   rounds:         [number, Game[]][]
-  picks:          Pick[]
+  pickMap:        Map<string, Pick>
   effectiveNames: Record<string, { team1: string; team2: string }>
   tournament:     Tournament
 }
 
-export default function BracketGrid({ rounds, picks, effectiveNames, tournament }: Props) {
+export default function BracketGrid({ rounds, pickMap, effectiveNames, tournament }: Props) {
   const maxRound = rounds.length > 0 ? Math.max(...rounds.map(([r]) => r)) : 1
 
   return (
@@ -21,7 +21,7 @@ export default function BracketGrid({ rounds, picks, effectiveNames, tournament 
             round={round}
             games={games}
             maxRound={maxRound}
-            picks={picks}
+            pickMap={pickMap}
             effectiveNames={effectiveNames}
             tournament={tournament}
           />

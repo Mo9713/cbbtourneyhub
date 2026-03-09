@@ -2,18 +2,17 @@
 import { useState, useEffect }  from 'react'
 import { Hash, Check, Loader }  from 'lucide-react'
 import { useTheme }             from '../../utils/theme'
-import { useBracketContext }    from '../../context/BracketContext'
 import type { Game, Pick }      from '../../types'
 
 interface Props {
   champGame: Game
   champPick: Pick
   isLocked:  boolean
+  onSave:    (gameId: string, predictedWinner: string, score: number) => Promise<string | null>
 }
 
-export default function TiebreakerPanel({ champGame, champPick, isLocked }: Props) {
-  const theme             = useTheme()
-  const { saveTiebreaker } = useBracketContext()
+export default function TiebreakerPanel({ champGame, champPick, isLocked, onSave }: Props) {
+  const theme = useTheme()
 
   const [input,  setInput]  = useState(champPick.tiebreaker_score?.toString() ?? '')
   const [saving, setSaving] = useState(false)
@@ -27,7 +26,7 @@ export default function TiebreakerPanel({ champGame, champPick, isLocked }: Prop
     const val = parseInt(input, 10)
     if (!Number.isFinite(val) || val < 0) return
     setSaving(true)
-    const err = await saveTiebreaker(champGame.id, champPick.predicted_winner, val)
+    const err = await onSave(champGame.id, champPick.predicted_winner, val)
     setSaving(false)
     if (err) return
     setSaved(true)
