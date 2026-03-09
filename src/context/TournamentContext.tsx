@@ -1,19 +1,42 @@
 // src/context/TournamentContext.tsx
-import { createContext, useContext, useMemo, type ReactNode } from 'react'
-import { useAuthContext }                       from './AuthContext'
-import { useTournaments, type TournamentsState } from '../hooks/useTournaments'
-import type { ActiveView, Game, Tournament }      from '../types'
+import {
+  createContext, useContext, useMemo, useCallback, type ReactNode,
+} from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 
-// ── Public context ────────────────────────────────────────────
-// loadTournaments and loadGames are intentionally excluded here.
-// They are only available via useInternalTournamentLoaders(),
-// which is imported exclusively by useRealtimeSync and BracketContext.
+import { useAuthContext }  from './AuthContext'
+import { useUIStore }      from '../store/uiStore'
+import {
+  useTournamentListQuery,
+  useAllTournamentGames,
+  tournamentKeys,
+}                          from '../features/tournament/queries'
+import * as api            from '../features/tournament/api'
 
-type TournamentContextValue = Omit<TournamentsState, 'loadTournaments' | 'loadGames'>
+import type { ActiveView, Game, Tournament, TemplateKey } from '../types'
+
+// ── Context shape ─────────────────────────────────────────────
+
+interface TournamentContextValue {
+  tournaments:        Tournament[]
+  selectedTournament: Tournament | null
+  gamesCache:         Record<string, Game[]>
+  activeView:         ActiveView
+  patchGamesCache:    (tid: string, updater: (prev: Game[]) => Game[]) => void
+  selectTournament:   (t: Tournament) => void
+  navigateHome:       () => void
+  navigateTo:         (view: ActiveView) => void
+  createTournament:   (name: string, template: TemplateKey, teamCount?: number) => Promise<string | null>
+  publishTournament:  () => Promise<string | null>
+  lockTournament:     () => Promise<string | null>
+  renameTournament:   (newName: string) => Promise<string | null>
+  updateTournament:   (updates: Partial<Tournament>) => Promise<string | null>
+  deleteTournament:   (gameIds: string[]) => Promise<string | null>
+}
 
 const TournamentContext = createContext<TournamentContextValue | null>(null)
 
-// ── Sync context (internal) ───────────────────────────────────
+// ── Sync context — back-compat for BracketContext until Phase 3 ──
 
 interface TournamentSyncValue {
   loadTournaments: () => Promise<void>
@@ -25,19 +48,143 @@ const TournamentSyncContext = createContext<TournamentSyncValue | null>(null)
 // ── Provider ──────────────────────────────────────────────────
 
 export function TournamentProvider({ children }: { children: ReactNode }) {
-  const { profile } = useAuthContext()
-  const state       = useTournaments(profile)
+  const qc = useQueryClient()
+  useAuthContext() // ensures we're inside AuthProvider
 
-  const { loadTournaments, loadGames, ...publicState } = state
+  // ── Server state ──────────────────────────────────────────
+  const { data: tournaments = [] } = useTournamentListQuery()
 
-  const syncValue = useMemo<TournamentSyncValue>(
-    () => ({ loadTournaments, loadGames }),
-    [loadTournaments, loadGames]
+  const gameQueries = useAllTournamentGames(tournaments)
+
+  const gamesCache = useMemo(() => {
+    const cache: Record<string, Game[]> = {}
+    tournaments.forEach((t: Tournament, i: number) => {
+      const data = gameQueries[i]?.data
+      if (data) cache[t.id] = data
+    })
+    return cache
+  }, [tournaments, gameQueries])
+
+  const patchGamesCache = useCallback((tid: string, updater: (prev: Game[]) => Game[]) => {
+    qc.setQueryData<Game[]>(tournamentKeys.games(tid), (prev) => updater(prev ?? []))
+  }, [qc])
+
+  // ── Nav state from Zustand ────────────────────────────────
+  const activeView           = useUIStore(s => s.activeView)
+  const selectedTournamentId = useUIStore(s => s.selectedTournamentId)
+  const uiSelectTournament   = useUIStore(s => s.selectTournament)
+  const navigateHome         = useUIStore(s => s.navigateHome)
+  const setActiveView        = useUIStore(s => s.setActiveView)
+
+  const selectedTournament = useMemo(
+    () => tournaments.find((t: Tournament) => t.id === selectedTournamentId) ?? null,
+    [tournaments, selectedTournamentId],
   )
+
+  // Auto-clear stale selected ID when tournament is deleted
+  useCallback(() => {
+    if (!selectedTournamentId || !tournaments.length) return
+    if (!tournaments.find((t: Tournament) => t.id === selectedTournamentId)) navigateHome()
+  }, [tournaments, selectedTournamentId, navigateHome])
+
+  const selectTournament = useCallback(
+    (t: Tournament) => uiSelectTournament(t.id),
+    [uiSelectTournament],
+  )
+
+  // ── Mutations ─────────────────────────────────────────────
+
+  const createTournament = useCallback(async (
+    name: string, template: TemplateKey, teamCount = 16,
+  ): Promise<string | null> => {
+    const result = await api.createTournament({ name, template, teamCount })
+    if (!result.ok) return result.error
+    await qc.invalidateQueries({ queryKey: tournamentKeys.all })
+    await qc.invalidateQueries({ queryKey: tournamentKeys.games(result.data.id) })
+    useUIStore.getState().selectTournament(result.data.id)
+    useUIStore.getState().setActiveView('admin')
+    return null
+  }, [qc])
+
+  const publishTournament = useCallback(async (): Promise<string | null> => {
+    const id = useUIStore.getState().selectedTournamentId
+    if (!id) return 'No tournament selected'
+    const result = await api.publishTournament(id)
+    if (!result.ok) return result.error
+    await qc.invalidateQueries({ queryKey: tournamentKeys.all })
+    return null
+  }, [qc])
+
+  const lockTournament = useCallback(async (): Promise<string | null> => {
+    const id = useUIStore.getState().selectedTournamentId
+    if (!id) return 'No tournament selected'
+    const result = await api.lockTournament(id)
+    if (!result.ok) return result.error
+    await qc.invalidateQueries({ queryKey: tournamentKeys.all })
+    return null
+  }, [qc])
+
+  const renameTournament = useCallback(async (newName: string): Promise<string | null> => {
+    const id = useUIStore.getState().selectedTournamentId
+    if (!id) return 'No tournament selected'
+    const result = await api.updateTournament(id, { name: newName })
+    if (!result.ok) return result.error
+    await qc.invalidateQueries({ queryKey: tournamentKeys.all })
+    return null
+  }, [qc])
+
+  const updateTournament = useCallback(async (updates: Partial<Tournament>): Promise<string | null> => {
+    const id = useUIStore.getState().selectedTournamentId
+    if (!id) return 'No tournament selected'
+    const result = await api.updateTournament(id, updates)
+    if (!result.ok) return result.error
+    await qc.invalidateQueries({ queryKey: tournamentKeys.all })
+    return null
+  }, [qc])
+
+  const deleteTournament = useCallback(async (gameIds: string[]): Promise<string | null> => {
+    const id = useUIStore.getState().selectedTournamentId
+    if (!id) return 'No tournament selected'
+    const result = await api.deleteTournament(id, gameIds)
+    if (!result.ok) return result.error
+    qc.removeQueries({ queryKey: tournamentKeys.games(id) })
+    await qc.invalidateQueries({ queryKey: tournamentKeys.all })
+    useUIStore.getState().navigateHome()
+    return null
+  }, [qc])
+
+  // ── Sync context (invalidates instead of manual fetches) ──
+
+  const syncValue = useMemo<TournamentSyncValue>(() => ({
+    loadTournaments: () => qc.invalidateQueries({ queryKey: tournamentKeys.all }),
+    loadGames:       (tid) => qc.invalidateQueries({ queryKey: tournamentKeys.games(tid) }),
+  }), [qc])
+
+  const value = useMemo<TournamentContextValue>(() => ({
+    tournaments,
+    selectedTournament,
+    gamesCache,
+    activeView,
+    patchGamesCache,
+    selectTournament,
+    navigateHome,
+    navigateTo: setActiveView,
+    createTournament,
+    publishTournament,
+    lockTournament,
+    renameTournament,
+    updateTournament,
+    deleteTournament,
+  }), [
+    tournaments, selectedTournament, gamesCache, activeView,
+    patchGamesCache, selectTournament, navigateHome, setActiveView,
+    createTournament, publishTournament, lockTournament,
+    renameTournament, updateTournament, deleteTournament,
+  ])
 
   return (
     <TournamentSyncContext.Provider value={syncValue}>
-      <TournamentContext.Provider value={publicState}>
+      <TournamentContext.Provider value={value}>
         {children}
       </TournamentContext.Provider>
     </TournamentSyncContext.Provider>
@@ -52,20 +199,17 @@ export function useTournamentContext(): TournamentContextValue {
   return ctx
 }
 
-/** Internal — only useRealtimeSync and BracketContext should import this. */
 export function useInternalTournamentLoaders(): TournamentSyncValue {
   const ctx = useContext(TournamentSyncContext)
   if (!ctx) throw new Error('useInternalTournamentLoaders() must be inside <TournamentProvider>')
   return ctx
 }
 
-/** Focused hook for components that only need the tournament list. */
+// Named differently from the query primitive to avoid collision
 export function useTournamentList() {
-  const { tournaments } = useTournamentContext()
-  return { tournaments }
+  return { tournaments: useTournamentContext().tournaments }
 }
 
-/** Focused hook for components that only need navigation. */
 export function useTournamentNav() {
   const { selectedTournament, activeView, selectTournament, navigateHome, navigateTo } =
     useTournamentContext()

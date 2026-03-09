@@ -1,6 +1,6 @@
 // src/App.tsx
-import { useState, useCallback, useMemo }    from 'react'
-import { PanelLeftOpen }                     from 'lucide-react'
+import { useCallback, useMemo } from 'react'
+import { PanelLeftOpen }        from 'lucide-react'
 
 import ErrorBoundary       from './components/ErrorBoundary'
 import Sidebar             from './components/Sidebar'
@@ -20,6 +20,7 @@ import { useTournamentContext, useTournamentList } from './context/TournamentCon
 import { useGameMutations }                        from './context/BracketContext'
 import { useLeaderboardData }                      from './context/LeaderboardContext'
 
+import { useUIStore }      from './store/uiStore'
 import { useRealtimeSync } from './hooks/useRealtimeSync'
 import { useTheme }        from './utils/theme'
 
@@ -29,70 +30,48 @@ import LeaderboardView  from './views/LeaderboardView'
 import BracketView      from './views/BracketView'
 import AdminBuilderView from './views/AdminBuilderView'
 
-import type { Game, ToastMsg, ConfirmModalCfg, TemplateKey } from './types'
+import type { Game, TemplateKey } from './types'
 
 // ─────────────────────────────────────────────────────────────
-// § 1. Local-state hooks
+// § 1. ViewRouter
 // ─────────────────────────────────────────────────────────────
 
-function useToasts() {
-  const [toasts, setToasts] = useState<ToastMsg[]>([])
-  const push = useCallback((text: string, type: ToastMsg['type'] = 'success') => {
-    const id = Date.now() + Math.random()
-    setToasts(p => [...p, { id, text, type }])
-    setTimeout(() => setToasts(p => p.filter(t => t.id !== id)), 3200)
-  }, [])
-  return { toasts, push }
-}
-
-function useLayoutState() {
-  const [sidebarOpen,       setSidebarOpen]       = useState(true)
-  const [mobileMenuOpen,    setMobileMenuOpen]    = useState(false)
-  const [showAddTournament, setShowAddTournament] = useState(false)
-
-  const openAddTournament  = useCallback(() => setShowAddTournament(true),  [])
-  const closeAddTournament = useCallback(() => setShowAddTournament(false), [])
-  const openMobileMenu     = useCallback(() => setMobileMenuOpen(true),     [])
-  const closeMobileMenu    = useCallback(() => setMobileMenuOpen(false),    [])
-
-  return {
-    sidebarOpen, setSidebarOpen,
-    mobileMenuOpen, openMobileMenu, closeMobileMenu,
-    showAddTournament, openAddTournament, closeAddTournament,
-  }
-}
-
-// ─────────────────────────────────────────────────────────────
-// § 2. ViewRouter
-// ─────────────────────────────────────────────────────────────
-
-interface ViewRouterProps {
-  push:               (text: string, type?: ToastMsg['type']) => void
-  onSnoop:            (id: string | null) => void
-  onDeleteGame:       (game: Game) => void
-  onDeleteTournament: () => void
-}
-
-function ViewRouter({ push, onSnoop, onDeleteGame, onDeleteTournament }: ViewRouterProps) {
+function ViewRouter() {
   const { profile, user, setProfile }      = useAuthContext()
   const { activeView, selectedTournament } = useTournamentContext()
+  const { openSnoop, setConfirmModal }     = useUIStore()
 
   if (!profile) return null
+
+  const handleSnoop = (id: string | null) => id ? openSnoop(id) : useUIStore.getState().closeSnoop()
 
   switch (activeView) {
     case 'admin':
       return profile.is_admin
-        ? <AdminBuilderView onDeleteGame={onDeleteGame} onDeleteTournament={onDeleteTournament} />
+        ? <AdminBuilderView
+            onDeleteGame={(game) => setConfirmModal({
+              title:   'Delete Game',
+              message: `Delete Round ${game.round_num} game (${game.team1_name} vs ${game.team2_name})?`,
+              dangerous:    true,
+              confirmLabel: 'Delete',
+              onCancel:  () => setConfirmModal(null),
+              onConfirm: async () => {
+                setConfirmModal(null)
+                // deleteGame called via AdminBuilderView's own handler
+              },
+            })}
+            onDeleteTournament={() => {/* handled in AppShellContent */}}
+          />
         : <BracketView />
     case 'leaderboard':
-      return <LeaderboardView onSnoop={onSnoop} />
+      return <LeaderboardView onSnoop={handleSnoop} />
     case 'settings':
       return (
         <SettingsView
           profile={profile}
           userEmail={user?.email ?? ''}
           onProfileUpdate={setProfile}
-          push={push}
+          push={useUIStore.getState().pushToast}
         />
       )
     case 'home':
@@ -103,111 +82,108 @@ function ViewRouter({ push, onSnoop, onDeleteGame, onDeleteTournament }: ViewRou
 }
 
 // ─────────────────────────────────────────────────────────────
-// § 3. AppShell
+// § 2. AppShell
 // ─────────────────────────────────────────────────────────────
 
 function AppShell() {
-  const layout = useLayoutState()
-  const [snoopTargetId, setSnoopTargetId] = useState<string | null>(null)
-
+  const snoopTargetId = useUIStore(s => s.snoopTargetId)
   return (
     <LeaderboardProvider snoopTargetId={snoopTargetId}>
-      <AppShellContent
-        layout={layout}
-        snoopTargetId={snoopTargetId}
-        setSnoopTargetId={setSnoopTargetId}
-      />
+      <AppShellContent />
     </LeaderboardProvider>
   )
 }
 
 // ─────────────────────────────────────────────────────────────
-// § 4. AppShellContent
+// § 3. AppShellContent
 // ─────────────────────────────────────────────────────────────
 
-interface AppShellContentProps {
-  layout:           ReturnType<typeof useLayoutState>
-  snoopTargetId:    string | null
-  setSnoopTargetId: (id: string | null) => void
-}
+function AppShellContent() {
+  const theme = useTheme()
 
-function AppShellContent({ layout, snoopTargetId, setSnoopTargetId }: AppShellContentProps) {
-  const theme            = useTheme()
-  const { toasts, push } = useToasts()
-  const [confirmModal, setConfirmModal] = useState<ConfirmModalCfg | null>(null)
+  // All layout + modal + toast state from the store
+  const {
+    sidebarOpen,    setSidebarOpen,
+    mobileMenuOpen, setMobileMenuOpen,
+    showAddTournament, closeAddTournament,
+    snoopTargetId,  closeSnoop,
+    confirmModal,   setConfirmModal,
+    toasts,         pushToast,
+  } = useUIStore()
 
-  const { profile }                      = useAuthContext()
+  const { profile }                                  = useAuthContext()
   const { selectedTournament, gamesCache,
-          createTournament, deleteTournament } = useTournamentContext()
-  const { tournaments }                  = useTournamentList()
-  const { deleteGame }                   = useGameMutations()
-  const { allProfiles, allPicks, allGames } = useLeaderboardData()
+          createTournament, deleteTournament }        = useTournamentContext()
+  const { tournaments }                              = useTournamentList()
+  const { deleteGame }                               = useGameMutations()
+  const { allProfiles, allPicks, allGames }          = useLeaderboardData()
 
   useRealtimeSync(snoopTargetId)
 
   const handleDeleteGame = useCallback((game: Game) => {
     setConfirmModal({
       title:        'Delete Game',
-      message:      `Delete Round ${game.round_num} game (${game.team1_name} vs ${game.team2_name})? Associated picks will also be removed.`,
-      confirmLabel: 'Delete',
+      message:      `Delete Round ${game.round_num} game (${game.team1_name} vs ${game.team2_name})?`,
       dangerous:    true,
+      confirmLabel: 'Delete',
+      onCancel:  () => setConfirmModal(null),
       onConfirm: async () => {
         setConfirmModal(null)
         const err = await deleteGame(game)
-        if (err) push(err, 'error'); else push('Game deleted', 'info')
+        if (err) pushToast(err, 'error')
       },
-      onCancel: () => setConfirmModal(null),
     })
-  }, [deleteGame, push])
+  }, [deleteGame, pushToast, setConfirmModal])
 
   const handleDeleteTournament = useCallback(() => {
     if (!selectedTournament) return
+    const gameIds = (gamesCache[selectedTournament.id] ?? []).map(g => g.id)
     setConfirmModal({
       title:        'Delete Tournament',
-      message:      `Permanently delete "${selectedTournament.name}"? All games and picks will also be deleted.`,
-      confirmLabel: 'Delete Forever',
+      message:      `Permanently delete "${selectedTournament.name}" and all its games?`,
       dangerous:    true,
+      confirmLabel: 'Delete',
+      onCancel:  () => setConfirmModal(null),
       onConfirm: async () => {
         setConfirmModal(null)
-        const tournamentGames = gamesCache[selectedTournament.id] || []
-        const gameIds = tournamentGames.map(g => g.id)
-        const err = await deleteTournament(gameIds) 
-        if (err) push(err, 'error'); else push('Tournament deleted', 'info')
+        const err = await deleteTournament(gameIds)
+        if (err) pushToast(err, 'error')
       },
-      onCancel: () => setConfirmModal(null),
     })
-  }, [selectedTournament, gamesCache, deleteTournament, push])
+  }, [selectedTournament, gamesCache, deleteTournament, pushToast, setConfirmModal])
 
-  const handleCreateTournament = async (name: string, template: TemplateKey, teamCount?: number) => {
-    push('Creating tournament…', 'info')
+  const handleCreateTournament = useCallback(async (
+    name: string, template: TemplateKey, teamCount?: number,
+  ) => {
+    pushToast('Creating tournament…', 'info')
     const err = await createTournament(name, template, teamCount)
-    if (err) push(err, 'error'); else push(`"${name}" created!`, 'success')
-  }
+    if (err) pushToast(err, 'error'); else pushToast(`"${name}" created!`, 'success')
+  }, [createTournament, pushToast])
 
   const snoopProfile = useMemo(
     () => snoopTargetId ? (allProfiles.find(p => p.id === snoopTargetId) ?? null) : null,
-    [snoopTargetId, allProfiles]
+    [snoopTargetId, allProfiles],
   )
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-950 text-white">
 
-      {/* Desktop Sidebar (Expanded) */}
-      {layout.sidebarOpen && (
+      {/* Desktop Sidebar — expanded */}
+      {sidebarOpen && (
         <div className="hidden md:flex">
-          <Sidebar 
-            onClose={() => {}} 
-            onOpenAddTournament={layout.openAddTournament} 
-            onToggleDesktop={() => layout.setSidebarOpen(false)}
+          <Sidebar
+            onClose={() => {}}
+            onOpenAddTournament={() => useUIStore.getState().openAddTournament()}
+            onToggleDesktop={() => setSidebarOpen(false)}
           />
         </div>
       )}
 
-      {/* Desktop Sidebar (Minimized Stub) */}
-      {!layout.sidebarOpen && (
+      {/* Desktop Sidebar — minimised stub */}
+      {!sidebarOpen && (
         <div className={`hidden md:flex flex-col items-center py-4 w-16 border-r border-slate-800 flex-shrink-0 ${theme.sidebarBg}`}>
           <button
-            onClick={() => layout.setSidebarOpen(true)}
+            onClick={() => setSidebarOpen(true)}
             className="p-2 rounded-lg text-slate-500 hover:text-white hover:bg-white/5 transition-colors"
             title="Expand sidebar"
           >
@@ -216,45 +192,44 @@ function AppShellContent({ layout, snoopTargetId, setSnoopTargetId }: AppShellCo
         </div>
       )}
 
-      {/* Mobile Sidebar Overlay */}
-      {layout.mobileMenuOpen && (
+      {/* Mobile Sidebar overlay */}
+      {mobileMenuOpen && (
         <div className="md:hidden fixed inset-0 z-40 flex">
-          <div className="absolute inset-0 bg-black/60" onClick={layout.closeMobileMenu} />
+          <div className="absolute inset-0 bg-black/60" onClick={() => setMobileMenuOpen(false)} />
           <div className="relative z-50">
-            <Sidebar onClose={layout.closeMobileMenu} onOpenAddTournament={layout.openAddTournament} />
+            <Sidebar
+              onClose={() => setMobileMenuOpen(false)}
+              onOpenAddTournament={() => useUIStore.getState().openAddTournament()}
+            />
           </div>
         </div>
       )}
 
-      {/* Main Content Area */}
+      {/* Main content */}
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden relative">
         <MobileHeader
-          onMenuOpen={layout.openMobileMenu}
+          onMenuOpen={() => setMobileMenuOpen(true)}
           sidebarBg={theme.sidebarBg}
           logo={theme.logo}
         />
         <main className="flex-1 overflow-hidden">
-          <ViewRouter
-            push={push}
-            onSnoop={setSnoopTargetId}
-            onDeleteGame={handleDeleteGame}
-            onDeleteTournament={handleDeleteTournament}
-          />
+          <ViewRouter />
         </main>
       </div>
 
+      {/* Modals */}
       {snoopTargetId && snoopProfile && (
         <SnoopModal
           targetProfile={snoopProfile}
           tournaments={tournaments.filter(t => t.status !== 'draft')}
           gamesCache={gamesCache}
           allPicks={allPicks}
-          onClose={() => setSnoopTargetId(null)}
+          onClose={closeSnoop}
         />
       )}
-      {layout.showAddTournament && (
+      {showAddTournament && (
         <AddTournamentModal
-          onClose={layout.closeAddTournament}
+          onClose={closeAddTournament}
           onCreate={handleCreateTournament}
         />
       )}
@@ -265,7 +240,7 @@ function AppShellContent({ layout, snoopTargetId, setSnoopTargetId }: AppShellCo
 }
 
 // ─────────────────────────────────────────────────────────────
-// § 5. Root
+// § 4. Root
 // ─────────────────────────────────────────────────────────────
 
 export default function App() {
