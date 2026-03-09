@@ -1,4 +1,4 @@
-// src.features.bracket.index.ts
+// src/features/bracket/index.ts
 // GameCard, MatchupColumn, BracketGrid — internal, not exported.
 
 export {

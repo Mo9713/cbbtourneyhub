@@ -1,4 +1,4 @@
-// src.views.AdminBuilderView.AdminSvgConnectors.tsx
+// src/features/tournament/AdminBuilderView/AdminSvgConnectors.tsx
 // Pure renderer: receives pre-computed line data and draws it.
 // All DOM measurement and slot resolution live in AdminBracketGrid.
 import type { SVGLine } from '../../../shared/types'

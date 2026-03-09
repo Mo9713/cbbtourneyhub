@@ -1,9 +1,10 @@
-// src.views.AdminBuilderView.index.tsx
+// src/features/tournament/AdminBuilderView/index.tsx
 import { useState, useMemo, useCallback, useEffect } from 'react'
 import { useTournamentContext } from '../TournamentContext'
 import { useBracketContext }    from '../../bracket'
 import { computeGameNumbers }   from '../../../shared/utils/bracketMath'
 import { BD_REGIONS }           from '../../../shared/utils/helpers'
+import { useQueryClient }       from '@tanstack/react-query'
 import AdminHeader              from './AdminHeader'
 import TournamentConfigPanel    from './TournamentConfigPanel'
 import AdminBracketGrid         from './AdminBracketGrid'
@@ -23,7 +24,6 @@ export default function AdminBuilderView({ onDeleteGame, onDeleteTournament }: P
     updateTournament,
     publishTournament,
     lockTournament,
-    loadGames,
   } = useTournamentContext()
 
   const games: Game[] = tournament ? (gamesCache[tournament.id] ?? []) : []
@@ -37,6 +37,8 @@ export default function AdminBuilderView({ onDeleteGame, onDeleteTournament }: P
     linkGames,
     unlinkGame,
   } = useBracketContext()
+
+  const queryClient = useQueryClient()
 
   // ── UI state ─────────────────────────────────────────────────
   const [linkingFromId,  setLinkingFromId]  = useState<string | null>(null)
@@ -128,8 +130,9 @@ export default function AdminBuilderView({ onDeleteGame, onDeleteTournament }: P
   }, [draggedGameId, games, updateGame, handleDragEnd])
 
   const handleReload = useCallback(() => {
-    if (tournament) loadGames(tournament.id)
-  }, [tournament, loadGames])
+    // Invalidating queries forces React Query to instantly refetch all active data
+    queryClient.invalidateQueries() 
+  }, [queryClient])
 
   if (!tournament) return null
 

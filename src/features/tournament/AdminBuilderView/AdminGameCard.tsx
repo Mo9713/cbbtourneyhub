@@ -1,4 +1,4 @@
-// src.views.AdminBuilderView.AdminGameCard.tsx
+// src/features/tournament/AdminBuilderView/AdminGameCard.tsx
 import { useState, useEffect } from 'react'
 import {
   GripVertical, Unlink, Trash2, Target,

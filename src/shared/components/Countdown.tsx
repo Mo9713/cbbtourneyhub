@@ -1,4 +1,4 @@
-// src.components.Countdown.tsx
+// src/shared/components/Countdown.tsx
 import { useState, useEffect } from 'react'
 import { Lock, Clock, AlertTriangle } from 'lucide-react'
 import { useTheme } from '../utils/theme'

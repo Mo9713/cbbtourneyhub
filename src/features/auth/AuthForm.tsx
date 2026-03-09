@@ -1,4 +1,4 @@
-// src.components.AuthForm.tsx
+// src/features/auth/AuthForm.tsx
 import { useState } from 'react'
 import { Trophy, Zap } from 'lucide-react'
 import { supabase } from '../../lib/supabaseClient'

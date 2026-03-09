@@ -1,4 +1,4 @@
-// src.features.leaderboard.selectors.ts
+// src/features/leaderboard/selectors.ts
 import { resolveScore } from '../../shared/types'
 import type { Pick, Game, Profile, Tournament } from '../../shared/types'
 

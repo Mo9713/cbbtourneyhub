@@ -1,4 +1,4 @@
-// src.views.BracketView.TiebreakerPanel.tsx
+// src/features/bracket/BracketView/TiebreakerPanel.tsx
 import { useState, useEffect }  from 'react'
 import { Hash, Check, Loader }  from 'lucide-react'
 import { useTheme }             from '../../../shared/utils/theme'

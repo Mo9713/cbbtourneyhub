@@ -1,4 +1,4 @@
-// src.services.gameService.ts
+// src/features/bracket/gameService.ts
 import { supabase, withAdminAuth } from '../../lib/supabaseClient'
 import { resolveAdvancingSlot }    from '../../shared/utils/bracketMath'
 import type { Game, ServiceResult } from '../../shared/types'

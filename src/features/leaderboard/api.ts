@@ -1,4 +1,4 @@
-// src.features.leaderboard.api.ts
+// src/features/leaderboard/api.ts
 import { supabase, withAuth } from '../../lib/supabaseClient'
 import type { Pick, Game, Profile, ServiceResult } from '../../shared/types'
 

@@ -1,4 +1,4 @@
-// src.store.uiStore.ts
+// src/store/uiStore.ts
 import { create } from 'zustand'
 import type { ActiveView, ConfirmModalCfg, ToastMsg } from '../shared/types'
 

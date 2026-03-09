@@ -1,8 +1,7 @@
-// src.context.BracketContext.tsx
+// src/features/bracket/BracketContext.tsx
 import { createContext, useContext, useMemo, useCallback, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 
-import { useAuthContext }              from '../auth'
 import { useTournamentContext }        from '../tournament'
 import { tournamentKeys }              from '../tournament'
 import { pickKeys }                    from './queries'
@@ -10,8 +9,7 @@ import { pickKeys }                    from './queries'
 import { useMyPickCounts as useMyPickCountsQuery } from './queries'
 
 import * as gameService                from './gameService'
-import { computeGameNumbers, collectDownstreamGameIds } from '../../shared/utils/bracketMath'
-import { isPicksLocked }               from '../../shared/utils/time'
+import { computeGameNumbers } from '../../shared/utils/bracketMath'
 import * as bracketApi from './api'
 import type { Game } from '../../shared/types'
 
@@ -44,7 +42,6 @@ const BracketSyncContext = createContext<BracketSyncValue | null>(null)
 
 export function BracketProvider({ children }: { children: ReactNode }) {
   const qc                                                  = useQueryClient()
-  const { profile }                                         = useAuthContext()
   const { selectedTournament, gamesCache, patchGamesCache } = useTournamentContext()
 
   const activeGames = useMemo(

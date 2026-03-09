@@ -1,5 +1,5 @@
-// src.features.tournament.queries.ts
-import { useQuery, useQueries, useQueryClient } from '@tanstack/react-query'
+// src/features/tournament/queries.ts
+import { useQuery, useQueries } from '@tanstack/react-query'
 import * as api from './api'
 import type { Game, Tournament } from '../../shared/types'
 

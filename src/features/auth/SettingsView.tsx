@@ -1,4 +1,4 @@
-// src.views.SettingsView.tsx
+// src/features/auth/SettingsView.tsx
 import { useState } from 'react'
 import { User as UserIcon, Palette, Key, Check, Image } from 'lucide-react'
 import { useTheme, THEMES } from '../../shared/utils/theme'

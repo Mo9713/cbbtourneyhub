@@ -1,4 +1,4 @@
-// src.components.ErrorBoundary.tsx
+// src/shared/components/ErrorBoundary.tsx
 import { Component, type ReactNode, type ErrorInfo } from 'react'
 import { RefreshCw, AlertTriangle } from 'lucide-react'
 

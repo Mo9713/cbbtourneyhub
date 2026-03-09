@@ -1,4 +1,4 @@
-// src.App.tsx Composition Root
+// src/App.tsx Composition Root
 import { ErrorBoundary }       from './shared/components'
 import { AuthProvider }        from './features/auth'
 import { TournamentProvider }  from './features/tournament'

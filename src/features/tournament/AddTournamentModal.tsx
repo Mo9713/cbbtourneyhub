@@ -1,4 +1,4 @@
-// src.components.AddTournamentModal.tsx
+// src/features/tournament/AddTournamentModal.tsx
 import { useState } from 'react'
 import { X } from 'lucide-react'
 import { useTheme } from '../../shared/utils/theme'

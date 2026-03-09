@@ -1,4 +1,4 @@
-// src.context.BracketViewContext.tsx
+// src/features/bracket/BracketViewContext.tsx
 import { createContext, useContext, type ReactNode } from 'react'
 import type { Game } from '../../shared/types'
 

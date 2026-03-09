@@ -1,4 +1,4 @@
-// src.hooks.useAuth.ts
+// src/features/auth/useAuth.ts
 // ─────────────────────────────────────────────────────────────
 // Internal hook that owns the complete auth + profile lifecycle.
 //

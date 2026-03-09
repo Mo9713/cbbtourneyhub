@@ -1,4 +1,4 @@
-// src.views.BracketView.ChampionCallout.tsx
+// src/features/bracket/BracketView/ChampionCallout.tsx
 import { Crown } from 'lucide-react'
 import { useTheme } from '../../../shared/utils/theme'
 

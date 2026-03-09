@@ -1,4 +1,4 @@
-// src.shared.types.index.ts
+// src/shared/types/index.ts
 
 // ── Primitives ────────────────────────────────────────────────
 export type TournamentStatus = 'draft' | 'open' | 'locked'

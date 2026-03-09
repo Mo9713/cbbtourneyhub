@@ -1,4 +1,4 @@
-// src/components/SnoopModal.tsx
+// src/features/bracket/SnoopModal.tsx
 import { useState, useMemo } from 'react'
 import BracketView from './BracketView'
 import { X } from 'lucide-react'

@@ -1,12 +1,12 @@
-// src.services.templateService.ts
+// src/features/tournament/templateService.ts
 // ─────────────────────────────────────────────────────────────
 // Generates the full game graph for bracket templates.
 // These are admin-only operations — they only fire during
 // tournament creation, inside createTournament().
 // ─────────────────────────────────────────────────────────────
 
-import { supabase } from '../../lib/supabaseClient'
-import type { ServiceResult } from '../../shared/types'
+import { supabase }            from '../../lib/supabaseClient'
+import type { Game, ServiceResult } from '../../shared/types'
 
 const BD_REGIONS = ['East', 'West', 'South', 'Midwest', 'Final Four']
 
@@ -20,7 +20,7 @@ const BD_REGIONS = ['East', 'West', 'South', 'Midwest', 'Final Four']
  */
 export async function generateStandardTemplate(
   tournamentId: string,
-  teamCount: number
+  teamCount:    number,
 ): Promise<ServiceResult<true>> {
   const rounds = Math.log2(teamCount)
   if (!Number.isInteger(rounds) || rounds < 1) {
@@ -40,9 +40,11 @@ export async function generateStandardTemplate(
       sort_order:    i,
     }))
 
+    // FIX N-2: Was `data.map((g: any) => g.id)`. Supabase returns the
+    // selected columns verbatim — cast to the minimal shape we need.
     const { data, error } = await supabase.from('games').insert(rows).select('id')
     if (error || !data) return { ok: false, error: error?.message ?? 'Game insert failed' }
-    prevIds = data.map((g: any) => g.id)
+    prevIds = (data as { id: string }[]).map(g => g.id)
   }
 
   return { ok: true, data: true }
@@ -64,7 +66,7 @@ export async function generateStandardTemplate(
  *   6 = Championship (1 game)
  */
 export async function generateBigDanceTemplate(
-  tournamentId: string
+  tournamentId: string,
 ): Promise<ServiceResult<true>> {
   const regions = BD_REGIONS.slice(0, 4) // East, West, South, Midwest
 
@@ -78,7 +80,8 @@ export async function generateBigDanceTemplate(
     }])
     .select('id')
   if (champErr || !champData) return { ok: false, error: champErr?.message ?? 'Championship insert failed' }
-  const champId = champData[0].id
+  // FIX N-2: Cast narrowed from `any` to the exact shape returned by select('id').
+  const champId = (champData as { id: string }[])[0].id
 
   // ── Round 5: Final Four (2 games → championship) ─────────────
   const { data: ff, error: ffErr } = await supabase
@@ -89,7 +92,7 @@ export async function generateBigDanceTemplate(
     ])
     .select('id')
   if (ffErr || !ff) return { ok: false, error: ffErr?.message ?? 'Final Four insert failed' }
-  const ffIds = ff.map((g: any) => g.id)
+  const ffIds = (ff as { id: string }[]).map(g => g.id)
 
   // ── Round 4: Elite 8 (4 games → Final Four) ──────────────────
   const { data: e8, error: e8Err } = await supabase
@@ -104,7 +107,7 @@ export async function generateBigDanceTemplate(
     )
     .select('id')
   if (e8Err || !e8) return { ok: false, error: e8Err?.message ?? 'Elite 8 insert failed' }
-  const e8Ids = e8.map((g: any) => g.id)
+  const e8Ids = (e8 as { id: string }[]).map(g => g.id)
 
   // ── Round 3: Sweet 16 (8 games → Elite 8) ────────────────────
   const { data: s16, error: s16Err } = await supabase
@@ -120,7 +123,7 @@ export async function generateBigDanceTemplate(
     )
     .select('id')
   if (s16Err || !s16) return { ok: false, error: s16Err?.message ?? 'Sweet 16 insert failed' }
-  const s16Ids = s16.map((g: any) => g.id)
+  const s16Ids = (s16 as { id: string }[]).map(g => g.id)
 
   // ── Round 2: Round of 32 (16 games → Sweet 16) ───────────────
   const { data: r32, error: r32Err } = await supabase
@@ -137,7 +140,7 @@ export async function generateBigDanceTemplate(
     )
     .select('id')
   if (r32Err || !r32) return { ok: false, error: r32Err?.message ?? 'Round of 32 insert failed' }
-  const r32Ids = r32.map((g: any) => g.id)
+  const r32Ids = (r32 as { id: string }[]).map(g => g.id)
 
   // ── Round 1: Round of 64 (32 games → Round of 32) ────────────
   const { error: r64Err } = await supabase
@@ -165,7 +168,7 @@ export async function generateBigDanceTemplate(
  * slot of its target game. Called once after any template generation.
  */
 export async function linkTemplateSlots(
-  tournamentId: string
+  tournamentId: string,
 ): Promise<ServiceResult<true>> {
   const { data: games, error } = await supabase
     .from('games')
@@ -176,21 +179,26 @@ export async function linkTemplateSlots(
 
   if (error || !games) return { ok: false, error: error?.message ?? 'Could not load games for slot linking' }
 
+  // FIX N-2: Cast the Supabase wildcard result to Game[] once at the
+  // boundary. All subsequent operations use the typed array directly —
+  // no per-expression `as any` or `: any` annotations needed.
+  const typedGames = games as Game[]
+
   // Build game number map (ordered by round then id for determinism)
-  const sorted = [...games].sort((a: any, b: any) =>
+  const sorted = [...typedGames].sort((a, b) =>
     a.round_num !== b.round_num ? a.round_num - b.round_num : a.id.localeCompare(b.id)
   )
   const nums: Record<string, number> = {}
-  sorted.forEach((g: any, i: number) => { nums[g.id] = i + 1 })
+  sorted.forEach((g, i) => { nums[g.id] = i + 1 })
 
-  for (const game of games as any[]) {
+  for (const game of typedGames) {
     if (!game.next_game_id) continue
 
-    const feeders = (games as any[])
-      .filter((g: any) => g.next_game_id === game.next_game_id)
-      .sort((a: any, b: any) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.id.localeCompare(b.id))
+    const feeders = typedGames
+      .filter(g => g.next_game_id === game.next_game_id)
+      .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.id.localeCompare(b.id))
 
-    const slot = feeders.findIndex((f: any) => f.id === game.id) === 0
+    const slot = feeders.findIndex(f => f.id === game.id) === 0
       ? 'team1_name'
       : 'team2_name'
 
@@ -204,4 +212,3 @@ export async function linkTemplateSlots(
 
   return { ok: true, data: true }
 }
-

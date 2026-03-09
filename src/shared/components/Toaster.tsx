@@ -1,4 +1,4 @@
-// src.components.Toaster.tsx
+// src/shared/components/Toaster.tsx
 import { Check, X, Zap } from 'lucide-react'
 import type { ToastMsg } from '../../shared/types'
 

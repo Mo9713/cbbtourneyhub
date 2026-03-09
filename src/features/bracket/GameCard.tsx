@@ -1,4 +1,4 @@
-// src.components.GameCard.tsx
+// src/features/bracket/GameCard.tsx
 import { CheckCircle, EyeOff } from 'lucide-react'
 import { useTheme }            from '../../shared/utils/theme'
 import { useBracketView }      from './BracketViewContext'

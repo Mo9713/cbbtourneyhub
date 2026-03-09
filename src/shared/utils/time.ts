@@ -52,7 +52,7 @@ export function parseTournamentTimestamp(iso: string): number {
  * The <Countdown> component calls this same function on every tick to
  * drive live UI updates — it does NOT pass a timezone to this function.
  */
-export function isPicksLocked(tournament: Tournament, isAdmin = false): boolean {
+export function isPicksLocked(tournament: Tournament, _isAdmin = false): boolean {
   // Admins must obey the time locks for their own picks just like regular users!
   
   if (tournament.status === 'draft' || tournament.status === 'locked') return true

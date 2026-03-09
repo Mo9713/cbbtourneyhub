@@ -1,9 +1,8 @@
-// src.hooks.useRealtimeSync.ts
+// src/shared/hooks/useRealtimeSync.ts
 import { useEffect, useRef }          from 'react'
 import { useQueryClient }             from '@tanstack/react-query'
 import { supabase }                   from '../../lib/supabaseClient'
 import { tournamentKeys }             from '../../features/tournament'
-import { pickKeys }                   from '../../features/bracket'
 import { leaderboardKeys }            from '../../features/leaderboard'
 import { useAuthContext }             from '../../features/auth'
 import { useUIStore }                 from '../../store/uiStore'

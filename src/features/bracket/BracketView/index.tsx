@@ -1,4 +1,4 @@
-// src.views.BracketView.index.tsx
+// src/features/bracket/BracketView/index.tsx
 import { useState, useMemo }       from 'react'
 import { useTheme }                 from '../../../shared/utils/theme'
 import { isPicksLocked }            from '../../../shared/utils/time'
@@ -6,7 +6,7 @@ import { BD_REGIONS }               from '../../../shared/utils/helpers'
 import { deriveEffectiveNames, deriveChampion } from '../../../shared/utils/bracketMath'
 import { useAuthContext }           from '../../auth'
 import { useTournamentContext }     from '../../tournament'
-import { useBracketContext, useGameMutations }         from '..'
+import { useBracketContext }         from '..'
 import { BracketViewProvider }      from '../BracketViewContext'
 import { useMyPicks, useMakePick }  from '../queries'
 import { buildPickMap, sortedRounds, getChampGame } from '../selectors'

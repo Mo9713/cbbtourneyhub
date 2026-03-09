@@ -1,10 +1,9 @@
-// src.features.tournament.index.ts
+// src/features/tournament/index.ts
 export {
   TournamentProvider,
   useTournamentContext,
   useTournamentList,
   useTournamentNav,
-  useInternalTournamentLoaders,
 } from './TournamentContext'
 export { tournamentKeys } from './queries'
 

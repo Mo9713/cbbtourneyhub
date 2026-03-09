@@ -1,4 +1,4 @@
-// src.views.BracketView.BracketHeader.tsx
+// src/features/bracket/BracketView/BracketHeader.tsx
 import { Eye, Lock, Clock } from 'lucide-react'
 import { useTheme }    from '../../../shared/utils/theme'
 import { statusLabel, statusIcon } from '../../../shared/utils/helpers'

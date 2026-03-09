@@ -1,4 +1,4 @@
-// src.utils.helpers.tsx
+// src/shared/utils/helpers.tsx
 import React from 'react'
 import { Globe, Edit3, Lock } from 'lucide-react'
 import type { Game, TournamentStatus } from '../../shared/types'

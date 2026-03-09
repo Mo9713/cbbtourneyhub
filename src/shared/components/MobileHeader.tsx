@@ -1,4 +1,4 @@
-// src.components.MobileHeader.tsx
+// src/shared/components/MobileHeader.tsx
 import { Menu } from 'lucide-react'
 
 interface Props {

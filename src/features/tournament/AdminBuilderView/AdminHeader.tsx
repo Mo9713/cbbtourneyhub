@@ -1,4 +1,4 @@
-// src.views.AdminBuilderView.AdminHeader.tsx
+// src/features/tournament/AdminBuilderView/AdminHeader.tsx
 import { useState, useEffect } from 'react'
 import {
   Plus, Lock, Globe, AlertTriangle, Edit3,
@@ -21,7 +21,7 @@ interface Props {
 }
 
 export default function AdminHeader({
-  tournament, games, publishValid,
+  tournament, publishValid,
   onRename, onUpdate, onPublish, onLock,
   onAddNextRound, onReload, onDeleteTournament,
 }: Props) {

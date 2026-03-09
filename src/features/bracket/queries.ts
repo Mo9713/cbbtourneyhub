@@ -1,4 +1,4 @@
-// src.features.bracket.queries.ts
+// src/features/bracket/queries.ts
 import {
   useQuery, useMutation, useQueryClient,
 } from '@tanstack/react-query'

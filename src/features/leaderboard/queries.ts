@@ -1,4 +1,4 @@
-// src.features.leaderboard.queries.ts
+// src/features/leaderboard/queries.ts
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchLeaderboardData }     from './api'
 

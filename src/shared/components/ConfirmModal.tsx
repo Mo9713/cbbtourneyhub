@@ -1,4 +1,4 @@
-// src.components.ConfirmModal.tsx
+// src/shared/components/ConfirmModal.tsx
 import { AlertCircle } from 'lucide-react'
 import type { ConfirmModalCfg } from '../../shared/types'
 

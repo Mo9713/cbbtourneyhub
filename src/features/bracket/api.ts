@@ -1,4 +1,4 @@
-// src.features.bracket.api.ts
+// src/features/bracket/api.ts
 import { supabase, withAuth } from '../../lib/supabaseClient'
 import type { Pick, ServiceResult } from '../../shared/types'
 

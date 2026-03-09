@@ -1,4 +1,4 @@
-// src/views/BracketView/BracketGrid.tsx
+// src/features/bracket/BracketView/BracketGrid.tsx
 import MatchupColumn from './MatchupColumn'
 import type { Game, Pick, Tournament } from '../../../shared/types'
 

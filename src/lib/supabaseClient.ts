@@ -1,4 +1,4 @@
-// src.services.supabaseClient.ts
+// src/lib/supabaseClient.ts
 // ─────────────────────────────────────────────────────────────
 // Single source of truth for the Supabase client instance.
 // Import `supabase` from here throughout the app — never call
@@ -8,7 +8,7 @@
 import { createClient, type SupabaseClient, type User } from '@supabase/supabase-js'
 import type { ServiceResult } from '../shared/types'
 
-const SUPABASE_URL     = import.meta.env.VITE_SUPABASE_URL     ?? ''
+const SUPABASE_URL      = import.meta.env.VITE_SUPABASE_URL      ?? ''
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY ?? ''
 
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
@@ -38,12 +38,14 @@ export async function getAuthUser(): Promise<User | null> {
  *     // safe to use `user.id` here
  *   })
  */
+// FIX W-1: Parameter was named `rn` (f→r token mutation of `fn`).
+// Renamed to `fn` throughout, restoring the standard callback convention.
 export async function withAuth<T>(
-  rn: (user: User) => Promise<ServiceResult<T>>
+  fn: (user: User) => Promise<ServiceResult<T>>
 ): Promise<ServiceResult<T>> {
   const user = await getAuthUser()
   if (!user) return { ok: false, error: 'Not authenticated. Please log in.' }
-  return rn(user)
+  return fn(user)
 }
 
 /**
@@ -51,8 +53,9 @@ export async function withAuth<T>(
  * `is_admin` flag set in the `profiles` table via a live DB check.
  * NEVER trust the client-side `profile.is_admin` for mutations.
  */
+// FIX W-1: Same `rn` → `fn` rename applied here for consistency.
 export async function withAdminAuth<T>(
-  rn: (user: User) => Promise<ServiceResult<T>>
+  fn: (user: User) => Promise<ServiceResult<T>>
 ): Promise<ServiceResult<T>> {
   return withAuth(async (user) => {
     const { data, error } = await supabase
@@ -64,11 +67,6 @@ export async function withAdminAuth<T>(
     if (error || !data) return { ok: false, error: 'Could not verify identity.' }
     if (!data.is_admin) return { ok: false, error: 'Forbidden: Admin access required.' }
 
-    return rn(user)
+    return fn(user)
   })
 }
-
-
-
-
-

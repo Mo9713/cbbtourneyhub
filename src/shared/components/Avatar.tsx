@@ -1,4 +1,4 @@
-// src.shared.components.Avatar.tsx
+// src/shared/components/Avatar.tsx
 import { useTheme } from '../utils/theme'
 import type { Profile } from '../types'
 

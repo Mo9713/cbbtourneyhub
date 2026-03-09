@@ -1,4 +1,4 @@
-// src.services.profileService.ts
+// src/features/auth/profileService.ts
 // ─────────────────────────────────────────────────────────────
 // Reads and writes the `profiles` table.
 // Separated from auth concerns so components can import just
@@ -86,25 +86,10 @@ export async function updateTheme(theme: ThemeKey): Promise<ServiceResult<Profil
   return updateMyProfile({ theme })
 }
 
-/**
- * Update UI mode (light.dark) for the authenticated user.
- *
- * AuthContext calls this and optimistically updates local state
- * before the async call resolves, reverting on failure.
- */
 export async function updateUIMode(mode: UIMode): Promise<ServiceResult<Profile>> {
   return updateMyProfile({ ui_mode: mode })
 }
 
-/**
- * Update the display timezone preference for the authenticated user.
- *
- * ⚠️  DISPLAY ONLY — this IANA string is never passed into lock.unlock
- *     math (isPicksLocked, msUntilLock, etc.). It only controls how
- *     timestamps are formatted in the UI.
- *
- * Pass null to reset to the app default (America.Chicago).
- */
 export async function updateTimezone(tz: string | null): Promise<ServiceResult<Profile>> {
   return updateMyProfile({ timezone: tz })
 }

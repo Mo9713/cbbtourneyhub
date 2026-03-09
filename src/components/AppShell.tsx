@@ -1,10 +1,10 @@
-// src.components.AppShell.tsx — Atomic Layout. View-agnostic skeleton.
+// src/components/AppShell.tsx
+
+// Atomic Layout. View-agnostic skeleton.
 import { useCallback, useMemo } from 'react'
 import { PanelLeftOpen }        from 'lucide-react'
 
-import { useAuthContext }                           from '../features/auth'
 import { useTournamentContext, useTournamentList }  from '../features/tournament'
-import { useGameMutations }                         from '../features/bracket'
 import { SnoopModal }                               from '../features/bracket'
 import { AddTournamentModal }                       from '../features/tournament'
 import { useLeaderboardRaw }                        from '../features/leaderboard'
@@ -31,7 +31,7 @@ export default function AppShell() {
     toasts,            pushToast,
   } = useUIStore()
 
-  const { selectedTournament, gamesCache, createTournament } = useTournamentContext()
+  const { gamesCache, createTournament } = useTournamentContext()
   const { tournaments }  = useTournamentList()
   const { data: lbRaw }  = useLeaderboardRaw()
   const allProfiles      = lbRaw?.allProfiles ?? []

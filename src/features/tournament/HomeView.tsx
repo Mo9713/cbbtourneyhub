@@ -1,5 +1,4 @@
-// src.views.HomeView.tsx
-import { useMemo }             from 'react'
+// src/features/tournament/HomeView.tsx
 import { useTheme }            from '../../shared/utils/theme'
 import { isPicksLocked }       from '../../shared/utils/time'
 import { statusLabel, statusIcon } from '../../shared/utils/helpers'

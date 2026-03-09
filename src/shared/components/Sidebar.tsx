@@ -1,4 +1,4 @@
-// src.components.Sidebar.tsx
+// src/shared/components/Sidebar.tsx
 import { useMemo }             from 'react'
 import {
   Trophy, Plus, AlertTriangle, Settings,
@@ -10,7 +10,6 @@ import { useAuthContext }       from '../../features/auth'
 import { useTournamentContext } from '../../features/tournament'
 import { useBracketPickCounts } from '../../features/bracket'
 import Avatar                   from './Avatar'
-import type { ActiveView }      from '../types'
 
 interface SidebarProps {
   onClose:             () => void

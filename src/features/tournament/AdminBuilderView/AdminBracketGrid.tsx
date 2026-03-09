@@ -1,10 +1,10 @@
-// src.views.AdminBuilderView.AdminBracketGrid.tsx
+// src/features/tournament/AdminBuilderView/AdminBracketGrid.tsx
 
 import { useRef, useState, useCallback, useLayoutEffect } from 'react'
 import { Plus, Link2, X }         from 'lucide-react'
 import { getRoundLabel }           from '../../../shared/utils/helpers'
 import { getScore }                from '../../../shared/utils/helpers'
-import { resolveAdvancingSlot }    from '../../../shared/utils/bracketMath' // <-- ADDED IMPORT
+import { resolveAdvancingSlot }    from '../../../shared/utils/bracketMath' 
 import AdminGameCard               from './AdminGameCard'
 import AdminSvgConnectors          from './AdminSvgConnectors'
 import type { Tournament, Game, SVGLine } from '../../../shared/types'
@@ -142,7 +142,7 @@ export default function AdminBracketGrid({
                       {label}
                     </h3>
                     <span className="text-[10px] text-slate-600">
-                      {roundGames.length} game{roundGames.length !== 1 ? 's' : ''} · {pts}pt {/* <--- Changed to {pts}pt */}
+                      {roundGames.length} game{roundGames.length !== 1 ? 's' : ''} · {pts}pt
                     </span>
                   </div>
 
@@ -194,7 +194,3 @@ export default function AdminBracketGrid({
     </>
   )
 }
-
-
-
-

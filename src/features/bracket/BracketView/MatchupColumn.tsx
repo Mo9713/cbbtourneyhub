@@ -1,4 +1,4 @@
-// src.views.BracketView.MatchupColumn.tsx
+// src/features/bracket/BracketView/MatchupColumn.tsx
 import { useTheme }              from '../../../shared/utils/theme'
 import { getRoundLabel, getScore } from '../../../shared/utils/helpers'
 import GameCard                  from '../GameCard'
