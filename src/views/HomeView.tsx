@@ -5,14 +5,16 @@ import { isPicksLocked }       from '../utils/time'
 import { statusLabel, statusIcon } from '../utils/helpers'
 import { useAuthContext }          from '../context/AuthContext'
 import { useTournamentContext }    from '../context/TournamentContext'
-import { useMyPickCounts }         from '../context/BracketContext'
+// THE FIX: Import the renamed hook
+import { useBracketPickCounts }    from '../context/BracketContext'
 import type { Tournament }         from '../types'
 
 export default function HomeView() {
   const theme = useTheme()
   const { profile }                                       = useAuthContext()
   const { tournaments, gamesCache, selectTournament }     = useTournamentContext()
-  const myPickCounts                                      = useMyPickCounts()
+  // THE FIX: Call the renamed hook
+  const myPickCounts                                      = useBracketPickCounts()
 
   if (!profile) return null
 

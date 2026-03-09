@@ -1,33 +1,30 @@
 // src/hooks/useRealtimeSync.ts
-import { useEffect, useRef }   from 'react'
-import { useQueryClient }      from '@tanstack/react-query'
-import { supabase }            from '../services/supabaseClient'
-import { tournamentKeys }      from '../features/tournament/queries'
-import { useAuthContext }      from '../context/AuthContext'
-import { useUIStore }          from '../store/uiStore'
-import { useInternalBracketLoaders } from '../context/BracketContext'
-import { useLeaderboardContext }      from '../context/LeaderboardContext'
+import { useEffect, useRef }          from 'react'
+import { useQueryClient }             from '@tanstack/react-query'
+import { supabase }                   from '../services/supabaseClient'
+import { tournamentKeys }             from '../features/tournament/queries'
+import { pickKeys }                   from '../features/bracket/queries'
+import { leaderboardKeys }            from '../features/leaderboard/queries'
+import { useAuthContext }             from '../context/AuthContext'
+import { useUIStore }                 from '../store/uiStore'
+import { useInternalBracketLoaders }  from '../context/BracketContext'
 
-export function useRealtimeSync(snoopTargetId: string | null): void {
-  const qc                              = useQueryClient()
-  const { profile }                     = useAuthContext()
-  const { loadPicks, loadAllMyPicks }   = useInternalBracketLoaders()
-  const { loadLeaderboard }             = useLeaderboardContext()
+export function useRealtimeSync(): void {
+  const qc                            = useQueryClient()
+  const { profile }                   = useAuthContext()
+  const { loadPicks, loadAllMyPicks } = useInternalBracketLoaders()
 
-  // Refs so the channel closure always reads the latest values
-  const activeViewRef  = useRef(useUIStore.getState().activeView)
-  const selectedIdRef  = useRef(useUIStore.getState().selectedTournamentId)
-  const snoopRef       = useRef(snoopTargetId)
+  const activeViewRef = useRef(useUIStore.getState().activeView)
+  const selectedIdRef = useRef(useUIStore.getState().selectedTournamentId)
+  const snoopRef      = useRef(useUIStore.getState().snoopTargetId)
 
-  // Keep refs fresh without causing re-renders or re-subscribing
   useEffect(() => {
     return useUIStore.subscribe((s) => {
-      activeViewRef.current  = s.activeView
-      selectedIdRef.current  = s.selectedTournamentId
+      activeViewRef.current = s.activeView
+      selectedIdRef.current = s.selectedTournamentId
+      snoopRef.current      = s.snoopTargetId
     })
   }, [])
-
-  useEffect(() => { snoopRef.current = snoopTargetId }, [snoopTargetId])
 
   useEffect(() => {
     if (!profile) return
@@ -43,13 +40,12 @@ export function useRealtimeSync(snoopTargetId: string | null): void {
       .on('postgres_changes', {
         event: '*', schema: 'public', table: 'games',
       }, (payload: any) => {
-        const tid = payload.new?.tournament_id ?? payload.old?.tournament_id
-        // Invalidate the specific tournament's games, or fall back to selected
+        const tid    = payload.new?.tournament_id ?? payload.old?.tournament_id
         const target = tid ?? selectedIdRef.current
         if (target) qc.invalidateQueries({ queryKey: tournamentKeys.games(target) })
 
         if (activeViewRef.current === 'leaderboard' || snoopRef.current) {
-          loadLeaderboard()
+          qc.invalidateQueries({ queryKey: leaderboardKeys.raw })
         }
       })
 
@@ -61,12 +57,12 @@ export function useRealtimeSync(snoopTargetId: string | null): void {
         loadAllMyPicks()
 
         if (activeViewRef.current === 'leaderboard' || snoopRef.current) {
-          loadLeaderboard()
+          qc.invalidateQueries({ queryKey: leaderboardKeys.raw })
         }
       })
 
       .subscribe()
 
     return () => { supabase.removeChannel(channel) }
-  }, [profile?.id, qc, loadPicks, loadAllMyPicks, loadLeaderboard])
+  }, [profile?.id, qc, loadPicks, loadAllMyPicks])
 }

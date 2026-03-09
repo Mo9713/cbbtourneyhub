@@ -13,16 +13,15 @@ import AddTournamentModal  from './components/AddTournamentModal'
 import { AuthProvider }        from './context/AuthContext'
 import { TournamentProvider }  from './context/TournamentContext'
 import { BracketProvider }     from './context/BracketContext'
-import { LeaderboardProvider } from './context/LeaderboardContext'
 
 import { useAuthContext }                          from './context/AuthContext'
 import { useTournamentContext, useTournamentList } from './context/TournamentContext'
 import { useGameMutations }                        from './context/BracketContext'
-import { useLeaderboardData }                      from './context/LeaderboardContext'
 
-import { useUIStore }      from './store/uiStore'
-import { useRealtimeSync } from './hooks/useRealtimeSync'
-import { useTheme }        from './utils/theme'
+import { useUIStore }        from './store/uiStore'
+import { useRealtimeSync }   from './hooks/useRealtimeSync'
+import { useTheme }          from './utils/theme'
+import { useLeaderboardRaw } from './features/leaderboard/queries'
 
 import HomeView         from './views/HomeView'
 import SettingsView     from './views/SettingsView'
@@ -86,12 +85,7 @@ function ViewRouter() {
 // ─────────────────────────────────────────────────────────────
 
 function AppShell() {
-  const snoopTargetId = useUIStore(s => s.snoopTargetId)
-  return (
-    <LeaderboardProvider snoopTargetId={snoopTargetId}>
-      <AppShellContent />
-    </LeaderboardProvider>
-  )
+  return <AppShellContent />
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -116,9 +110,13 @@ function AppShellContent() {
           createTournament, deleteTournament }        = useTournamentContext()
   const { tournaments }                              = useTournamentList()
   const { deleteGame }                               = useGameMutations()
-  const { allProfiles, allPicks, allGames }          = useLeaderboardData()
+  
+  // Leaderboard data now comes from TanStack Query
+  const { data: lbRaw } = useLeaderboardRaw()
+  const allProfiles = lbRaw?.allProfiles ?? []
+  const allPicks    = lbRaw?.allPicks    ?? []
 
-  useRealtimeSync(snoopTargetId)
+  useRealtimeSync()
 
   const handleDeleteGame = useCallback((game: Game) => {
     setConfirmModal({

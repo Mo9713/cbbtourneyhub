@@ -1,31 +1,60 @@
 // src/views/LeaderboardView.tsx
-import { BarChart2, Shield, ExternalLink, TrendingUp } from 'lucide-react'
-import { useTheme }              from '../utils/theme'
-import { useAuthContext }        from '../context/AuthContext'
-import {
-  useLeaderboardContext,
-  useLeaderboardFilter,
-} from '../context/LeaderboardContext'
-import { useTournamentList }     from '../context/TournamentContext'
-import Avatar                    from '../components/Avatar'
+import { useState, useMemo }         from 'react'
+import { BarChart2, Shield }         from 'lucide-react'
+import { useTheme }                  from '../utils/theme'
+import { useAuthContext }            from '../context/AuthContext'
+import { useTournamentList }         from '../context/TournamentContext'
+import { useLeaderboardRaw }         from '../features/leaderboard/queries'
+import { computeLeaderboard }        from '../features/leaderboard/selectors'
+import Avatar                        from '../components/Avatar'
 
 interface LeaderboardViewProps {
-  /** Called when an admin clicks a player row to open their bracket. */
   onSnoop: (targetId: string) => void
 }
 
 export default function LeaderboardView({ onSnoop }: LeaderboardViewProps) {
-  const theme   = useTheme()
-  const medals  = ['🥇', '🥈', '🥉']
+  const theme  = useTheme()
+  const medals = ['🥇', '🥈', '🥉']
 
-  const { profile }                               = useAuthContext()
-  const { leaderboard }                           = useLeaderboardContext()
-  const { selectedTournaments, toggleTournament } = useLeaderboardFilter()
-  const { tournaments }                           = useTournamentList()
+  const { profile }          = useAuthContext()
+  const { tournaments }      = useTournamentList()
+  const { data: raw }        = useLeaderboardRaw()
 
-  const maxPoints  = leaderboard[0]?.points ?? 0
-  const isAdmin    = profile?.is_admin ?? false
-  const currentId  = profile?.id ?? ''
+  // Admin filter — local UI state, not server state
+  const [selectedTournaments, setSelectedTournaments] = useState<Set<string>>(
+    () => new Set(tournaments.map(t => t.id)),
+  )
+
+  const toggleTournament = (id: string) => {
+    setSelectedTournaments(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+
+  // Seed new tournament IDs into the filter automatically
+  useMemo(() => {
+    setSelectedTournaments(prev => {
+      const next     = new Set(prev)
+      let   changed  = false
+      tournaments.forEach(t => { if (!next.has(t.id)) { next.add(t.id); changed = true } })
+      return changed ? next : prev
+    })
+  }, [tournaments])
+
+  const leaderboard = useMemo(() => {
+    if (!raw || !raw.allProfiles.length) return []
+    const tournamentMap = new Map(tournaments.map(t => [t.id, t]))
+    const scopedGames   = selectedTournaments.size > 0
+      ? raw.allGames.filter(g => selectedTournaments.has(g.tournament_id))
+      : raw.allGames
+    return computeLeaderboard(raw.allPicks, scopedGames, raw.allGames, raw.allProfiles, tournamentMap)
+  }, [raw, tournaments, selectedTournaments])
+
+  const maxPoints = leaderboard[0]?.points ?? 0
+  const isAdmin   = profile?.is_admin ?? false
+  const currentId = profile?.id ?? ''
 
   return (
     <div className="flex flex-col h-full">
@@ -82,7 +111,6 @@ export default function LeaderboardView({ onSnoop }: LeaderboardViewProps) {
         ) : (
           <div className="space-y-2 max-w-3xl mx-auto">
 
-            {/* Column headers (Responsive) */}
             <div className="grid grid-cols-[auto_1fr_auto] md:grid-cols-[auto_1fr_80px_100px_120px] gap-3 px-4 pb-1">
               <div className="w-6 md:w-8" />
               <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">Player</span>
@@ -99,70 +127,52 @@ export default function LeaderboardView({ onSnoop }: LeaderboardViewProps) {
               return (
                 <div
                   key={entry.profile.id}
+                  onClick={() => isAdmin && onSnoop(entry.profile.id)}
                   className={`grid grid-cols-[auto_1fr_auto] md:grid-cols-[auto_1fr_80px_100px_120px] gap-3 items-center px-4 py-3 rounded-xl border transition-all
+                    ${isAdmin ? 'cursor-pointer' : ''}
                     ${isMe
                       ? `${theme.bg} ${theme.border} border`
                       : 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
                     }`}
                 >
-                  {/* Rank */}
                   <div className="w-6 md:w-8 text-center">
                     {idx < 3
-                      ? <span className="text-base leading-none">{medals[idx]}</span>
-                      : <span className="text-xs font-bold text-slate-600">#{idx + 1}</span>
+                      ? <span className="text-base">{medals[idx]}</span>
+                      : <span className="text-xs font-bold text-slate-500">{idx + 1}</span>
                     }
                   </div>
 
-                  {/* Player */}
-                  <button
-                    onClick={() => isAdmin && !isMe ? onSnoop(entry.profile.id) : undefined}
-                    className={`flex items-center gap-2 md:gap-3 min-w-0 text-left ${isAdmin && !isMe ? 'cursor-pointer group' : 'cursor-default'}`}
-                  >
-                    <div className="flex-shrink-0">
-                      <Avatar profile={entry.profile} size="md" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5">
-                        <span className={`text-sm font-semibold truncate ${isMe ? theme.accent : 'text-white'}`}>
-                          {entry.profile.display_name}
-                          {isMe && <span className="text-[10px] ml-1 opacity-60">(you)</span>}
-                        </span>
-                        {isAdmin && !isMe && (
-                          <ExternalLink size={10} className="text-slate-600 group-hover:text-slate-400 flex-shrink-0 transition-colors" />
-                        )}
-                      </div>
-                      {/* Points bar */}
-                      <div className="w-full max-w-[120px] h-1 bg-slate-800 rounded-full mt-1.5 overflow-hidden">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <Avatar profile={entry.profile} size="sm" />
+                    <div className="min-w-0">
+                      <p className={`text-sm font-semibold truncate ${isMe ? theme.accent : 'text-white'}`}>
+                        {entry.profile.display_name}
+                        {isMe && <span className="ml-1.5 text-[10px] font-bold opacity-60">(you)</span>}
+                      </p>
+                      <div className="h-1 mt-1 rounded-full bg-slate-800 overflow-hidden w-full max-w-[120px]">
                         <div
-                          className={`h-full rounded-full transition-all ${theme.bar}`}
+                          className={`h-full rounded-full transition-all ${isMe ? theme.accent : 'bg-slate-600'}`}
                           style={{ width: `${barW}%` }}
                         />
                       </div>
                     </div>
-                  </button>
+                  </div>
 
-                  {/* Score */}
                   <div className="text-right">
-                    <span className={`text-lg font-extrabold font-display ${isMe ? theme.accentB : 'text-white'}`}>
+                    <span className={`text-sm font-bold ${isMe ? theme.accent : 'text-white'}`}>
                       {entry.points}
                     </span>
-                    <span className="text-[10px] text-slate-600 block">pts</span>
+                    <span className="text-xs text-slate-500"> pts</span>
                   </div>
 
-                  {/* Accuracy (Hidden on Mobile) */}
                   <div className="hidden md:block text-right">
-                    <span className="text-sm font-bold text-slate-300">
-                      {entry.correct}/{entry.total}
-                    </span>
-                    <span className="text-[10px] text-slate-600 flex items-center justify-end gap-0.5">
-                      <TrendingUp size={8} /> {pct}%
-                    </span>
+                    <span className="text-sm font-semibold text-slate-300">{pct}%</span>
+                    <p className="text-[10px] text-slate-600">{entry.correct}/{entry.total}</p>
                   </div>
 
-                  {/* Max possible (Hidden on Mobile) */}
                   <div className="hidden md:block text-right">
-                    <span className="text-sm font-bold text-slate-400">{entry.maxPossible}</span>
-                    <span className="text-[10px] text-slate-600 block">ceiling</span>
+                    <span className="text-sm font-semibold text-slate-400">{entry.maxPossible}</span>
+                    <p className="text-[10px] text-slate-600">max pts</p>
                   </div>
                 </div>
               )

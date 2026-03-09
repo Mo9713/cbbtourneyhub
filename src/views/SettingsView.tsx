@@ -20,7 +20,6 @@ export default function SettingsView({ profile, userEmail, onProfileUpdate, push
   const theme = useTheme()
 
   const [displayName,  setDisplayName]  = useState(profile.display_name)
-  const [favoriteTeam, setFavoriteTeam] = useState(profile.favorite_team ?? '')
   const [avatarUrl,    setAvatarUrl]    = useState(profile.avatar_url ?? '')
   const [saving,       setSaving]       = useState(false)
 
@@ -33,8 +32,8 @@ export default function SettingsView({ profile, userEmail, onProfileUpdate, push
     setSaving(true)
     const result = await profileService.updateMyProfile({
       display_name:  displayName.trim() || profile.display_name,
-      favorite_team: favoriteTeam.trim() || null,
       avatar_url:    avatarUrl.trim() || null,
+      // favorite_team removed here
     })
     if (result.ok) {
       onProfileUpdate(result.data)
@@ -51,7 +50,6 @@ export default function SettingsView({ profile, userEmail, onProfileUpdate, push
     if (newPass !== confirmPass) { push('New passwords do not match', 'error'); return }
 
     setChangingPass(true)
-    // Verify current password by re-authenticating
     const { error: verifyErr } = await supabase.auth.signInWithPassword({ email: userEmail, password: currentPass })
     if (verifyErr) {
       push('Current password is incorrect', 'error')
@@ -94,11 +92,6 @@ export default function SettingsView({ profile, userEmail, onProfileUpdate, push
               <div>
                 <label className="block text-xs text-slate-500 mb-1">Display Name</label>
                 <input value={displayName} onChange={e => setDisplayName(e.target.value)} className={inputCls} />
-              </div>
-              <div>
-                <label className="block text-xs text-slate-500 mb-1">Favorite Team</label>
-                <input value={favoriteTeam} onChange={e => setFavoriteTeam(e.target.value)}
-                  placeholder="e.g. Duke Blue Devils" className={inputCls} />
               </div>
               <div>
                 <label className="block text-xs text-slate-500 mb-1 flex items-center gap-1.5">
