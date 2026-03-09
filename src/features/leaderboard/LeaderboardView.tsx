@@ -1,12 +1,12 @@
-// src.views.LeaderboardView.tsx
-import { useState, useMemo }         from 'react'
-import { BarChart2, Shield }         from 'lucide-react'
-import { useTheme }                  from '../../shared/utils/theme'
-import { useAuthContext }            from '../auth'
-import { useTournamentList }         from '../tournament'
-import { useLeaderboardRaw }         from './queries'
-import { computeLeaderboard }        from './selectors'
-import Avatar                        from '../../shared/components/Avatar'
+// src/features/leaderboard/LeaderboardView.tsx
+import { useState, useMemo, useEffect } from 'react'
+import { BarChart2, Shield }            from 'lucide-react'
+import { useTheme }                     from '../../shared/utils/theme'
+import { useAuthContext }               from '../auth'
+import { useTournamentList }            from '../tournament'
+import { useLeaderboardRaw }            from './queries'
+import { computeLeaderboard }           from './selectors'
+import Avatar                           from '../../shared/components/Avatar'
 
 interface LeaderboardViewProps {
   onSnoop: (targetId: string) => void
@@ -16,9 +16,9 @@ export default function LeaderboardView({ onSnoop }: LeaderboardViewProps) {
   const theme  = useTheme()
   const medals = ['🥇', '🥈', '🥉']
 
-  const { profile }          = useAuthContext()
-  const { tournaments }      = useTournamentList()
-  const { data: raw }        = useLeaderboardRaw()
+  const { profile }     = useAuthContext()
+  const { tournaments } = useTournamentList()
+  const { data: raw }   = useLeaderboardRaw()
 
   // Admin filter — local UI state, not server state
   const [selectedTournaments, setSelectedTournaments] = useState<Set<string>>(
@@ -33,12 +33,19 @@ export default function LeaderboardView({ onSnoop }: LeaderboardViewProps) {
     })
   }
 
-  // Seed new tournament IDs into the filter automatically
-  useMemo(() => {
+  // FIX C-3 / N-5: Was a useMemo with a setState side-effect and no return
+  // value — a misuse of the API that is unsafe in React 19 Concurrent Mode
+  // (useMemo can execute multiple times per render, scheduling redundant
+  // state updates and risking an infinite render loop). Replaced with
+  // useEffect, which is the correct hook for side-effects that sync derived
+  // state with an external input.
+  useEffect(() => {
     setSelectedTournaments(prev => {
-      const next     = new Set(prev)
-      let   changed  = false
-      tournaments.forEach(t => { if (!next.has(t.id)) { next.add(t.id); changed = true } })
+      const next    = new Set(prev)
+      let   changed = false
+      tournaments.forEach(t => {
+        if (!next.has(t.id)) { next.add(t.id); changed = true }
+      })
       return changed ? next : prev
     })
   }, [tournaments])
@@ -151,7 +158,7 @@ export default function LeaderboardView({ onSnoop }: LeaderboardViewProps) {
                       </p>
                       <div className="h-1 mt-1 rounded-full bg-slate-800 overflow-hidden w-full max-w-[120px]">
                         <div
-                          className={`h-full rounded-full transition-all ${isMe ? theme.accent : 'bg-slate-600'}`}
+                          className={`h-full rounded-full transition-all ${isMe ? theme.progressBar : 'bg-slate-600'}`}
                           style={{ width: `${barW}%` }}
                         />
                       </div>
@@ -159,29 +166,29 @@ export default function LeaderboardView({ onSnoop }: LeaderboardViewProps) {
                   </div>
 
                   <div className="text-right">
-                    <span className={`text-sm font-bold ${isMe ? theme.accent : 'text-white'}`}>
+                    <span className={`text-lg font-bold tabular-nums ${isMe ? theme.accent : 'text-white'}`}>
                       {entry.points}
                     </span>
-                    <span className="text-xs text-slate-500"> pts</span>
+                    <span className="text-[10px] text-slate-500 ml-0.5">pts</span>
                   </div>
 
                   <div className="hidden md:block text-right">
-                    <span className="text-sm font-semibold text-slate-300">{pct}%</span>
+                    <span className="text-sm font-semibold text-slate-300 tabular-nums">{pct}%</span>
                     <p className="text-[10px] text-slate-600">{entry.correct}/{entry.total}</p>
                   </div>
 
                   <div className="hidden md:block text-right">
-                    <span className="text-sm font-semibold text-slate-400">{entry.maxPossible}</span>
+                    <span className="text-sm font-semibold text-slate-400 tabular-nums">{entry.maxPossible}</span>
                     <p className="text-[10px] text-slate-600">max pts</p>
                   </div>
+
                 </div>
               )
             })}
           </div>
         )}
       </div>
+
     </div>
   )
 }
-
-

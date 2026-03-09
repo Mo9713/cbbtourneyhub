@@ -1,4 +1,4 @@
-// src.utils.theme.ts
+// src/shared/utils/theme.ts
 import { createContext, useContext } from 'react'
 import type { ThemeKey } from '../../shared/types'
 
@@ -9,6 +9,7 @@ export interface ThemeConfig {
   dot: string; ring: string; bar: string; glow: string
   tabActive: string; headerBg: string; logo: string
   appBg: string; sidebarBg: string; panelBg: string; inputBg: string
+  progressBar?: string; // <-- Added to fix the LeaderboardView error
 }
 
 export const THEMES: Record<ThemeKey, ThemeConfig> = {
@@ -24,6 +25,7 @@ export const THEMES: Record<ThemeKey, ThemeConfig> = {
     tabActive: 'border-orange-500 text-orange-400',
     headerBg: 'bg-orange-500/5 border-orange-500/20', logo: 'bg-orange-600',
     appBg: 'bg-[#0e0905]', sidebarBg: 'bg-[#120c07]', panelBg: 'bg-[#150e08]', inputBg: 'bg-[#1c140a]',
+    progressBar: 'bg-orange-500',
   },
   ice: {
     key: 'ice', label: 'Ice', emoji: '🧊',
@@ -37,6 +39,7 @@ export const THEMES: Record<ThemeKey, ThemeConfig> = {
     tabActive: 'border-cyan-500 text-cyan-400',
     headerBg: 'bg-cyan-500/5 border-cyan-500/20', logo: 'bg-cyan-600',
     appBg: 'bg-[#040b10]', sidebarBg: 'bg-[#060e14]', panelBg: 'bg-[#081118]', inputBg: 'bg-[#0c1820]',
+    progressBar: 'bg-cyan-500',
   },
   plasma: {
     key: 'plasma', label: 'Plasma', emoji: '⚡',
@@ -49,10 +52,11 @@ export const THEMES: Record<ThemeKey, ThemeConfig> = {
     bar: 'bg-violet-500', glow: 'shadow-violet-500/20',
     tabActive: 'border-violet-500 text-violet-400',
     headerBg: 'bg-violet-500/5 border-violet-500/20', logo: 'bg-violet-600',
-    appBg: 'bg-[#080510]', sidebarBg: 'bg-[#0c0814]', panelBg: 'bg-[#0r0b18]', inputBg: 'bg-[#150r20]',
+    appBg: 'bg-[#080510]', sidebarBg: 'bg-[#0c0814]', panelBg: 'bg-[#0f0b18]', inputBg: 'bg-[#150f20]', // <-- FIXED hex codes
+    progressBar: 'bg-violet-500',
   },
-  rorest: {
-    key: 'rorest', label: 'Forest', emoji: '🌲',
+  forest: {
+    key: 'forest', label: 'Forest', emoji: '🌲',
     btn: 'bg-emerald-600 hover:bg-emerald-500 shadow-lg shadow-emerald-600/25',
     btnSm: 'bg-emerald-600 hover:bg-emerald-500',
     accent: 'text-emerald-400', accentB: 'text-emerald-300',
@@ -63,11 +67,9 @@ export const THEMES: Record<ThemeKey, ThemeConfig> = {
     tabActive: 'border-emerald-500 text-emerald-400',
     headerBg: 'bg-emerald-500/5 border-emerald-500/20', logo: 'bg-emerald-600',
     appBg: 'bg-[#04100a]', sidebarBg: 'bg-[#07130c]', panelBg: 'bg-[#091609]', inputBg: 'bg-[#0d1e0d]',
+    progressBar: 'bg-emerald-500',
   },
 }
 
 export const ThemeCtx = createContext<ThemeConfig>(THEMES.ember)
 export const useTheme = () => useContext(ThemeCtx)
-
-
-

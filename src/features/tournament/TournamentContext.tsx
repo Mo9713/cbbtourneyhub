@@ -1,6 +1,6 @@
-// src.context.TournamentContext.tsx
+// src/features/tournament/TournamentContext.tsx
 import {
-  createContext, useContext, useMemo, useCallback, type ReactNode,
+  createContext, useContext, useEffect, useMemo, useCallback, type ReactNode,
 } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 
@@ -35,15 +35,6 @@ interface TournamentContextValue {
 }
 
 const TournamentContext = createContext<TournamentContextValue | null>(null)
-
-// ── Sync context — back-compat for BracketContext until Phase 3 ──
-
-interface TournamentSyncValue {
-  loadTournaments: () => Promise<void>
-  loadGames:       (tid: string) => Promise<void>
-}
-
-const TournamentSyncContext = createContext<TournamentSyncValue | null>(null)
 
 // ── Provider ──────────────────────────────────────────────────
 
@@ -81,8 +72,12 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
     [tournaments, selectedTournamentId],
   )
 
-  // Auto-clear stale selected ID when tournament is deleted
-  useCallback(() => {
+  // FIX C-1: Was an orphaned useCallback whose return value was silently
+  // discarded, meaning the auto-navigate logic never executed. Replaced
+  // with useEffect so this side-effect actually runs when tournaments
+  // change and the selected ID no longer maps to a valid tournament
+  // (e.g. after an admin deletes the currently-viewed tournament).
+  useEffect(() => {
     if (!selectedTournamentId || !tournaments.length) return
     if (!tournaments.find((t: Tournament) => t.id === selectedTournamentId)) navigateHome()
   }, [tournaments, selectedTournamentId, navigateHome])
@@ -153,13 +148,6 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
     return null
   }, [qc])
 
-  // ── Sync context (invalidates instead of manual fetches) ──
-
-  const syncValue = useMemo<TournamentSyncValue>(() => ({
-    loadTournaments: () => qc.invalidateQueries({ queryKey: tournamentKeys.all }),
-    loadGames:       (tid) => qc.invalidateQueries({ queryKey: tournamentKeys.games(tid) }),
-  }), [qc])
-
   const value = useMemo<TournamentContextValue>(() => ({
     tournaments,
     selectedTournament,
@@ -183,11 +171,9 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
   ])
 
   return (
-    <TournamentSyncContext.Provider value={syncValue}>
-      <TournamentContext.Provider value={value}>
-        {children}
-      </TournamentContext.Provider>
-    </TournamentSyncContext.Provider>
+    <TournamentContext.Provider value={value}>
+      {children}
+    </TournamentContext.Provider>
   )
 }
 
@@ -196,12 +182,6 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
 export function useTournamentContext(): TournamentContextValue {
   const ctx = useContext(TournamentContext)
   if (!ctx) throw new Error('useTournamentContext() must be inside <TournamentProvider>')
-  return ctx
-}
-
-export function useInternalTournamentLoaders(): TournamentSyncValue {
-  const ctx = useContext(TournamentSyncContext)
-  if (!ctx) throw new Error('useInternalTournamentLoaders() must be inside <TournamentProvider>')
   return ctx
 }
 
@@ -215,6 +195,3 @@ export function useTournamentNav() {
     useTournamentContext()
   return { selectedTournament, activeView, selectTournament, navigateHome, navigateTo }
 }
-
-
-

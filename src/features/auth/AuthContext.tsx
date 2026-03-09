@@ -1,4 +1,4 @@
-// src.context.AuthContext.tsx
+// src/features/auth/AuthContext.tsx
 
 import {
   createContext,
@@ -8,12 +8,10 @@ import {
   type ReactNode,
 } from 'react'
 
-import { ThemeCtx, THEMES }      from '../../shared/utils/theme'
+import { ThemeCtx, THEMES }       from '../../shared/utils/theme'
 import { useAuth, type AuthState } from './useAuth'
 
 import AuthForm from './AuthForm'
-
-import { supabase }  from '../../lib/supabaseClient'
 
 type AuthContextValue = AuthState
 
@@ -53,12 +51,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   }, [profile?.ui_mode])
 
-  // ── Derive the active ThemeConfig ────────────────────────
- 
+  // ── Derive the active ThemeConfig ─────────────────────────
+
   const currentTheme =
     (profile?.theme && THEMES[profile.theme]) ? THEMES[profile.theme] : THEMES.ember
 
-  // ── Loading gate ──────────────────────────────────────────
+  // ── Loading gate ───────────────────────────────────────────
 
   if (appLoading) {
     return (
@@ -75,31 +73,23 @@ export function AuthProvider({ children }: AuthProviderProps) {
     )
   }
 
-  // ── Auth gate ─────────────────────────────────────────────
+  // ── Auth gate ──────────────────────────────────────────────
 
   if (!auth.user || !auth.profile) {
     return (
       <AuthContext.Provider value={auth}>
-        <AuthForm
-          onAuth={() => {
-            // The onAuthStateChange subscription will fire SIGNED_IN
-            // and cascade: user → profile fetch → appLoading false.
-            // We call getUser() here as a belt-and-suspenders nudge
-            // in case the component re-renders before the subscription
-            // event is processed (extremely rare but defensive).
-            supabase.auth.getUser().then(({ data }) => {
-              if (data.user) {
-                // The subscription will handle setUser — no direct call needed.
-                // This is intentionally a no-op trigger.
-              }
-            })
-          }}
-        />
+        {/* FIX W-4: The previous onAuth callback fired a real supabase.auth.getUser()
+            network request on every login and then discarded the result entirely
+            inside an empty if-block. The comment even admitted it was "a no-op
+            trigger". The onAuthStateChange subscription in useAuth.ts handles the
+            full SIGNED_IN → setUser → fetchProfile → appLoading:false cascade
+            automatically. No nudge is needed here. */}
+        <AuthForm onAuth={() => {}} />
       </AuthContext.Provider>
     )
   }
 
-  // ── Authenticated render ──────────────────────────────────
+  // ── Authenticated render ───────────────────────────────────
 
   return (
     <AuthContext.Provider value={auth}>
@@ -110,7 +100,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   )
 }
 
-// ── Consumer hook ─────────────────────────────────────────────
+// ── Consumer hooks ─────────────────────────────────────────────
 
 export function useAuthContext(): AuthContextValue {
   const ctx = useContext(AuthContext)
@@ -125,9 +115,5 @@ export function useAuthContext(): AuthContextValue {
 
 export function useProfile(): NonNullable<AuthState['profile']> {
   const { profile } = useAuthContext()
-
   return profile!
 }
-
-
-

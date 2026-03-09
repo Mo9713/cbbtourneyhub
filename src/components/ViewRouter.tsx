@@ -1,4 +1,4 @@
-// src.components.ViewRouter.tsx
+// src/components/ViewRouter.tsx
 import { useCallback } from 'react'
 
 import { useAuthContext, SettingsView }              from '../features/auth'
@@ -20,7 +20,10 @@ export default function ViewRouter() {
 
   if (!profile) return null
 
-  const handleSnoop = (id: string) => openSnoop(id)
+  // FIX N-3: Was an inline arrow function recreated on every render and
+  // passed as a prop, preventing stable reference equality for LeaderboardView.
+  // Wrapped in useCallback for referential stability.
+  const handleSnoop = useCallback((id: string) => openSnoop(id), [openSnoop])
 
   const handleDeleteGame = useCallback((game: Game) => {
     setConfirmModal({
@@ -67,12 +70,15 @@ export default function ViewRouter() {
       return <LeaderboardView onSnoop={handleSnoop} />
 
     case 'settings':
+      // FIX W-2: Was calling useUIStore.getState().pushToast, bypassing the
+      // reactive Zustand subscription. pushToast is already destructured above
+      // from useUIStore() — use that stable reference directly.
       return (
         <SettingsView
           profile={profile}
           userEmail={user?.email ?? ''}
           onProfileUpdate={setProfile}
-          push={useUIStore.getState().pushToast}
+          push={pushToast}
         />
       )
 
@@ -84,5 +90,3 @@ export default function ViewRouter() {
       return selectedTournament ? <BracketView /> : <HomeView />
   }
 }
-
-
