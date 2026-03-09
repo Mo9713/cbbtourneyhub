@@ -1,13 +1,11 @@
 // src/components/AppShell.tsx
-
 // Atomic Layout. View-agnostic skeleton.
-import { useCallback, useMemo } from 'react'
-import { PanelLeftOpen }        from 'lucide-react'
+import { useCallback } from 'react'
+import { PanelLeftOpen } from 'lucide-react'
 
-import { useTournamentContext, useTournamentList }  from '../features/tournament'
-import { SnoopModal }                               from '../features/bracket'
-import { AddTournamentModal }                       from '../features/tournament'
-import { useLeaderboardRaw }                        from '../features/leaderboard'
+import { useTournamentContext }    from '../features/tournament'
+import { SnoopModal }              from '../features/bracket'
+import { AddTournamentModal }      from '../features/tournament'
 
 import {
   Sidebar, MobileHeader, Toaster, ConfirmModal,
@@ -18,6 +16,28 @@ import { useUIStore }      from '../store/uiStore'
 
 import ViewRouter from './ViewRouter'
 import type { TemplateKey } from '../shared/types'
+
+// FIX: AppShell previously called `useLeaderboardRaw()` unconditionally,
+// firing 3 parallel Supabase queries (SELECT * FROM picks/games/profiles) on
+// every cold start for every user — solely to pass `allPicks` and
+// `allProfiles` down to SnoopModal, which most users (all non-admins) never
+// open. This was an eager fetch of ~potentially thousands of rows with zero
+// benefit for the vast majority of sessions.
+//
+// SnoopModal is now self-contained: it calls `useLeaderboardRaw()` itself,
+// so the fetch only fires when an admin actually opens the modal. React
+// Query deduplication means if LeaderboardView is open simultaneously,
+// the two hook calls share one in-flight request and one cache entry.
+//
+// Consequence: AppShell no longer needs:
+//   - `useLeaderboardRaw` import
+//   - `useTournamentList` import (was used only to pass tournaments to SnoopModal)
+//   - `allProfiles`, `allPicks`, `snoopProfile` variables
+//   - `useMemo` import (snoopProfile was its only consumer)
+//
+// SnoopModal's prop interface has also been reduced: it now accepts
+// `targetId: string` instead of `targetProfile: Profile` + `allPicks: Pick[]`
+// + `tournaments: Tournament[]` + `gamesCache: Record<string, Game[]>`.
 
 export default function AppShell() {
   const theme = useTheme()
@@ -31,11 +51,7 @@ export default function AppShell() {
     toasts,            pushToast,
   } = useUIStore()
 
-  const { gamesCache, createTournament } = useTournamentContext()
-  const { tournaments }  = useTournamentList()
-  const { data: lbRaw }  = useLeaderboardRaw()
-  const allProfiles      = lbRaw?.allProfiles ?? []
-  const allPicks         = lbRaw?.allPicks    ?? []
+  const { createTournament } = useTournamentContext()
 
   useRealtimeSync()
 
@@ -47,11 +63,6 @@ export default function AppShell() {
     if (err) pushToast(err, 'error')
     else     pushToast(`"${name}" created!`, 'success')
   }, [createTournament, pushToast])
-
-  const snoopProfile = useMemo(
-    () => snoopTargetId ? (allProfiles.find(p => p.id === snoopTargetId) ?? null) : null,
-    [snoopTargetId, allProfiles],
-  )
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-950 text-white">
@@ -106,12 +117,9 @@ export default function AppShell() {
       </div>
 
       {/* Global overlays */}
-      {snoopTargetId && snoopProfile && (
+      {snoopTargetId && (
         <SnoopModal
-          targetProfile={snoopProfile}
-          tournaments={tournaments.filter(t => t.status !== 'draft')}
-          gamesCache={gamesCache}
-          allPicks={allPicks}
+          targetId={snoopTargetId}
           onClose={closeSnoop}
         />
       )}
@@ -126,5 +134,3 @@ export default function AppShell() {
     </div>
   )
 }
-
-

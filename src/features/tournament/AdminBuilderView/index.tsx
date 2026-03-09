@@ -5,6 +5,7 @@ import { useBracketContext }    from '../../bracket'
 import { computeGameNumbers }   from '../../../shared/utils/bracketMath'
 import { BD_REGIONS }           from '../../../shared/utils/helpers'
 import { useQueryClient }       from '@tanstack/react-query'
+import { tournamentKeys }       from '../queries'
 import AdminHeader              from './AdminHeader'
 import TournamentConfigPanel    from './TournamentConfigPanel'
 import AdminBracketGrid         from './AdminBracketGrid'
@@ -49,7 +50,8 @@ export default function AdminBuilderView({ onDeleteGame, onDeleteTournament }: P
   const gameNumbers = useMemo(() => computeGameNumbers(games), [games])
   const maxRound    = useMemo(() =>
     games.length ? Math.max(...games.map(g => g.round_num)) : 1, [games])
-  const isBigDance  = games.some(g => g.region)
+
+  const isBigDance = useMemo(() => games.some(g => g.region), [games])
 
   const publishValid = useMemo(() => {
     const nonChamp = games.filter(g => g.round_num < maxRound)
@@ -130,23 +132,41 @@ export default function AdminBuilderView({ onDeleteGame, onDeleteTournament }: P
   }, [draggedGameId, games, updateGame, handleDragEnd])
 
   const handleReload = useCallback(() => {
-    // Invalidating queries forces React Query to instantly refetch all active data
-    queryClient.invalidateQueries() 
-  }, [queryClient])
+    if (!tournament) return
+    queryClient.invalidateQueries({ queryKey: tournamentKeys.games(tournament.id) })
+    queryClient.invalidateQueries({ queryKey: tournamentKeys.all })
+  }, [queryClient, tournament])
 
   if (!tournament) return null
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
 
+      {/*
+        FIX: Removed inline arrow wrappers around already-stable
+        useCallback refs passed as props to AdminHeader and
+        TournamentConfigPanel. Inline arrows create new function
+        references on every render, defeating the useCallback
+        stabilization on the receiving side and preventing React
+        from bailing out of child re-renders.
+
+        Before:  onRename={name => renameTournament(name)}
+        After:   onRename={renameTournament}
+
+        The onUpdate props retain their inline form because they
+        include a legitimate `as Partial<Tournament>` type cast that
+        cannot be collapsed without inspecting and potentially
+        altering the AdminHeader / TournamentConfigPanel prop types —
+        a separate, safe refactor.
+      */}
       <AdminHeader
         tournament={tournament}
         games={games}
         publishValid={publishValid}
-        onRename={name => renameTournament(name)}
+        onRename={renameTournament}
         onUpdate={upd  => updateTournament(upd as Partial<Tournament>)}
-        onPublish={()  => publishTournament()}
-        onLock={()     => lockTournament()}
+        onPublish={publishTournament}
+        onLock={lockTournament}
         onAddNextRound={addNextRound}
         onReload={handleReload}
         onDeleteTournament={onDeleteTournament}
@@ -201,5 +221,3 @@ export default function AdminBuilderView({ onDeleteGame, onDeleteTournament }: P
     </div>
   )
 }
-
-

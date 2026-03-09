@@ -8,23 +8,40 @@
 //
 // Responsibilities:
 //   1. Supabase session lifecycle  (subscribe, unsubscribe, sign-out)
-//   2. Profile hydration           (fetch on login, clear on logout)
-//   3. Optimistic profile updates  (ui_mode, timezone, arbitrary fields)
-//   4. appLoading gate             (blocks render until session is known)
-//
-// What this hook does NOT do:
-//   - Apply CSS classes to the DOM  (AuthContext.tsx owns that side-effect)
-//   - Know about ThemeCtx           (AuthContext.tsx composes the providers)
-//   - Know about routing.views      (TournamentContext.tsx owns activeView)
+//   2. Profile hydration           (React Query — replaces manual useEffect)
+//   3. Optimistic profile updates  (ui_mode, timezone — via qc.setQueryData)
+//   4. appLoading gate             (blocks render until session + profile known)
 // ─────────────────────────────────────────────────────────────
 
 import { useState, useEffect, useCallback } from 'react'
-import type { User }                        from '@supabase/supabase-js'
+import { useQuery, useQueryClient }          from '@tanstack/react-query'
+import type { User }                         from '@supabase/supabase-js'
 
 import { supabase }        from '../../lib/supabaseClient'
 import * as profileService from './profileService'
 
 import type { Profile, UIMode } from '../../shared/types'
+
+// ── Profile query key factory ─────────────────────────────────
+//
+// Keyed on userId so that switching accounts in the same browser
+// session never serves stale data from the previous user's cache.
+// Defined here (not in profileService) because this is the only
+// consumer — no barrel export needed.
+const profileKeys = {
+  me: (userId: string | null | undefined) =>
+    ['profile', 'me', userId ?? 'guest'] as const,
+}
+
+// ── Unwrap helper ─────────────────────────────────────────────
+
+async function unwrap<T>(
+  p: Promise<{ ok: true; data: T } | { ok: false; error: string }>,
+): Promise<T> {
+  const r = await p
+  if (!r.ok) throw new Error(r.error)
+  return r.data
+}
 
 // ── Public shape ──────────────────────────────────────────────
 
@@ -48,14 +65,15 @@ export interface AuthState {
   /**
    * Direct setter for callers that already have the full updated
    * Profile object (e.g. SettingsView after a successful save).
-   * Prefer the typed action helpers below for single-field updates.
+   * Writes directly to the React Query cache — triggers a re-render
+   * in all consumers on the next tick.
    */
   setProfile:  (p: Profile | null) => void
 
   /**
    * Persists a ui_mode change to Supabase and updates local state.
-   * Uses an optimistic update: local state changes immediately and
-   * reverts if the Supabase call fails.
+   * Uses an optimistic update: cache updates immediately and reverts
+   * if the Supabase call fails.
    *
    * @returns error string on failure, null on success
    */
@@ -66,7 +84,7 @@ export interface AuthState {
    * Uses an optimistic update pattern (same as updateUIMode).
    *
    * DISPLAY ONLY — this value must never be passed into isPicksLocked()
-   * or any epoch comparison. See src.utils.time.ts for the architecture rule.
+   * or any epoch comparison. See src/shared/utils/time.ts for the rule.
    *
    * @param tz  IANA timezone string, or null to reset to app default
    * @returns   error string on failure, null on success
@@ -85,39 +103,34 @@ export interface AuthState {
 // ── Hook implementation ───────────────────────────────────────
 
 export function useAuth(): AuthState {
-  const [user,        setUser]        = useState<User | null>(null)
-  const [profile,     setProfile]     = useState<Profile | null>(null)
-  const [appLoading,  setAppLoading]  = useState(true)
+  const qc = useQueryClient()
+
+  const [user,           setUser]           = useState<User | null>(null)
+
+  // sessionChecked: false until the initial getUser() call resolves.
+  // Required to distinguish "app just booted, session unknown" from
+  // "checked and no user" — prevents appLoading from resolving to
+  // false before we actually know whether a session exists.
+  const [sessionChecked, setSessionChecked] = useState(false)
 
   // ── Session lifecycle ─────────────────────────────────────
   //
   // Strategy: one canonical subscription drives all auth state.
   //
-  // We call getUser() once on mount to seed the initial state
-  // synchronously from the local storage cache (fast path, no
-  // network round-trip needed for returning users). The subscription
-  // then handles every subsequent state change (sign-in, sign-out,
-  // token refresh, session expiry) for the lifetime of the app.
-  //
-  // We do NOT use getSession() because it does not re-validate the
-  // JWT against the Supabase server. getUser() does, which prevents
-  // a tampered local storage token from passing as authenticated.
+  // We call getUser() once on mount to validate the JWT with the
+  // Supabase server (getSession() does NOT re-validate — it accepts
+  // a tampered local-storage token). The subscription handles every
+  // subsequent event for the lifetime of the app.
   useEffect(() => {
-    let cancelled = false  // guard against state updates after unmount
+    let cancelled = false
 
-    // ── Initial check ──────────────────────────────────────
-    // getUser() validates the token with the Supabase server.
-    // If no valid session exists, data.user will be null and
-    // appLoading will resolve quickly.
     supabase.auth.getUser().then(({ data }) => {
-      if (!cancelled) setUser(data.user ?? null)
+      if (!cancelled) {
+        setUser(data.user ?? null)
+        setSessionChecked(true)
+      }
     })
 
-    // ── Realtime subscription ──────────────────────────────
-    // Covers: SIGNED_IN, SIGNED_OUT, TOKEN_REFRESHED, USER_UPDATED,
-    // PASSWORD_RECOVERY, MFA_CHALLENGE_VERIFIED.
-    // We only care about the session's user, so we normalise all
-    // events down to a single `setUser` call.
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!cancelled) setUser(session?.user ?? null)
     })
@@ -128,100 +141,131 @@ export function useAuth(): AuthState {
     }
   }, []) // runs once — the subscription covers the full lifetime
 
-  // ── Profile hydration ─────────────────────────────────────
+  // ── Profile query ─────────────────────────────────────────
   //
-  // Whenever `user` changes:
-  //   • null  → clear profile, stop loading (auth screen will render)
-  //   • User  → fetch profile from Supabase, then stop loading
+  // FIX: The previous implementation used a manual useEffect +
+  // profileService.fetchProfile() call to hydrate the profile, managing
+  // loading state with a local useState. This had several failure modes:
   //
-  // setAppLoading(true) before the async fetch ensures no child
-  // context (TournamentContext, BracketContext) tries to boot
-  // with a stale or missing profile.
-  useEffect(() => {
-    if (!user) {
-      setProfile(null)
-      setAppLoading(false)
-      return
-    }
+  //   • On a transient network error, fetchProfile() would silently fail.
+  //     appLoading dropped to false but profile stayed null — the user
+  //     saw the AuthForm even though they were authenticated, with no
+  //     indication of what went wrong and no retry attempt.
+  //
+  //   • Profile data was invisible to React Query DevTools.
+  //
+  //   • Optimistic updates in updateUIMode / updateTimezone required
+  //     manual snapshot/revert logic against a local useState variable,
+  //     rather than using qc.setQueryData against the canonical cache.
+  //
+  // Now uses useQuery. Benefits:
+  //   • Automatic retry (2 attempts) on transient failure.
+  //   • Visible in DevTools as ['profile', 'me', userId].
+  //   • Optimistic updates are cache writes (qc.setQueryData).
+  //   • signOut() calls qc.removeQueries() to evict the entry,
+  //     preventing stale data from bleeding into the next login.
+  //
+  // staleTime: Infinity — profile data only changes when the user
+  // explicitly saves in SettingsView. Background refetches would
+  // overwrite in-flight optimistic updates.
+  const {
+    data:      queryProfile,
+    isLoading: profileLoading,
+  } = useQuery({
+    queryKey: profileKeys.me(user?.id),
+    queryFn:  () => unwrap(profileService.fetchProfile(user!.id)),
+    enabled:  !!user,
+    retry:    2,
+    staleTime: Infinity,
+  })
 
-    let cancelled = false
-    setAppLoading(true)
+  const profile = queryProfile ?? null
 
-    profileService.fetchProfile(user.id).then(result => {
-      if (cancelled) return
-      if (result.ok) setProfile(result.data)
-      // If fetch fails we still stop loading — the app can render
-      // an error state. Failing silently here would freeze the UI.
-      setAppLoading(false)
-    })
+  // appLoading truth table:
+  //   !sessionChecked                         → true  (still doing initial getUser())
+  //   sessionChecked && !user                 → false (definitely logged out)
+  //   sessionChecked && user && profileLoading → true  (profile fetch in flight)
+  //   sessionChecked && user && !profileLoading → false (profile ready or errored)
+  //
+  // Note: TanStack Query v5 defines `isLoading = isPending && isFetching`.
+  // When `enabled: false` (user is null), isFetching is false, so
+  // profileLoading is false — no false positive on the logged-out path.
+  const appLoading = !sessionChecked || (!!user && profileLoading)
 
-    return () => { cancelled = true }
-  }, [user])
+  // ── Action: setProfile ────────────────────────────────────
+  //
+  // Direct cache write. Used by SettingsView after saving a full
+  // profile update (display name, avatar, etc.) so the context
+  // reflects the server-confirmed state without a refetch.
+  const setProfile = useCallback((p: Profile | null) => {
+    qc.setQueryData(profileKeys.me(user?.id), p)
+  }, [user?.id, qc])
 
   // ── Action: updateUIMode ──────────────────────────────────
   //
-  // Optimistic update pattern:
-  //   1. Snapshot the previous profile value.
-  //   2. Apply the change to local state immediately (instant UI).
+  // Optimistic update pattern via the query cache:
+  //   1. Snapshot the previous cache value.
+  //   2. Write the optimistic value immediately (instant UI response).
   //   3. Persist to Supabase.
-  //   4a. On success: replace local state with the server-confirmed
-  //       Profile (ensures any server-side defaults are reflected).
-  //   4b. On failure: revert to the snapshot and return the error.
+  //   4a. On success: write the server-confirmed Profile to cache.
+  //   4b. On failure: restore the snapshot and return the error.
   const updateUIMode = useCallback(async (mode: UIMode): Promise<string | null> => {
     if (!profile) return 'Not authenticated'
 
-    // 1 + 2: snapshot + optimistic apply
+    const key  = profileKeys.me(user?.id)
     const prev = profile
-    setProfile({ ...profile, ui_mode: mode })
+    qc.setQueryData(key, { ...profile, ui_mode: mode })       // optimistic
 
-    // 3: persist
     const result = await profileService.updateUIMode(mode)
 
     if (result.ok) {
-      // 4a: replace with server-confirmed version
-      setProfile(result.data)
+      qc.setQueryData(key, result.data)                       // server-confirmed
       return null
     } else {
-      // 4b: revert
-      setProfile(prev)
+      qc.setQueryData(key, prev)                              // revert
       return result.error
     }
-  }, [profile])
+  }, [profile, user?.id, qc])
 
   // ── Action: updateTimezone ────────────────────────────────
   //
   // Same optimistic-update pattern as updateUIMode.
-  // The timezone value is validated by the SettingsView before
-  // calling this — we do not re-validate the IANA string here.
+  // The timezone value is validated by SettingsView before calling
+  // this — we do not re-validate the IANA string here.
   const updateTimezone = useCallback(async (tz: string | null): Promise<string | null> => {
     if (!profile) return 'Not authenticated'
 
+    const key  = profileKeys.me(user?.id)
     const prev = profile
-    setProfile({ ...profile, timezone: tz })
+    qc.setQueryData(key, { ...profile, timezone: tz })        // optimistic
 
     const result = await profileService.updateTimezone(tz)
 
     if (result.ok) {
-      setProfile(result.data)
+      qc.setQueryData(key, result.data)                       // server-confirmed
       return null
     } else {
-      setProfile(prev)
+      qc.setQueryData(key, prev)                              // revert
       return result.error
     }
-  }, [profile])
+  }, [profile, user?.id, qc])
 
   // ── Action: signOut ───────────────────────────────────────
   //
-  // We only call supabase.auth.signOut() here. We intentionally
-  // do NOT manually call setUser(null) or setProfile(null) —
-  // the onAuthStateChange subscription fires SIGNED_OUT immediately
-  // after signOut() resolves, which triggers setUser(null), which
-  // triggers the profile useEffect above that clears the profile.
-  // Manual clearing here would cause a double state update.
+  // We only call supabase.auth.signOut() here. We do NOT manually
+  // setUser(null) — the onAuthStateChange subscription fires
+  // SIGNED_OUT immediately, which triggers setUser(null).
+  //
+  // We DO evict the profile cache entry on success. This prevents
+  // stale profile data from being served if a different user logs
+  // into the same browser session (dev scenario, shared computers).
   const signOut = useCallback(async (): Promise<string | null> => {
     const { error } = await supabase.auth.signOut()
+    if (!error) {
+      qc.removeQueries({ queryKey: profileKeys.me(user?.id) })
+    }
     return error ? error.message : null
-  }, [])
+  }, [user?.id, qc])
 
   return {
     user,
@@ -233,9 +277,3 @@ export function useAuth(): AuthState {
     signOut,
   }
 }
-
-
-
-
-
-

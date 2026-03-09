@@ -1,6 +1,6 @@
 // src/features/leaderboard/queries.ts
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchLeaderboardData }     from './api'
+import { useQuery } from '@tanstack/react-query'
+import { fetchLeaderboardData } from './api'
 
 export const leaderboardKeys = {
   raw: ['leaderboard', 'raw'] as const,
@@ -24,9 +24,9 @@ export function useLeaderboardRaw() {
   })
 }
 
-/** Convenience: expose the invalidator so useRealtimeSync can call it. */
-export function useLeaderboardInvalidator() {
-  const qc = useQueryClient()
-  return () => qc.invalidateQueries({ queryKey: leaderboardKeys.raw })
-}
-
+// FIX: useLeaderboardInvalidator() was exported here but never called
+// anywhere in the codebase. useRealtimeSync calls qc.invalidateQueries()
+// directly with leaderboardKeys.raw. Exporting an unused hook function
+// creates dead API surface — new contributors may import it believing it
+// is the intended integration point, and it forces an unnecessary
+// useQueryClient() call at every call site. Removed entirely.

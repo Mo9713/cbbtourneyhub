@@ -1,29 +1,32 @@
 // src/components/ViewRouter.tsx
 import { useCallback } from 'react'
 
-import { useAuthContext, SettingsView }              from '../features/auth'
+import { useAuthContext, SettingsView }   from '../features/auth'
 import { useTournamentContext, HomeView,
-         AdminBuilderView }                          from '../features/tournament'
-import { BracketView, useGameMutations }             from '../features/bracket'
-import { LeaderboardView }                           from '../features/leaderboard'
+         AdminBuilderView }               from '../features/tournament'
+import { BracketView, useGameMutations }  from '../features/bracket'
+import { LeaderboardView }                from '../features/leaderboard'
 
 import { useUIStore } from '../store/uiStore'
 import type { Game }  from '../shared/types'
 
 export default function ViewRouter() {
-  const { profile, user, setProfile }      = useAuthContext()
+  const { profile, user, setProfile }   = useAuthContext()
   const { activeView, selectedTournament,
-          gamesCache, deleteTournament }    = useTournamentContext()
-  const { deleteGame }                     = useGameMutations()
+          gamesCache, deleteTournament } = useTournamentContext()
+  const { deleteGame }                  = useGameMutations()
   const { openSnoop, setConfirmModal,
-          pushToast }                      = useUIStore()
+          pushToast }                   = useUIStore()
 
   if (!profile) return null
 
-  // FIX N-3: Was an inline arrow function recreated on every render and
-  // passed as a prop, preventing stable reference equality for LeaderboardView.
-  // Wrapped in useCallback for referential stability.
-  const handleSnoop = useCallback((id: string) => openSnoop(id), [openSnoop])
+  // FIX: Was `useCallback((id: string) => openSnoop(id), [openSnoop])`.
+  // Zustand action creators are stable by contract — the store guarantees
+  // referential equality across renders (same function object, always).
+  // Wrapping a stable function in useCallback adds overhead (hook call,
+  // dependency tracking, memory for the memoized ref) with zero benefit.
+  // Direct assignment is both more accurate and more readable.
+  const handleSnoop = openSnoop
 
   const handleDeleteGame = useCallback((game: Game) => {
     setConfirmModal({
@@ -70,9 +73,6 @@ export default function ViewRouter() {
       return <LeaderboardView onSnoop={handleSnoop} />
 
     case 'settings':
-      // FIX W-2: Was calling useUIStore.getState().pushToast, bypassing the
-      // reactive Zustand subscription. pushToast is already destructured above
-      // from useUIStore() — use that stable reference directly.
       return (
         <SettingsView
           profile={profile}

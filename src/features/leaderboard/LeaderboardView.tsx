@@ -20,7 +20,8 @@ export default function LeaderboardView({ onSnoop }: LeaderboardViewProps) {
   const { tournaments } = useTournamentList()
   const { data: raw }   = useLeaderboardRaw()
 
-  // Admin filter — local UI state, not server state
+  // Admin filter — local UI state, not server state.
+  // Initialized with all current tournament IDs checked.
   const [selectedTournaments, setSelectedTournaments] = useState<Set<string>>(
     () => new Set(tournaments.map(t => t.id)),
   )
@@ -33,19 +34,40 @@ export default function LeaderboardView({ onSnoop }: LeaderboardViewProps) {
     })
   }
 
-  // FIX C-3 / N-5: Was a useMemo with a setState side-effect and no return
-  // value — a misuse of the API that is unsafe in React 19 Concurrent Mode
-  // (useMemo can execute multiple times per render, scheduling redundant
-  // state updates and risking an infinite render loop). Replaced with
-  // useEffect, which is the correct hook for side-effects that sync derived
-  // state with an external input.
+  // FIX: The previous effect only ever ADDED new tournament IDs to the
+  // Set. It never removed IDs for tournaments that had been deleted. A deleted
+  // tournament's ID would persist in `selectedTournaments` forever, causing
+  // `computeLeaderboard` to filter `allGames` for a tournament_id that no
+  // longer exists — contributing zero games to the score calculation and
+  // silently deflating everyone's scores without any visible indication.
+  //
+  // The reconciliation now does both directions in one pass:
+  //   1. ADD new arrivals — a tournament created after mount is auto-selected
+  //      (preserving the "new tournaments start checked" default).
+  //   2. PRUNE ghosts — any ID no longer present in `tournaments` is evicted
+  //      so dead tournament_ids can never reach computeLeaderboard.
+  //
+  // Intentional user deselections are preserved by rule: an ID the user
+  // unchecked is already absent from `next`, so the ADD branch won't fire
+  // for it; the PRUNE branch only removes IDs absent from the server list.
   useEffect(() => {
     setSelectedTournaments(prev => {
-      const next    = new Set(prev)
-      let   changed = false
+      const serverIds = new Set(tournaments.map(t => t.id))
+      const next      = new Set(prev)
+      let   changed   = false
+
+      // 1. Auto-select any brand-new tournament
       tournaments.forEach(t => {
         if (!next.has(t.id)) { next.add(t.id); changed = true }
       })
+
+      // 2. Evict any ID whose tournament no longer exists on the server
+      next.forEach(id => {
+        if (!serverIds.has(id)) { next.delete(id); changed = true }
+      })
+
+      // Return prev reference unchanged when nothing actually changed
+      // to avoid a redundant re-render.
       return changed ? next : prev
     })
   }, [tournaments])
