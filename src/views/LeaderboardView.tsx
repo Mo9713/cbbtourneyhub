@@ -82,13 +82,13 @@ export default function LeaderboardView({ onSnoop }: LeaderboardViewProps) {
         ) : (
           <div className="space-y-2 max-w-3xl mx-auto">
 
-            {/* Column headers */}
-            <div className="grid grid-cols-[auto_1fr_80px_100px_120px] gap-3 px-4 pb-1">
-              <div className="w-8" />
+            {/* Column headers (Responsive) */}
+            <div className="grid grid-cols-[auto_1fr_auto] md:grid-cols-[auto_1fr_80px_100px_120px] gap-3 px-4 pb-1">
+              <div className="w-6 md:w-8" />
               <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">Player</span>
               <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest text-right">Score</span>
-              <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest text-right">Accuracy</span>
-              <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest text-right">Max Possible</span>
+              <span className="hidden md:block text-[10px] font-bold text-slate-600 uppercase tracking-widest text-right">Accuracy</span>
+              <span className="hidden md:block text-[10px] font-bold text-slate-600 uppercase tracking-widest text-right">Max Possible</span>
             </div>
 
             {leaderboard.map((entry, idx) => {
@@ -99,26 +99,28 @@ export default function LeaderboardView({ onSnoop }: LeaderboardViewProps) {
               return (
                 <div
                   key={entry.profile.id}
-                  className={`grid grid-cols-[auto_1fr_80px_100px_120px] gap-3 items-center px-4 py-3 rounded-xl border transition-all
+                  className={`grid grid-cols-[auto_1fr_auto] md:grid-cols-[auto_1fr_80px_100px_120px] gap-3 items-center px-4 py-3 rounded-xl border transition-all
                     ${isMe
                       ? `${theme.bg} ${theme.border} border`
                       : 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
                     }`}
                 >
                   {/* Rank */}
-                  <div className="w-8 text-center">
+                  <div className="w-6 md:w-8 text-center">
                     {idx < 3
                       ? <span className="text-base leading-none">{medals[idx]}</span>
                       : <span className="text-xs font-bold text-slate-600">#{idx + 1}</span>
                     }
                   </div>
 
-                  {/* Player — removed showTeam for perfect centering */}
+                  {/* Player */}
                   <button
                     onClick={() => isAdmin && !isMe ? onSnoop(entry.profile.id) : undefined}
-                    className={`flex items-center gap-3 min-w-0 text-left ${isAdmin && !isMe ? 'cursor-pointer group' : 'cursor-default'}`}
+                    className={`flex items-center gap-2 md:gap-3 min-w-0 text-left ${isAdmin && !isMe ? 'cursor-pointer group' : 'cursor-default'}`}
                   >
-                    <Avatar profile={entry.profile} size="sm" />
+                    <div className="flex-shrink-0">
+                      <Avatar profile={entry.profile} size="md" />
+                    </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5">
                         <span className={`text-sm font-semibold truncate ${isMe ? theme.accent : 'text-white'}`}>
@@ -147,18 +149,18 @@ export default function LeaderboardView({ onSnoop }: LeaderboardViewProps) {
                     <span className="text-[10px] text-slate-600 block">pts</span>
                   </div>
 
-                  {/* Accuracy */}
-                  <div className="text-right">
+                  {/* Accuracy (Hidden on Mobile) */}
+                  <div className="hidden md:block text-right">
                     <span className="text-sm font-bold text-slate-300">
                       {entry.correct}/{entry.total}
                     </span>
-                    <span className="text-[10px] text-slate-600 block flex items-center justify-end gap-0.5">
+                    <span className="text-[10px] text-slate-600 flex items-center justify-end gap-0.5">
                       <TrendingUp size={8} /> {pct}%
                     </span>
                   </div>
 
-                  {/* Max possible */}
-                  <div className="text-right">
+                  {/* Max possible (Hidden on Mobile) */}
+                  <div className="hidden md:block text-right">
                     <span className="text-sm font-bold text-slate-400">{entry.maxPossible}</span>
                     <span className="text-[10px] text-slate-600 block">ceiling</span>
                   </div>

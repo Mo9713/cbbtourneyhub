@@ -44,13 +44,6 @@ export default function Sidebar({ onClose, onOpenAddTournament, onToggleDesktop 
 
   const nav = (fn: () => void) => { fn(); onClose() }
 
-  // Admin tab removed from here
-  const navItems: Array<{ view: ActiveView; label: string; icon: React.ReactNode }> = [
-    { view: 'home',        label: 'Home',        icon: <Home     size={16} /> },
-    { view: 'leaderboard', label: 'Leaderboard', icon: <BarChart2 size={16} /> },
-    { view: 'settings',    label: 'Settings',    icon: <Settings  size={16} /> },
-  ]
-
   return (
     <div className={`flex flex-col w-64 h-full ${theme.sidebarBg} border-r border-slate-800 overflow-hidden`}>
 
@@ -74,20 +67,23 @@ export default function Sidebar({ onClose, onOpenAddTournament, onToggleDesktop 
 
       {/* Nav */}
       <nav className="px-3 py-3 space-y-0.5 border-b border-slate-800">
-        {/* We use the Avatar component directly in the nav list! */}
         <button onClick={() => nav(() => navigateHome())}
           className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all ${activeView === 'home' ? `${theme.bg} ${theme.accent}` : 'text-slate-400 hover:text-white hover:bg-slate-800/60'}`}>
-          <Home size={16} /> Home
+          <div className="w-8 h-8 flex items-center justify-center flex-shrink-0">
+            <Home size={24} />
+          </div>
+          Home
         </button>
         <button onClick={() => nav(() => navigateTo('leaderboard'))}
           className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all ${activeView === 'leaderboard' ? `${theme.bg} ${theme.accent}` : 'text-slate-400 hover:text-white hover:bg-slate-800/60'}`}>
-          <BarChart2 size={16} /> Leaderboard
+          <div className="w-8 h-8 flex items-center justify-center flex-shrink-0">
+            <BarChart2 size={24} />
+          </div>
+          Leaderboard
         </button>
         <button onClick={() => nav(() => navigateTo('settings'))}
           className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all ${activeView === 'settings' ? `${theme.bg} ${theme.accent}` : 'text-slate-400 hover:text-white hover:bg-slate-800/60'}`}>
-          <div className="w-4 h-4 rounded-full overflow-hidden flex-shrink-0 border border-slate-700">
-             <Avatar profile={profile} size="sm" />
-          </div> 
+          <Avatar profile={profile} size="md" />
           Profile
         </button>
       </nav>
@@ -143,9 +139,9 @@ export default function Sidebar({ onClose, onOpenAddTournament, onToggleDesktop 
         </div>
       )}
 
-      {/* User footer (Moon toggle removed) */}
+      {/* User footer */}
       <div className="px-4 py-3 border-t border-slate-800 flex items-center gap-3">
-        <Avatar profile={profile} size="sm" />
+        <Avatar profile={profile} size="md" />
         <div className="flex-1 min-w-0">
           <p className="text-xs font-semibold text-white truncate">{profile.display_name}</p>
           {profile.is_admin && (
