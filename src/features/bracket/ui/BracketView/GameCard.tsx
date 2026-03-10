@@ -2,26 +2,28 @@
 //
 // Purely presentational. No async calls.
 //
-// ── Visual state matrix for team rows ────────────────────────────────────────
+// ── Visual state matrix ───────────────────────────────────────────────────────
 //
-//  WINNER (not picked) : bg-[#022c22]  ring-2 ring-inset ring-emerald-500
+//  WINNER (any)        : bg-[#022c22]  ring-2 ring-inset ring-emerald-500
 //                        text-emerald-400 font-black
+//  WINNER + PICKED     : same + ✓ (emerald) on right
 //
-//  WINNER (user picked): same bg + ring PLUS ✓ on the far right
+//  ELIMINATED + PICKED : text stays default styling but line-through rose
+//                        ✕ (rose) on right  ← dot is SUPPRESSED
 //
-//  ELIMINATED (picked) : line-through text-rose-600 decoration-rose-600 decoration-2
-//                        ✕ on the far right
+//  ELIMINATED + NOT PICKED : row bg-black/30 (subtle fade), text-slate-500
+//                            no decoration, no icon
 //
-//  ELIMINATED (not picked): text-slate-600 font-normal  ← fade only, NO strikethrough
-//
-//  PENDING (picked)    : text-sky-300 font-bold  +  sky blue dot on the far right
+//  PENDING + PICKED    : text-slate-200 (unchanged from default)
+//                        emerald dot on right  ← only if NOT eliminated
 //
 //  DEFAULT             : text-slate-200
 //
-// ── Connector anchors ────────────────────────────────────────────────────────
-//  data-in1/data-in2 → 0×0 absolute left-0 top-1/2 inside each row.
-//  data-out          → 0×0 absolute right-0 top-1/2 on the card wrapper.
-//  Do not move these — the SVG measurement system depends on them.
+// ── Right-side indicator priority (mutually exclusive) ───────────────────────
+//  1. isWinner && isPicked          → ✓
+//  2. isEliminated && isPicked      → ✕  (dot never shown in this branch)
+//  3. isPicked && !isWinner && !isEliminated → emerald dot
+//  Only one ever renders per row.
 
 import { useBracketView } from './BracketViewContext'
 import type { Game, Pick } from '../../../../shared/types'
@@ -52,7 +54,7 @@ export default function GameCard({
 
   const hasWinner = !!game.actual_winner
 
-  // Card-level: subtle emerald glow when game has a confirmed result
+  // Card-level glow when game has a confirmed result
   const cardBorderCls   = hasWinner ? 'border-emerald-900/50' : 'border-[#2a303c]'
   const cardShadowStyle = hasWinner
     ? { boxShadow: '0 0 14px 2px rgba(6, 78, 59, 0.35)' }
@@ -78,7 +80,7 @@ export default function GameCard({
   return (
     <div className="relative w-full" style={{ overflow: 'visible' }}>
 
-      {/* ── Output anchor ── */}
+      {/* ── Output anchor — 0×0 at right edge, vertical center ── */}
       <div
         data-out={game.id}
         className="absolute w-0 h-0 top-1/2"
@@ -103,46 +105,59 @@ export default function GameCard({
         {rows.map(({ actual, predicted, seed, score, inKey }, idx) => {
           const isTBD = isTBDName(predicted)
 
-          // ── State derivation ────────────────────────────────────────────
-          const isWinner     = hasWinner && !isTBD && (
+          // ── State flags ────────────────────────────────────────────────
+          const isWinner = hasWinner && !isTBD && (
             game.actual_winner === actual || game.actual_winner === predicted
           )
           const isPicked     = !isTBD && userPick?.predicted_winner === predicted
           const isEliminated = !isTBD && !isWinner && eliminatedTeams.has(predicted)
 
-          // ── Row background + ring (winner only) ─────────────────────────
-          const rowBg      = isWinner ? 'bg-[#022c22]'                  : ''
+          // ── Row background + ring ──────────────────────────────────────
+          // Winner gets emerald bg + inset ring.
+          // Eliminated-not-picked gets a subtle dark overlay (no text change to gray alone).
+          const rowBg = isWinner
+            ? 'bg-[#022c22]'
+            : isEliminated && !isPicked
+              ? 'bg-black/30'
+              : ''
           const rowRingCls = isWinner ? 'ring-2 ring-inset ring-emerald-500 z-10' : ''
 
-          // ── Name text class (exact 6-state matrix) ──────────────────────
+          // ── Name text class ────────────────────────────────────────────
           let nameClass: string
           let seedColorCls: string
 
           if (isWinner) {
+            // Confirmed winner: bold emerald
             nameClass    = 'text-emerald-400 font-black'
             seedColorCls = 'text-emerald-400'
           } else if (isEliminated && isPicked) {
-            // Picked AND lost → strikethrough rose
+            // User picked them AND they lost: strikethrough rose
             nameClass    = 'line-through text-rose-600 decoration-rose-600 decoration-2'
             seedColorCls = 'text-rose-600 line-through decoration-rose-600 decoration-2'
           } else if (isEliminated && !isPicked) {
-            // Lost but user didn't pick them → quiet fade, no decoration
-            nameClass    = 'text-slate-600 font-normal'
-            seedColorCls = 'text-slate-700'
-          } else if (!hasWinner && isPicked) {
-            // Active pick on a game not yet played → sky highlight
-            nameClass    = 'text-sky-300 font-bold'
-            seedColorCls = 'text-sky-400'
+            // Lost but user didn't pick them: quiet fade via row bg + slightly muted text.
+            // No strikethrough, no decoration — just a background tint and softer text.
+            nameClass    = 'text-slate-500'
+            seedColorCls = 'text-slate-600'
           } else if (isTBD) {
             nameClass    = 'text-slate-600 italic'
             seedColorCls = 'text-slate-700'
           } else {
+            // DEFAULT (includes pending picks — text color stays neutral)
             nameClass    = 'text-slate-200'
             seedColorCls = 'text-slate-500'
           }
 
           const scoreCls = isWinner ? 'text-emerald-400 font-black' : 'text-slate-400'
           const canPick  = !isTBD && !isLocked && !readOnly
+
+          // ── Right-side indicator (strictly one of three, priority order) ──
+          // Priority 1: winner + picked → ✓
+          // Priority 2: eliminated + picked → ✕  (prevents dot from also showing)
+          // Priority 3: pending alive pick → emerald dot
+          const showCheck = isWinner && isPicked
+          const showX     = !showCheck && isEliminated && isPicked
+          const showDot   = !showCheck && !showX && isPicked && !isWinner && !isEliminated
 
           return (
             <div
@@ -184,19 +199,16 @@ export default function GameCard({
                 </span>
               )}
 
-              {/* ── Right indicator ── */}
+              {/* ── Right indicator — only one ever renders ── */}
               <div className="flex items-center justify-center w-5 flex-shrink-0">
-                {/* WINNER + PICKED → emerald checkmark */}
-                {isWinner && isPicked && (
+                {showCheck && (
                   <span className="text-[10px] font-black text-emerald-400 leading-none">✓</span>
                 )}
-                {/* ELIMINATED + PICKED → red ✕ */}
-                {isEliminated && isPicked && (
+                {showX && (
                   <span className="text-[10px] font-black text-rose-600 leading-none">✕</span>
                 )}
-                {/* PENDING + PICKED → sky dot */}
-                {!hasWinner && isPicked && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-sky-400 flex-shrink-0" />
+                {showDot && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
                 )}
               </div>
             </div>

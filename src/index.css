@@ -2,10 +2,21 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ── Root body — neutral dark slate ──────────────────────────
-   Forces the raw HTML body to bg-slate-950 (#020617) before
-   React mounts, preventing any purple/blue theme color from
-   bleeding through on initial paint or during hydration.
+/* ── Root background — hard override ────────────────────────
+   Forces html AND body to neutral slate-950 (#020617) before
+   any JS/React mounts and regardless of any theme class that
+   gets applied later. The !important beats Tailwind's specificity.
+   This is the nuclear option for killing the legacy purple bleed.
+─────────────────────────────────────────────────────────────── */
+html,
+body {
+  background-color: #020617 !important;
+  color: #e2e8f0;
+}
+
+/* ── Root body layer (Tailwind-friendly version) ─────────────
+   Redundant with the raw CSS above but satisfies Tailwind's
+   @layer base purge scanning.
 ─────────────────────────────────────────────────────────────── */
 @layer base {
   body {
