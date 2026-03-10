@@ -1,8 +1,8 @@
 // src/features/tournament/AdminBuilderView/TournamentConfigPanel.tsx
 import { useState, useEffect } from 'react'
 import { Settings2, Hash, ToggleLeft, ToggleRight } from 'lucide-react'
-import { useTheme }            from '../../../shared/utils/theme'
-import { getRoundLabel }       from '../../../shared/utils/helpers'
+import { useTheme }            from '../../../shared/lib/theme'
+import { getRoundLabel }       from '../../../shared/lib/helpers'
 import type { Tournament, Game, ScoringConfig } from '../../../shared/types'
 
 function fibonacci(r: number): number {

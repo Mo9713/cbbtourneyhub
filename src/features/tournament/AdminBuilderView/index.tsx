@@ -1,14 +1,14 @@
 // src/features/tournament/AdminBuilderView/index.tsx
 import { useState, useMemo, useCallback, useEffect } from 'react'
-import { useTournamentContext } from '../TournamentContext'
+import { useTournamentContext } from '../model/TournamentContext'
 import { useBracketContext }    from '../../bracket'
-import { computeGameNumbers }   from '../../../shared/utils/bracketMath'
-import { BD_REGIONS }           from '../../../shared/utils/helpers'
+import { computeGameNumbers }   from '../../../shared/lib/bracketMath'
+import { BD_REGIONS }           from '../../../shared/lib/helpers'
 import { useQueryClient }       from '@tanstack/react-query'
-import { tournamentKeys }       from '../queries'
-import AdminHeader              from './AdminHeader'
+import { tournamentKeys }       from '../model/queries'
+import AdminHeader               from './AdminHeader'
 import TournamentConfigPanel    from './TournamentConfigPanel'
-import AdminBracketGrid         from './AdminBracketGrid'
+import AdminBracketGrid         from '../../bracket/ui/AdminBracketGrid'
 import type { Game, Tournament } from '../../../shared/types'
 
 interface Props {

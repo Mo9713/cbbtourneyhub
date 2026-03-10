@@ -1,3 +1,4 @@
 // src/features/leaderboard/index.ts
-export { default as LeaderboardView }          from './LeaderboardView'
-export { useLeaderboardRaw, leaderboardKeys }  from './queries'
+export * from './model/queries'
+export * from './model/selectors'
+export { default as LeaderboardView } from './ui/LeaderboardView'

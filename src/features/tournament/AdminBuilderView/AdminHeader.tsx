@@ -4,7 +4,7 @@ import {
   Plus, Lock, Globe, AlertTriangle, Edit3,
   RefreshCw, Trash2, X, ChevronRight,
 } from 'lucide-react'
-import { isoToInputCST, cstInputToISO, isPicksLocked } from '../../../shared/utils/time'
+import { isoToInputCST, cstInputToISO, isPicksLocked } from '../../../shared/lib/time'
 import type { Tournament, Game }        from '../../../shared/types'
 
 interface Props {

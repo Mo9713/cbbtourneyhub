@@ -6,9 +6,11 @@ import {
 } from 'lucide-react'
 
 import { useTheme }             from '../lib/theme'
-import { useAuthContext }       from '../../features/auth'
-import { useTournamentContext } from '../../features/tournament'
-import { useBracketPickCounts } from '../../features/bracket'
+import { useAuthContext }       from '../../features/auth/model/AuthContext'
+import { useTournamentContext } from '../../features/tournament/model/TournamentContext'
+
+// FIX: Changed from useBracketPickCounts to useMyPickCounts
+import { useMyPickCounts }      from '../../features/bracket/model/queries' 
 import Avatar                   from './Avatar'
 
 interface SidebarProps {
@@ -28,7 +30,7 @@ export default function Sidebar({ onClose, onOpenAddTournament, onToggleDesktop 
     tournaments, selectedTournament, gamesCache,
     activeView, selectTournament, navigateTo, navigateHome,
   } = useTournamentContext()
-  const myPickCounts = useBracketPickCounts()
+  const myPickCounts = useMyPickCounts(gamesCache)
 
   const missingPicks = useMemo(() => {
     const s = new Set<string>()

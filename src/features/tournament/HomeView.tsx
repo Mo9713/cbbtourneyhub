@@ -1,9 +1,9 @@
 // src/features/tournament/HomeView.tsx
-import { useTheme }                from '../../shared/utils/theme'
-import { isPicksLocked }           from '../../shared/utils/time'
-import { statusLabel, statusIcon } from '../../shared/utils/helpers'
+import { useTheme }                from '../../shared/lib/theme'
+import { isPicksLocked }           from '../../shared/lib/time'
+import { statusLabel, statusIcon } from '../../shared/lib/helpers'
 import { useAuthContext }          from '../auth'
-import { useTournamentContext }    from './TournamentContext'
+import { useTournamentContext }    from './model/TournamentContext'
 import { useBracketPickCounts }    from '../bracket'
 import type { Tournament }         from '../../shared/types'
 

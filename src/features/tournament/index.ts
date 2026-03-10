@@ -4,8 +4,8 @@ export {
   useTournamentContext,
   useTournamentList,
   useTournamentNav,
-} from './TournamentContext'
-export { tournamentKeys } from './queries'
+} from './model/TournamentContext'
+export { tournamentKeys } from './model/queries'
 
 export { default as HomeView }            from './HomeView'
 export { default as AdminBuilderView }    from './AdminBuilderView'
