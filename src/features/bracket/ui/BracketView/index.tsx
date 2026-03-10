@@ -1,21 +1,22 @@
 // src/features/bracket/ui/BracketView/index.tsx
+
 import { useState, useMemo, useCallback } from 'react'
 import { useTheme }                         from '../../../../shared/lib/theme'
 import { isPicksLocked }                    from '../../../../shared/lib/time'
 import { BD_REGIONS }                       from '../../../../shared/lib/helpers'
-import { 
-  deriveEffectiveNames, 
-  deriveChampion, 
+import {
+  deriveEffectiveNames,
+  deriveChampion,
   deriveEliminatedTeams,
   calculateLocalScore,
   computeGameNumbers,
-  type EffectiveNames 
+  type EffectiveNames,
 } from '../../../../shared/lib/bracketMath'
 import { useAuthContext }                   from '../../../auth/model/AuthContext'
 import { useTournamentContext }             from '../../../tournament/model/TournamentContext'
-import { useBracketContext }                from '../../model/BracketContext'
+import { useBracketContext }               from '../../model/BracketContext'
 import { BracketViewProvider }             from './BracketViewContext'
-import { useMyPicks, useMakePick }          from '../../model/queries'
+import { useMyPicks, useMakePick }         from '../../model/queries'
 import { buildPickMap, sortedRounds, getChampGame } from '../../model/selectors'
 import BracketHeader                       from './BracketHeader'
 import BracketGrid                         from './BracketGrid'
@@ -53,7 +54,7 @@ export default function BracketView({
 
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null)
 
-  // ── Derived booleans ──────────────────────────────────────
+  // ── Derived booleans ──────────────────────────────────────────────────────
 
   const isLocked = tournament && profile
     ? isPicksLocked(tournament, profile.is_admin) || tournament.status === 'draft' || tournament.status === 'locked'
@@ -61,16 +62,19 @@ export default function BracketView({
 
   const isBigDance = useMemo(() => games.some(g => g.region), [games])
 
-  // ── Selectors computed once at the boundary ───────────────
-  
+  // ── Selectors computed once at the view boundary ──────────────────────────
+
   const pickMap         = useMemo(() => buildPickMap(picks), [picks])
-  const rounds          = useMemo(() => sortedRounds(games, isBigDance ? selectedRegion : null), [games, isBigDance, selectedRegion])
+  const rounds          = useMemo(
+    () => sortedRounds(games, isBigDance ? selectedRegion : null),
+    [games, isBigDance, selectedRegion],
+  )
   const effectiveNames  = useMemo<EffectiveNames>(() => deriveEffectiveNames(games, picks), [games, picks])
   const champion        = useMemo(() => deriveChampion(games, picks, effectiveNames), [games, picks, effectiveNames])
   const champGame       = useMemo(() => getChampGame(games), [games])
   const gameNumbers     = useMemo(() => computeGameNumbers(games), [games])
   const eliminatedTeams = useMemo(() => deriveEliminatedTeams(games, effectiveNames), [games, effectiveNames])
-  
+
   const score = useMemo(() => {
     if (!tournament) return { current: 0, max: 0 }
     return calculateLocalScore(games, picks, effectiveNames, tournament)
@@ -81,7 +85,7 @@ export default function BracketView({
     [champGame, picks],
   )
 
-  // ── Event handlers ────────────────────────────────────────
+  // ── Event handlers ────────────────────────────────────────────────────────
 
   const handlePick = useCallback(async (game: Game, team: string) => {
     if (!tournament || readOnly || isLocked) return
@@ -99,7 +103,7 @@ export default function BracketView({
     isLocked: isLocked || readOnly,
     readOnly,
     ownerName,
-    onPick:   handlePick,
+    onPick: handlePick,
   }), [isLocked, readOnly, ownerName, handlePick])
 
   if (!tournament || !profile) return null
@@ -121,7 +125,10 @@ export default function BracketView({
             <button
               onClick={() => setSelectedRegion(null)}
               className={`px-4 py-2 text-xs font-bold rounded-t-lg transition-all border-b-2 flex-shrink-0
-                ${!selectedRegion ? `${theme.accent} border-current` : 'text-slate-500 border-transparent hover:text-slate-300'}`}
+                ${!selectedRegion
+                  ? `${theme.accent} border-current`
+                  : 'text-slate-500 border-transparent hover:text-slate-300'
+                }`}
             >
               All
             </button>
@@ -130,7 +137,10 @@ export default function BracketView({
                 key={r}
                 onClick={() => setSelectedRegion(r)}
                 className={`px-4 py-2 text-xs font-bold rounded-t-lg transition-all border-b-2 flex-shrink-0
-                  ${selectedRegion === r ? `${theme.accent} border-current` : 'text-slate-500 border-transparent hover:text-slate-300'}`}
+                  ${selectedRegion === r
+                    ? `${theme.accent} border-current`
+                    : 'text-slate-500 border-transparent hover:text-slate-300'
+                  }`}
               >
                 {r}
               </button>
@@ -138,6 +148,7 @@ export default function BracketView({
           </div>
         )}
 
+        {/* BracketGrid signature unchanged — no new props required */}
         <BracketGrid
           rounds={rounds}
           pickMap={pickMap}

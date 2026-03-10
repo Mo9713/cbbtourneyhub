@@ -1,15 +1,22 @@
 // src/features/bracket/ui/BracketView/GameCard.tsx
+//
+// "TeamRankings" style overhaul:
+//   • Stark edges (rounded-none) and high-contrast borders.
+//   • Game number (#X) integrated into a bold left column inside the card.
+//   • Bold, uppercase team names for high readability.
+//   • Full-box emerald glow for winning teams.
+//   • Cascading 'X' logic for eliminated picks.
 
-// Pure presentational leaf component. Zero context subscriptions.
-// pointValue is passed down from MatchupColumn, which already computes
-// it for the column header — no need to re-derive it here.
-import { CheckCircle, EyeOff } from 'lucide-react'
-import { useTheme }            from '../../../../shared/lib/theme'
-import { useBracketView }      from './BracketViewContext'
-import type { Game, Pick }     from '../../../../shared/types'
+import { Check }          from 'lucide-react'
+import { useBracketView } from './BracketViewContext'
+import type { Game, Pick } from '../../../../shared/types'
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 const isTBDName = (n: string) =>
   !n || n === 'TBD' || n === 'BYE' || n.startsWith('Winner of Game')
+
+// ── Props ─────────────────────────────────────────────────────────────────────
 
 interface GameCardProps {
   game:            Game
@@ -21,90 +28,119 @@ interface GameCardProps {
   effectiveTeam2:  { actual: string; predicted: string }
 }
 
+// ── Component ─────────────────────────────────────────────────────────────────
+
 export default function GameCard({
-  game, gameNum, pointValue, eliminatedTeams, userPick, effectiveTeam1, effectiveTeam2,
+  game,
+  gameNum,
+  eliminatedTeams,
+  userPick,
+  effectiveTeam1,
+  effectiveTeam2,
 }: GameCardProps) {
-  const theme                          = useTheme()
   const { isLocked, readOnly, onPick } = useBracketView()
 
   const teams = [
-    { actual: effectiveTeam1.actual, predicted: effectiveTeam1.predicted, key: 'team1' as const },
-    { actual: effectiveTeam2.actual, predicted: effectiveTeam2.predicted, key: 'team2' as const },
+    {
+      actual:    effectiveTeam1.actual,
+      predicted: effectiveTeam1.predicted,
+      inAttr:    'data-in1' as const,
+    },
+    {
+      actual:    effectiveTeam2.actual,
+      predicted: effectiveTeam2.predicted,
+      inAttr:    'data-in2' as const,
+    },
   ]
 
   return (
-    <div className="relative bg-slate-900/50 backdrop-blur border border-slate-800/80 rounded-xl overflow-hidden w-full flex-shrink-0 shadow-sm hover:border-slate-700 transition-all">
-      <div className="px-3 py-1.5 bg-slate-800/30 border-b border-slate-800/60 flex items-center justify-between">
-        <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">
-          GM #{gameNum} · {pointValue}PT
-        </span>
-        <div className="flex items-center gap-1.5">
-          {game.actual_winner && (
-            <span className="text-[9px] font-bold text-emerald-400 uppercase tracking-widest flex items-center gap-1">
-              <CheckCircle size={9} /> Final
-            </span>
-          )}
-          {!game.actual_winner && userPick && (
-            <span className={`text-[9px] font-bold uppercase tracking-widest ${theme.accent}`}>
-              Picked
-            </span>
-          )}
-          {readOnly && (
-            <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1">
-              <EyeOff size={9} /> View
-            </span>
-          )}
-        </div>
-      </div>
+    <div className="relative w-full" style={{ overflow: 'visible' }}>
 
-      <div>
-        {teams.map(({ actual, predicted, key }) => {
-          const isTBD       = isTBDName(predicted)
-          const isPicked    = userPick?.predicted_winner === predicted
-          const isWinner    = game.actual_winner === actual || game.actual_winner === predicted
-          const isLoser     = !!(game.actual_winner && game.actual_winner !== predicted)
-          const lostThisGame = !!game.actual_winner && game.actual_winner !== predicted
-          const isGhost      = !game.actual_winner && eliminatedTeams.has(predicted)
-          const diverged     = !isTBDName(actual) && actual !== predicted && !isTBDName(predicted)
-          const isBusted     = lostThisGame || isGhost || diverged
+      {/* ── Output connector anchor ────────────────────────────────────── */}
+      <div
+        data-out={game.id}
+        className="absolute w-0 h-0 top-1/2"
+        style={{ right: 0 }}
+        aria-hidden
+      />
+
+      {/* ── Team rows with 2px gap ────────────────────────────────── */}
+      <div className="flex flex-col gap-[2px] w-full">
+        {teams.map(({ actual, predicted, inAttr }, idx) => {
+          const isTBD    = isTBDName(predicted)
+          const isPicked = userPick?.predicted_winner === predicted
+
+          const isWinner = !!game.actual_winner && (
+            game.actual_winner === actual || game.actual_winner === predicted
+          )
+          const isConfirmedLoser = !!game.actual_winner && !isWinner
+          const isEliminated = !isTBD && eliminatedTeams.has(actual)
+
+          const showWin  = isWinner
+          const showLoss = isPicked && (isConfirmedLoser || isEliminated)
+          const showPick = isPicked && !showWin && !showLoss
+
+          const canClick = !isTBD && !isLocked && !readOnly
+
+          // Stark Styling: Replaced rounded-md with rounded-none
+          let rowBg     = 'bg-[#131720] border-slate-800'
+          let textColor = isTBD ? 'text-slate-600 italic'
+            : (isConfirmedLoser || isEliminated) ? 'text-slate-600'
+            : 'text-slate-200'
+
+          if (showWin) {
+            rowBg     = 'bg-emerald-950/70 border-emerald-500'
+            textColor = 'text-emerald-300'
+          } else if (showPick) {
+            rowBg     = 'bg-sky-950/50 border-sky-600/60'
+            textColor = 'text-sky-200'
+          }
 
           return (
-            <button
-              key={key}
-              disabled={isLocked || isTBD || !!game.actual_winner || readOnly}
-              onClick={() => !isTBD && !readOnly && onPick(game, predicted)}
-              className={`w-full text-left px-3 h-[3.25rem] flex items-center gap-2 transition-all group
-                ${isTBD || readOnly ? 'cursor-default' : 'cursor-pointer'}
-                ${game.actual_winner === actual ? 'bg-emerald-500/10'
-                : isPicked    ? `${theme.bg}`
-                : isBusted    ? 'bg-rose-500/5'
-                :               'hover:bg-slate-800/40'
-                } border-b border-slate-800/60 last:border-0`}
-            >
-              <div className="flex flex-col flex-1 truncate justify-center">
-                <span className={`text-sm font-medium truncate leading-tight
-                  ${isTBD       ? 'text-slate-600 italic'
-                  : game.actual_winner === actual && actual === predicted ? 'text-emerald-400 font-bold'
-                  : isBusted    ? 'text-rose-400/70 line-through'
-                  : isPicked    ? theme.accent
-                  :               'text-slate-200'
-                  }`}>
-                  {predicted || 'TBD'}
+            <div key={inAttr} className="relative">
+              {/* Input connector anchor */}
+              <div
+                {...{ [inAttr]: game.id }}
+                className="absolute w-0 h-0 top-1/2 left-0"
+                aria-hidden
+              />
+
+              {/* Team row — Stark, Bold Box */}
+              <div
+                role={canClick ? 'button' : undefined}
+                tabIndex={canClick ? 0 : undefined}
+                onClick={() => canClick && onPick(game, predicted)}
+                onKeyDown={e => canClick && e.key === 'Enter' && onPick(game, predicted)}
+                className={`
+                  flex items-center h-8 w-full border
+                  ${rowBg} rounded-none transition-all duration-150
+                  ${canClick ? 'cursor-pointer hover:brightness-110 active:brightness-125' : 'cursor-default'}
+                `}
+              >
+                {/* STARK Game Num Column: Only shown on the first team row */}
+                <div className="w-6 h-full flex items-center justify-center bg-slate-900 border-r border-slate-800 text-[9px] font-black text-slate-500 flex-shrink-0">
+                  {idx === 0 ? `#${gameNum}` : ''}
+                </div>
+
+                {/* Team Name: BOLD, Uppercase, and Tracking Tight */}
+                <span className={`pl-2 text-[11px] font-bold uppercase tracking-tight flex-1 truncate ${textColor}`}>
+                  {isTBD ? '—' : predicted}
                 </span>
 
-                {diverged && (
-                  <span className="text-[10px] text-slate-400 mt-0.5 truncate leading-tight">
-                    Actual: <span className="text-white font-semibold">{actual}</span>
-                  </span>
-                )}
+                {/* Indicators Area */}
+                <span className="flex-shrink-0 w-6 flex items-center justify-end pr-2">
+                  {showWin && (
+                    <Check size={11} className="text-emerald-400" strokeWidth={3} />
+                  )}
+                  {showPick && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-sky-400" />
+                  )}
+                  {showLoss && (
+                    <span className="text-[10px] font-black leading-none text-rose-500">✕</span>
+                  )}
+                </span>
               </div>
-              {game.actual_winner === actual && (
-                <CheckCircle size={12} className="text-emerald-400 flex-shrink-0" />
-              )}
-              {isPicked && !isWinner && !isLoser && !diverged && (
-                <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${theme.bgMd}`} />
-              )}
-            </button>
+            </div>
           )
         })}
       </div>
