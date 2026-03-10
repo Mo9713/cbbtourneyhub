@@ -96,7 +96,8 @@ export default function AppShell() {
           sidebarBg={theme.sidebarBg}
           logo={theme.logo}
         />
-        <main className="flex-1 overflow-hidden">
+        {/* Added overflow-y-auto and scrollbar-thin to fix the Home/Leaderboard bars */}
+        <main className="flex-1 overflow-y-auto scrollbar-thin">
           <ViewRouter />
         </main>
       </div>
