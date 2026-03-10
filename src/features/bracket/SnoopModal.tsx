@@ -1,57 +1,31 @@
 // src/features/bracket/SnoopModal.tsx
 import { useState, useMemo }       from 'react'
-import { X }                       from 'lucide-react'
+import { X, ShieldAlert }          from 'lucide-react'
 import BracketView                 from './BracketView'
 import { useLeaderboardRaw }       from '../leaderboard'
 import { useTournamentList,
          useTournamentContext }    from '../tournament'
 
-// FIX:
-//
-// Previously SnoopModal received `targetProfile: Profile`, `tournaments`,
-// `gamesCache`, and `allPicks` as props — all of which were sourced from
-// AppShell, which called `useLeaderboardRaw()` unconditionally on every
-// cold start to supply this data. That triggered 3 parallel Supabase
-// queries (SELECT * FROM picks, games, profiles) for every user on every
-// page load, even though SnoopModal is only ever opened by admins and
-// most users never interact with it.
-//
-// Fix: SnoopModal is now fully self-contained. It pulls its own data via
-// hooks that are only mounted when the modal actually renders. React Query
-// deduplication ensures that if LeaderboardView is simultaneously open,
-// only one in-flight request is made. AppShell is no longer a data relay
-// for leaderboard data and no longer calls useLeaderboardRaw().
-//
-// The prop interface shrinks to just the target user's ID (sufficient to
-// look up the Profile and Picks internally) and the close handler.
-
 interface Props {
-  /** ID of the user whose bracket we are viewing. */
   targetId: string
   onClose:  () => void
 }
 
 export default function SnoopModal({ targetId, onClose }: Props) {
-  // These hooks are only executed when the modal is mounted (i.e. when an
-  // admin actually opens a snoop view). They are never called on boot.
   const { data: raw }        = useLeaderboardRaw()
   const { tournaments }      = useTournamentList()
   const { gamesCache }       = useTournamentContext()
 
-  // Resolve the target profile from the leaderboard cache.
   const targetProfile = useMemo(
     () => raw?.allProfiles.find(p => p.id === targetId) ?? null,
     [raw, targetId],
   )
 
-  // All picks belonging to the target user.
   const targetPicks = useMemo(
     () => raw?.allPicks.filter(p => p.user_id === targetId) ?? [],
     [raw, targetId],
   )
 
-  // Visible tournament tabs — exclude drafts so admins don't accidentally
-  // expose unpublished brackets while snooping.
   const visibleTournaments = useMemo(
     () => tournaments.filter(t => t.status !== 'draft'),
     [tournaments],
@@ -78,9 +52,6 @@ export default function SnoopModal({ targetId, onClose }: Props) {
     [targetPicks, selectedGames],
   )
 
-  // While leaderboard data loads, show a minimal spinner inside the modal
-  // shell rather than blocking the render entirely. The BracketView
-  // handles an empty picks array gracefully in read-only mode.
   const isLoading = !raw || !targetProfile
 
   return (
@@ -92,16 +63,17 @@ export default function SnoopModal({ targetId, onClose }: Props) {
         className="bg-slate-900 border border-violet-500/30 rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl shadow-violet-900/30 overflow-hidden"
         onClick={e => e.stopPropagation()}
       >
-        {/* Header */}
-        <div className="px-5 py-3 border-b border-violet-500/20 flex items-center justify-between bg-violet-500/5 flex-shrink-0">
-          <span className="font-display text-lg font-bold text-white uppercase tracking-wide">
-            {isLoading ? 'Loading…' : `Snooping: ${targetProfile.display_name}`}
-          </span>
+        {/* Sleek Admin Header */}
+        <div className="px-5 py-3 border-b border-violet-500/20 flex items-center justify-between bg-violet-900/20 flex-shrink-0">
+          <div className="flex items-center gap-2 text-violet-400">
+            <ShieldAlert size={14} />
+            <span className="text-[10px] font-bold uppercase tracking-widest">Admin Snoop Mode</span>
+          </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-all"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-rose-500/20 hover:text-rose-400 text-slate-400 transition-all text-xs font-bold"
           >
-            <X size={16} />
+            <X size={14} /> Close
           </button>
         </div>
 

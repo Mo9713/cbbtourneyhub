@@ -1,10 +1,9 @@
 // src/features/tournament/HomeView.tsx
-import { useTheme }            from '../../shared/utils/theme'
-import { isPicksLocked }       from '../../shared/utils/time'
+import { useTheme }                from '../../shared/utils/theme'
+import { isPicksLocked }           from '../../shared/utils/time'
 import { statusLabel, statusIcon } from '../../shared/utils/helpers'
 import { useAuthContext }          from '../auth'
 import { useTournamentContext }    from './TournamentContext'
-// THE FIX: Import the renamed hook
 import { useBracketPickCounts }    from '../bracket'
 import type { Tournament }         from '../../shared/types'
 
@@ -12,14 +11,14 @@ export default function HomeView() {
   const theme = useTheme()
   const { profile }                                       = useAuthContext()
   const { tournaments, gamesCache, selectTournament }     = useTournamentContext()
-  // THE FIX: Call the renamed hook
   const myPickCounts                                      = useBracketPickCounts()
 
   if (!profile) return null
 
-  const open   = tournaments.filter(t => t.status === 'open')
+  // FIX: Properly sort tournaments into lists by checking BOTH status and actual time locks
+  const open   = tournaments.filter(t => t.status === 'open' && !isPicksLocked(t, profile.is_admin))
   const draft  = profile.is_admin ? tournaments.filter(t => t.status === 'draft') : []
-  const locked = tournaments.filter(t => t.status === 'locked')
+  const locked = tournaments.filter(t => t.status === 'locked' || (t.status === 'open' && isPicksLocked(t, profile.is_admin)))
 
   const Card = ({ t }: { t: Tournament }) => {
     const games   = gamesCache[t.id] ?? []
@@ -27,11 +26,15 @@ export default function HomeView() {
     const locked  = isPicksLocked(t, profile.is_admin)
     const pct     = games.length > 0 ? Math.round((myPicks / games.length) * 100) : 0
 
+    // FIX: Derive the real display status for the badge
+    const isEffectivelyLocked = t.status === 'locked' || (t.status === 'open' && locked)
+    const displayStatus       = t.status === 'draft' ? 'draft' : isEffectivelyLocked ? 'locked' : 'open'
+
     return (
       <button
         onClick={() => selectTournament(t)}
         className={`text-left p-5 rounded-2xl border-2 transition-all hover:scale-[1.02] active:scale-[0.99] w-full
-          ${t.status === 'open'
+          ${displayStatus === 'open'
             ? `${theme.border} ${theme.bg} hover:${theme.bgMd}`
             : 'border-slate-800 bg-slate-900/40 hover:border-slate-700'
           }`}
@@ -41,11 +44,11 @@ export default function HomeView() {
             {t.name}
           </h3>
           <span className={`flex-shrink-0 flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-lg uppercase tracking-widest
-            ${t.status === 'open'  ? `${theme.bg} ${theme.accent}` :
-              t.status === 'draft' ? 'bg-amber-500/10 text-amber-400' :
-                                     'bg-slate-800 text-slate-500'}`}>
-            {statusIcon(t.status)}
-            {statusLabel(t.status)}
+            ${displayStatus === 'open'  ? `${theme.bg} ${theme.accent}` :
+              displayStatus === 'draft' ? 'bg-amber-500/10 text-amber-400' :
+                                          'bg-slate-800 text-slate-500'}`}>
+            {statusIcon(displayStatus)}
+            {statusLabel(displayStatus)}
           </span>
         </div>
 
@@ -58,7 +61,7 @@ export default function HomeView() {
             </span>
           </div>
 
-          {t.status === 'open' && !locked && games.length > 0 && (
+          {displayStatus === 'open' && games.length > 0 && (
             <div className="w-full bg-slate-800 rounded-full h-1.5">
               <div
                 className={`h-1.5 rounded-full transition-all ${theme.bgMd}`}
@@ -108,5 +111,3 @@ export default function HomeView() {
     </div>
   )
 }
-
-

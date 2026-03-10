@@ -10,32 +10,33 @@ const isTBDName = (n: string) =>
   !n || n === 'TBD' || n === 'BYE' || n.startsWith('Winner of Game')
 
 interface GameCardProps {
-  game:           Game
-  userPick:       Pick | undefined
-  effectiveTeam1: string
-  effectiveTeam2: string
+  game:            Game
+  gameNum:         number
+  eliminatedTeams: Set<string>
+  userPick:        Pick | undefined
+  effectiveTeam1:  { actual: string; predicted: string }
+  effectiveTeam2:  { actual: string; predicted: string }
 }
 
 export default function GameCard({
-  game, userPick, effectiveTeam1, effectiveTeam2,
+  game, gameNum, eliminatedTeams, userPick, effectiveTeam1, effectiveTeam2,
 }: GameCardProps) {
   const theme                          = useTheme()
   const { selectedTournament }         = useTournamentContext()
   const { isLocked, readOnly, onPick } = useBracketView()
 
   const teams = [
-    { name: effectiveTeam1, key: 'team1' as const },
-    { name: effectiveTeam2, key: 'team2' as const },
+    { actual: effectiveTeam1.actual, predicted: effectiveTeam1.predicted, key: 'team1' as const },
+    { actual: effectiveTeam2.actual, predicted: effectiveTeam2.predicted, key: 'team2' as const },
   ]
 
-  // Strictly uses the imported helper or the live database config
   const pts = selectedTournament?.scoring_config?.[String(game.round_num)] ?? getScore(game.round_num)
 
   return (
     <div className="relative bg-slate-900/50 backdrop-blur border border-slate-800/80 rounded-xl overflow-hidden w-full flex-shrink-0 shadow-sm hover:border-slate-700 transition-all">
       <div className="px-3 py-1.5 bg-slate-800/30 border-b border-slate-800/60 flex items-center justify-between">
         <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">
-          R{game.round_num} · {pts}PT
+          GM #{gameNum} · {pts}PT
         </span>
         <div className="flex items-center gap-1.5">
           {game.actual_winner && (
@@ -56,37 +57,51 @@ export default function GameCard({
         </div>
       </div>
 
-      {teams.map(({ name, key }) => {
-        const isPicked    = userPick?.predicted_winner === name
-        const isWinner    = game.actual_winner === name
-        const isLoser     = !!(game.actual_winner && game.actual_winner !== name)
-        const isTBD       = isTBDName(name)
-        const pickedWrong = isPicked && isLoser
+      {teams.map(({ actual, predicted, key }) => {
+        const isTBD       = isTBDName(predicted)
+        const isPicked    = userPick?.predicted_winner === predicted
+        const isWinner    = game.actual_winner === actual || game.actual_winner === predicted
+        const isLoser     = !!(game.actual_winner && game.actual_winner !== predicted)
+        
+        // Deep Elimination Logic
+        const lostThisGame = !!game.actual_winner && game.actual_winner !== predicted
+        const isGhost      = !game.actual_winner && eliminatedTeams.has(predicted)
+        const diverged     = !isTBDName(actual) && actual !== predicted && !isTBDName(predicted)
+        
+        const isBusted = lostThisGame || isGhost || diverged
 
         return (
           <button
             key={key}
             disabled={isLocked || isTBD || !!game.actual_winner || readOnly}
-            onClick={() => !isTBD && !readOnly && onPick(game, name)}
-            className={`w-full text-left px-3 py-2.5 flex items-center gap-2 transition-all group
+            onClick={() => !isTBD && !readOnly && onPick(game, predicted)}
+            className={`w-full text-left px-3 h-[3.25rem] flex items-center gap-2 transition-all group
               ${isTBD || readOnly ? 'cursor-default' : 'cursor-pointer'}
-              ${isWinner    ? 'bg-emerald-500/10'
+              ${game.actual_winner === actual ? 'bg-emerald-500/10'
               : isPicked    ? `${theme.bg}`
-              : pickedWrong ? 'bg-rose-500/5'
+              : isBusted    ? 'bg-rose-500/5'
               :               'hover:bg-slate-800/40'
               } border-b border-slate-800/60 last:border-0`}
           >
-            <span className={`flex-1 text-sm font-medium truncate
-              ${isTBD       ? 'text-slate-600 italic'
-              : isWinner    ? 'text-emerald-400 font-bold'
-              : pickedWrong ? 'text-rose-400/70 line-through'
-              : isPicked    ? theme.accent
-              :               'text-slate-200'
-              }`}>
-              {name || 'TBD'}
-            </span>
-            {isWinner  && <CheckCircle size={12} className="text-emerald-400 flex-shrink-0" />}
-            {isPicked && !isWinner && !isLoser && (
+            <div className="flex flex-col flex-1 truncate justify-center">
+              <span className={`text-sm font-medium truncate leading-tight
+                ${isTBD       ? 'text-slate-600 italic'
+                : game.actual_winner === actual && actual === predicted ? 'text-emerald-400 font-bold'
+                : isBusted    ? 'text-rose-400/70 line-through'
+                : isPicked    ? theme.accent
+                :               'text-slate-200'
+                }`}>
+                {predicted || 'TBD'}
+              </span>
+              
+              {diverged && (
+                <span className="text-[10px] text-slate-400 mt-0.5 truncate leading-tight">
+                  Actual: <span className="text-white font-semibold">{actual}</span>
+                </span>
+              )}
+            </div>
+            {game.actual_winner === actual && <CheckCircle size={12} className="text-emerald-400 flex-shrink-0" />}
+            {isPicked && !isWinner && !isLoser && !diverged && (
               <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${theme.bgMd}`} />
             )}
           </button>
@@ -95,5 +110,3 @@ export default function GameCard({
     </div>
   )
 }
-
-

@@ -3,7 +3,14 @@ import { useState, useMemo, useCallback } from 'react'
 import { useTheme }                        from '../../../shared/utils/theme'
 import { isPicksLocked }                   from '../../../shared/utils/time'
 import { BD_REGIONS }                      from '../../../shared/utils/helpers'
-import { deriveEffectiveNames, deriveChampion } from '../../../shared/utils/bracketMath'
+import { 
+  deriveEffectiveNames, 
+  deriveChampion, 
+  deriveEliminatedTeams,
+  calculateLocalScore,
+  computeGameNumbers,
+  type EffectiveNames 
+} from '../../../shared/utils/bracketMath'
 import { useAuthContext }                  from '../../auth'
 import { useTournamentContext }            from '../../tournament'
 import { useBracketContext }               from '..'
@@ -12,10 +19,8 @@ import { useMyPicks, useMakePick }         from '../queries'
 import { buildPickMap, sortedRounds, getChampGame } from '../selectors'
 import BracketHeader                       from './BracketHeader'
 import BracketGrid                         from './BracketGrid'
-import ChampionCallout                     from './ChampionCallout'
 import TiebreakerPanel                     from './TiebreakerPanel'
 import type { Game, Pick, Tournament }     from '../../../shared/types'
-
 
 interface BracketViewProps {
   readOnly?:           boolean
@@ -41,7 +46,6 @@ export default function BracketView({
   const tournament = overrideTournament ?? selectedTournament
   const games      = overrideGames ?? (tournament ? (gamesCache[tournament.id] ?? []) : [])
 
-  // Picks — from TanStack cache or override (snoop read-only mode)
   const { data: queryPicks = [] } = useMyPicks(tournament?.id ?? null, games)
   const picks                     = overridePicks ?? queryPicks
 
@@ -52,22 +56,26 @@ export default function BracketView({
   // ── Derived booleans ──────────────────────────────────────
 
   const isLocked = tournament && profile
-    ? isPicksLocked(tournament, profile.is_admin) || tournament.status === 'draft'
+    ? isPicksLocked(tournament, profile.is_admin) || tournament.status === 'draft' || tournament.status === 'locked'
     : false
 
   const isBigDance = useMemo(() => games.some(g => g.region), [games])
 
   // ── Selectors computed once at the boundary ───────────────
   
-  const pickMap        = useMemo(() => buildPickMap(picks),                                          [picks])
-  const rounds         = useMemo(() => sortedRounds(games, isBigDance ? selectedRegion : null),      [games, isBigDance, selectedRegion])
-  const effectiveNames = useMemo(() => deriveEffectiveNames(games, picks),                           [games, picks])
-  const champion       = useMemo(() => deriveChampion(games, picks, effectiveNames),                 [games, picks, effectiveNames])
-  const champGame      = useMemo(() => getChampGame(games),                                          [games])
+  const pickMap         = useMemo(() => buildPickMap(picks), [picks])
+  const rounds          = useMemo(() => sortedRounds(games, isBigDance ? selectedRegion : null), [games, isBigDance, selectedRegion])
+  const effectiveNames  = useMemo<EffectiveNames>(() => deriveEffectiveNames(games, picks), [games, picks])
+  const champion        = useMemo(() => deriveChampion(games, picks, effectiveNames), [games, picks, effectiveNames])
+  const champGame       = useMemo(() => getChampGame(games), [games])
+  const gameNumbers     = useMemo(() => computeGameNumbers(games), [games])
+  const eliminatedTeams = useMemo(() => deriveEliminatedTeams(games, effectiveNames), [games, effectiveNames])
+  
+  const score = useMemo(() => {
+    if (!tournament) return { current: 0, max: 0 }
+    return calculateLocalScore(games, picks, effectiveNames, tournament)
+  }, [games, picks, effectiveNames, tournament])
 
-  // FIX C-1 (cont.): Was an inline ternary expression after the guard —
-  // also a hook-ordering hazard. Promoted to useMemo for consistency
-  // and to give it a stable reference.
   const champPick = useMemo(
     () => champGame ? (picks.find(p => p.game_id === champGame.id) ?? null) : null,
     [champGame, picks],
@@ -87,10 +95,6 @@ export default function BracketView({
     return saveTiebreaker(gameId, predictedWinner, score)
   }, [saveTiebreaker])
 
-  // FIX W-1 (cont.): The value object passed to BracketViewProvider was
-  // reconstructed as a new object literal on every render, making the
-  // Context value reference perpetually unstable. Memoized here so
-  // downstream consumers only re-render when the actual values change.
   const bracketViewValue = useMemo(() => ({
     isLocked: isLocked || readOnly,
     readOnly,
@@ -98,10 +102,6 @@ export default function BracketView({
     onPick:   handlePick,
   }), [isLocked, readOnly, ownerName, handlePick])
 
-  // ── Early return guard ────────────────────────────────────
-  //
-  // Intentionally placed AFTER all hooks. This is a render bail-out only.
-  // Moving it above any hook would violate the Rules of Hooks.
   if (!tournament || !profile) return null
 
   return (
@@ -113,6 +113,7 @@ export default function BracketView({
           totalGames={games.length}
           readOnly={readOnly}
           ownerName={ownerName}
+          score={score}
         />
 
         {isBigDance && (
@@ -142,6 +143,11 @@ export default function BracketView({
           pickMap={pickMap}
           effectiveNames={effectiveNames}
           tournament={tournament}
+          gameNumbers={gameNumbers}
+          eliminatedTeams={eliminatedTeams}
+          champion={champion}
+          readOnly={readOnly}
+          ownerName={ownerName}
         />
 
         {!readOnly && tournament.requires_tiebreaker && champGame && champPick && (
@@ -152,12 +158,6 @@ export default function BracketView({
             onSave={handleTiebreaker}
           />
         )}
-
-        <ChampionCallout
-          champion={champion}
-          readOnly={readOnly}
-          ownerName={ownerName}
-        />
       </div>
     </BracketViewProvider>
   )

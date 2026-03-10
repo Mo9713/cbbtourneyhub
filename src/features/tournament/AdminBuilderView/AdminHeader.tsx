@@ -4,7 +4,7 @@ import {
   Plus, Lock, Globe, AlertTriangle, Edit3,
   RefreshCw, Trash2, X, ChevronRight,
 } from 'lucide-react'
-import { isoToInputCST, cstInputToISO } from '../../../shared/utils/time'
+import { isoToInputCST, cstInputToISO, isPicksLocked } from '../../../shared/utils/time'
 import type { Tournament, Game }        from '../../../shared/types'
 
 interface Props {
@@ -52,6 +52,13 @@ export default function AdminHeader({
 
   const inputCls = 'bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-amber-500/50 transition-colors'
 
+  // FIX: Check if the tournament is already locked by time (using false for isAdmin so we see the public lock state)
+  const isTimeLocked = isPicksLocked(tournament, false)
+  const displayStatus = tournament.status === 'draft' ? 'draft' 
+    : tournament.status === 'locked' ? 'locked'
+    : isTimeLocked ? 'time locked' 
+    : 'open'
+
   return (
     <div className="px-5 py-3 border-b border-amber-500/10 bg-amber-500/5 flex-shrink-0">
       <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -84,11 +91,14 @@ export default function AdminHeader({
                 <Edit3 size={12} className="text-slate-600 group-hover:text-amber-400 transition-colors" />
               </button>
             )}
+            
+            {/* FIX: Badge now reflects time-locked state */}
             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-lg uppercase tracking-widest
-              ${tournament.status === 'draft' ? 'bg-amber-500/20 text-amber-400'  :
-                tournament.status === 'open'  ? 'bg-emerald-500/20 text-emerald-400' :
+              ${displayStatus === 'draft' ? 'bg-amber-500/20 text-amber-400'  :
+                displayStatus === 'open'  ? 'bg-emerald-500/20 text-emerald-400' :
+                displayStatus === 'time locked' ? 'bg-slate-700 text-amber-500 border border-amber-500/20' :
                                                 'bg-slate-700 text-slate-400'}`}>
-              {tournament.status}
+              {displayStatus}
             </span>
           </div>
           <p className="text-[11px] text-slate-500">
@@ -151,7 +161,8 @@ export default function AdminHeader({
               </div>
             )}
 
-            {tournament.status === 'open' && (
+            {/* FIX: Hide the manual lock button if it's already locked by time */}
+            {tournament.status === 'open' && !isTimeLocked && (
               <button onClick={onLock}
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-600 hover:bg-slate-500 text-white rounded-lg text-xs font-bold transition-all">
                 <Lock size={11} /> Lock
@@ -168,9 +179,3 @@ export default function AdminHeader({
     </div>
   )
 }
-
-
-
-
-
-

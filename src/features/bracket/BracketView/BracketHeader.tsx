@@ -13,16 +13,17 @@ interface Props {
   totalGames:  number
   readOnly:    boolean
   ownerName?:  string
+  score:       { current: number; max: number }
 }
 
-export default function BracketHeader({ tournament, pickedCount, totalGames, readOnly, ownerName }: Props) {
+export default function BracketHeader({ tournament, pickedCount, totalGames, readOnly, ownerName, score }: Props) {
   const theme = useTheme()
   const { profile } = useAuthContext()
   const pct   = totalGames > 0 ? Math.round((pickedCount / totalGames) * 100) : 0
 
-  // Check the actual time locks to override the "Open" text if necessary
   const lockedByTime = isPicksLocked(tournament, profile?.is_admin ?? false)
   const beforeOpen   = isBeforeUnlock(tournament)
+  const isLocked     = lockedByTime || tournament.status === 'locked'
 
   let badgeText = statusLabel(tournament.status)
   let badgeIcon = statusIcon(tournament.status)
@@ -70,24 +71,35 @@ export default function BracketHeader({ tournament, pickedCount, totalGames, rea
           timezone={profile?.timezone ?? null} 
         />
 
-        {!readOnly && (
-          <div className="text-right">
-            <div className="flex items-center gap-2 justify-end mb-1">
-              <span className="text-xs text-slate-400">Progress</span>
-              <span className={`text-sm font-bold ${theme.accent}`}>{pickedCount}/{totalGames}</span>
+        {/* FIX: Removed the !readOnly wrapper so we can see Kyle's score! */}
+        <div className="text-right">
+          {isLocked ? (
+            <div className="flex flex-col items-end">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-xs text-slate-400">Score</span>
+                <span className={`text-xl font-bold ${readOnly ? 'text-violet-400' : theme.accent}`}>{score.current}</span>
+              </div>
+              <div className="text-[10px] text-slate-500 font-medium uppercase tracking-widest">
+                Max: <span className="text-slate-300">{score.max}</span>
+              </div>
             </div>
-            <div className="w-28 h-1.5 bg-slate-800 rounded-full overflow-hidden">
-              <div
-                className={`h-full ${theme.bar} rounded-full transition-all`}
-                style={{ width: `${pct}%` }}
-              />
-            </div>
-          </div>
-        )}
+          ) : (
+            <>
+              <div className="flex items-center gap-2 justify-end mb-1">
+                <span className="text-xs text-slate-400">Progress</span>
+                <span className={`text-sm font-bold ${readOnly ? 'text-violet-400' : theme.accent}`}>{pickedCount}/{totalGames}</span>
+              </div>
+              <div className="w-28 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                <div
+                  className={`h-full ${readOnly ? 'bg-violet-500' : theme.bar} rounded-full transition-all`}
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
     </div>
   )
 }
-
-

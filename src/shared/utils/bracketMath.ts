@@ -1,18 +1,13 @@
 // src/shared/utils/bracketMath.ts
 // ─────────────────────────────────────────────────────────────
 
-import type { Game, Pick } from '../../shared/types'
-import { isTBDName }        from './helpers'
+import type { Game, Pick, Tournament } from '../../shared/types'
+import { isTBDName, getScore }         from './helpers'
 
 // ─────────────────────────────────────────────────────────────
 // § 0. Cascade Delete Helper
 // ─────────────────────────────────────────────────────────────
 
-/**
- * Follows the next_game_id chain from a given game and returns
- * every downstream game ID in traversal order (closest first).
- * Does NOT include startGame.id itself.
- */
 export function collectDownstreamGameIds(
   startGame: Game,
   allGames:  Game[],
@@ -33,15 +28,6 @@ export function collectDownstreamGameIds(
 // § 1. Game Numbering
 // ─────────────────────────────────────────────────────────────
 
-/**
- * Assigns a stable sequential display number to each game, ordered
- * first by round_num, then by sort_order within that round.
- *
- * Used to write and match "Winner of Game #N" placeholder text
- * when linking games in the bracket tree.
- *
- * @returns Record mapping game.id → display number (1-based)
- */
 export function computeGameNumbers(games: Game[]): Record<string, number> {
   const sorted = [...games].sort((a, b) =>
     a.round_num !== b.round_num
@@ -57,27 +43,6 @@ export function computeGameNumbers(games: Game[]): Record<string, number> {
 // § 2. Slot Resolution
 // ─────────────────────────────────────────────────────────────
 
-/**
- * Determines which display slot ('in1' = team1, 'in2' = team2) a
- * given game's winner should flow into in the next game.
- *
- * This is the SINGLE canonical three-tier priority algorithm used by:
- *   - deriveEffectiveNames() below  (user-facing bracket display)
- *   - AdminBuilderView SVG connectors (admin canvas lines)
- *   - gameService.ts setWinner()     (advancing winners server-side)
- *
- * All consumers MUST use this function. Inline reimplementations
- * will drift. See Phase 2 audit for prior divergence history.
- *
- * Priority:
- *   1. PRIMARY   — text-match: nextGame.team1_name or team2_name
- *                  equals "Winner of Game #N". Authoritative.
- *   2. SECONDARY — actual_winner has already been advanced;
- *                  match the team name that replaced the placeholder.
- *   3. FALLBACK  — sort feeders by sort_order + id, use positional
- *                  index. Only reached on brand-new templates before
- *                  placeholder text is written.
- */
 export function resolveAdvancingSlot(
   game:        Game,
   games:       Game[],
@@ -89,19 +54,15 @@ export function resolveAdvancingSlot(
   const winnerText = `Winner of Game #${gameNumbers[game.id]}`
 
   if (nextGame) {
-    // 1. PRIMARY: placeholder text-match (fixed typo here)
     if (nextGame.team1_name === winnerText) return 'in1'
     if (nextGame.team2_name === winnerText) return 'in2'
 
-    // 2. SECONDARY: winner already advanced, match by name
     if (game.actual_winner) {
       if (nextGame.team1_name === game.actual_winner) return 'in1'
       if (nextGame.team2_name === game.actual_winner) return 'in2'
     }
   }
 
-  // 3. FALLBACK: positional index
-  // FIX W-5: Variable was named `reeders` (f→r token mutation of `feeders`).
   const feeders = games
     .filter(g => g.next_game_id === game.next_game_id)
     .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.id.localeCompare(b.id))
@@ -110,42 +71,23 @@ export function resolveAdvancingSlot(
 }
 
 // ─────────────────────────────────────────────────────────────
-// § 3. Effective Name Derivation
+// § 3. Effective Name Derivation (DUAL-TRACK PREDICTION)
 // ─────────────────────────────────────────────────────────────
 
-/**
- * Derives the display name for both team slots in every game by
- * propagating user picks (and confirmed actual_winners) forward
- * through the bracket tree.
- *
- * Replaces "Winner of Game #N" placeholder text with the real
- * team name once the preceding game has a pick or result.
- *
- * Pick propagation rules:
- *   1. actual_winner always wins out (admin-confirmed result).
- *   2. A user pick is only propagated when BOTH slot names in the
- *      current game are real teams (not TBD/placeholder). If
- *      either slot is still a placeholder, the path hasn't resolved.
- *   3. GHOST PICK GUARD: a pick is discarded if the picked team
- *      does not match either current effective team in the game.
- *      This defends against orphaned DB rows surviving a partial
- *      cascade-delete failure. The bracket will not propagate a
- *      pick for a team that no longer occupies that slot.
- *   4. Games are processed in round_num ascending order so Round 1
- *      picks propagate correctly before Round 2 reads them.
- *
- * @param games - All games in the current tournament (any order)
- * @param picks - Current user's picks for this tournament
- * @returns     - Record mapping game.id → { team1, team2 } display strings
- */
+export type DualSlot = { actual: string; predicted: string }
+export type EffectiveNames = Record<string, { team1: DualSlot; team2: DualSlot }>
+
 export function deriveEffectiveNames(
   games: Game[],
   picks: Pick[]
-): Record<string, { team1: string; team2: string }> {
+): EffectiveNames {
 
-  const names: Record<string, { team1: string; team2: string }> = {}
+  const names: EffectiveNames = {}
   games.forEach(g => {
-    names[g.id] = { team1: g.team1_name, team2: g.team2_name }
+    names[g.id] = { 
+      team1: { actual: g.team1_name, predicted: g.team1_name }, 
+      team2: { actual: g.team2_name, predicted: g.team2_name } 
+    }
   })
 
   const pickMap  = new Map(picks.map(p => [p.game_id, p.predicted_winner]))
@@ -160,24 +102,21 @@ export function deriveEffectiveNames(
   for (const game of sorted) {
     if (!game.next_game_id) continue
 
-    const currentTeam1 = names[game.id]?.team1 ?? game.team1_name
-    const currentTeam2 = names[game.id]?.team2 ?? game.team2_name
-    const slotsAreReal = !isTBDName(currentTeam1) && !isTBDName(currentTeam2)
+    const eff = names[game.id]
+    const curTeam1 = eff?.team1 ?? { actual: game.team1_name, predicted: game.team1_name }
+    const curTeam2 = eff?.team2 ?? { actual: game.team2_name, predicted: game.team2_name }
 
-    // ── Ghost pick guard ────────────────────────────────────
-    // Retrieve the raw pick, then validate it against the
-    // teams currently in this slot. A pick that doesn't match
-    // either team is an orphaned row — discard it for display.
+    const actualWinner = game.actual_winner
+    const predSlotsAreReal = !isTBDName(curTeam1.predicted) && !isTBDName(curTeam2.predicted)
+
     let userPick = pickMap.get(game.id)
-    if (userPick && userPick !== currentTeam1 && userPick !== currentTeam2) {
+    if (userPick && userPick !== curTeam1.predicted && userPick !== curTeam2.predicted) {
       userPick = undefined
     }
 
-    const winner =
-      game.actual_winner ??
-      (slotsAreReal ? userPick : undefined)
+    const predictedWinner = (predSlotsAreReal ? userPick : undefined) ?? actualWinner
 
-    if (!winner) continue
+    if (!actualWinner && !predictedWinner) continue
 
     const nextGame = names[game.next_game_id]
     if (!nextGame) continue
@@ -185,9 +124,11 @@ export function deriveEffectiveNames(
     const slot = resolveAdvancingSlot(game, games, gameNums)
 
     if (slot === 'in1') {
-      names[game.next_game_id] = { ...nextGame, team1: winner }
+      if (actualWinner)    nextGame.team1.actual    = actualWinner
+      if (predictedWinner) nextGame.team1.predicted = predictedWinner
     } else {
-      names[game.next_game_id] = { ...nextGame, team2: winner }
+      if (actualWinner)    nextGame.team2.actual    = actualWinner
+      if (predictedWinner) nextGame.team2.predicted = predictedWinner
     }
   }
 
@@ -195,28 +136,71 @@ export function deriveEffectiveNames(
 }
 
 // ─────────────────────────────────────────────────────────────
-// § 4. Champion Derivation
+// § 4. Deep Elimination & Local Scoring
 // ─────────────────────────────────────────────────────────────
 
 /**
- * Returns the championship team name from a resolved bracket.
- *
- * Resolution priority:
- *   1. actual_winner on the championship game (admin confirmed)
- *   2. User's direct pick on the championship game (validated
- *      against effective slot names — ghost pick guard applies)
- *   3. A real team that has propagated into an effective slot
- *      via deriveEffectiveNames() (covers picks made in earlier
- *      rounds that have visually advanced to the final)
- *
- * Pass the already-computed effectiveNames to avoid re-computing.
- *
- * @returns Champion team name, or null if undetermined.
+ * Returns a Set of team names that have officially lost a game.
  */
+export function deriveEliminatedTeams(games: Game[], effectiveNames: EffectiveNames): Set<string> {
+  const eliminated = new Set<string>()
+  for (const game of games) {
+    if (game.actual_winner) {
+      const eff = effectiveNames[game.id]
+      const t1 = eff?.team1.actual ?? game.team1_name
+      const t2 = eff?.team2.actual ?? game.team2_name
+
+      if (t1 && t1 !== game.actual_winner && !isTBDName(t1)) eliminated.add(t1)
+      if (t2 && t2 !== game.actual_winner && !isTBDName(t2)) eliminated.add(t2)
+    }
+  }
+  return eliminated
+}
+
+/**
+ * Lightweight, modular scoring engine for a single bracket view.
+ */
+export function calculateLocalScore(
+  games: Game[],
+  picks: Pick[],
+  effectiveNames: EffectiveNames,
+  tournament: Tournament
+): { current: number; max: number } {
+  let current = 0
+  let max = 0
+  const eliminated = deriveEliminatedTeams(games, effectiveNames)
+  const pickMap = new Map(picks.map(p => [p.game_id, p.predicted_winner]))
+
+  for (const game of games) {
+    const pts = tournament.scoring_config?.[String(game.round_num)] ?? getScore(game.round_num)
+    const userPick = pickMap.get(game.id)
+
+    if (!userPick || isTBDName(userPick)) continue
+
+    if (game.actual_winner) {
+      if (game.actual_winner === userPick) {
+        current += pts
+        max += pts
+      }
+    } else {
+      // Game hasn't happened. Is the predicted team still alive?
+      if (!eliminated.has(userPick)) {
+        max += pts
+      }
+    }
+  }
+
+  return { current, max }
+}
+
+// ─────────────────────────────────────────────────────────────
+// § 5. Champion Derivation
+// ─────────────────────────────────────────────────────────────
+
 export function deriveChampion(
   games:          Game[],
   picks:          Pick[],
-  effectiveNames: Record<string, { team1: string; team2: string }>
+  effectiveNames: EffectiveNames
 ): string | null {
   if (games.length === 0) return null
 
@@ -228,51 +212,33 @@ export function deriveChampion(
 
   if (!champGame) return null
 
-  // 1. Admin-confirmed result
   if (champGame.actual_winner) return champGame.actual_winner
 
-  // 2. Direct pick — validated against effective slot names
-  // FIX N-1: Variable was named `err` (f→r token mutation of `eff`).
   const eff          = effectiveNames[champGame.id]
-  const currentTeam1 = eff?.team1 ?? champGame.team1_name
-  const currentTeam2 = eff?.team2 ?? champGame.team2_name
+  const currentTeam1 = eff?.team1.predicted ?? champGame.team1_name
+  const currentTeam2 = eff?.team2.predicted ?? champGame.team2_name
 
   const directPick = picks.find(p => p.game_id === champGame.id)?.predicted_winner
   if (directPick && (directPick === currentTeam1 || directPick === currentTeam2)) {
     return directPick
   }
 
-  // 3. No champion determined yet.
-  // (We intentionally DO NOT fall back to checking the slots here so it doesn't trigger prematurely)
   return null
 }
 
 // ─────────────────────────────────────────────────────────────
-// § 5. SVG Connector Line Data
+// § 6. SVG Connector Line Data
 // ─────────────────────────────────────────────────────────────
 
-/**
- * Data for one SVG connector line in the admin bracket canvas.
- * Coordinates are relative to the scrollable bracket container.
- */
 export interface ConnectorLine {
   x1:       number
   y1:       number
   x2:       number
-  x3?:      number   // elbow x (for L-shaped connectors)
+  x3?:      number 
   y2:       number
   gameId:   string
   fromSlot: 'in1' | 'in2'
 }
-
-/**
- * Computes SVG connector line data for the admin bracket canvas by
- * measuring DOM element positions. Pure data-computation — the
- * caller is responsible for providing the bounding rects.
- *
- * Separated here so the coordinate math can be tested without a DOM.
- * AdminBuilderView's useLayoutEffect calls this after measuring.
- */
 
 export function computeConnectorLines(
   games:         Game[],

@@ -3,18 +3,21 @@ import { useTheme }              from '../../../shared/utils/theme'
 import { getRoundLabel, getScore } from '../../../shared/utils/helpers'
 import GameCard                  from '../GameCard'
 import type { Game, Pick, Tournament } from '../../../shared/types'
+import type { EffectiveNames }     from '../../../shared/utils/bracketMath'
 
 interface Props {
-  round:          number
-  games:          Game[]
-  maxRound:       number
-  pickMap:        Map<string, Pick>   // pre-built — no allocation here
-  effectiveNames: Record<string, { team1: string; team2: string }>
-  tournament:     Tournament
+  round:           number
+  games:           Game[]
+  maxRound:        number
+  pickMap:         Map<string, Pick>
+  effectiveNames:  EffectiveNames
+  tournament:      Tournament
+  gameNumbers:     Record<string, number>
+  eliminatedTeams: Set<string>
 }
 
 export default function MatchupColumn({
-  round, games, maxRound, pickMap, effectiveNames, tournament,
+  round, games, maxRound, pickMap, effectiveNames, tournament, gameNumbers, eliminatedTeams
 }: Props) {
   const theme = useTheme()
   const label = tournament.round_names?.[round - 1] || getRoundLabel(round, maxRound)
@@ -32,17 +35,25 @@ export default function MatchupColumn({
       </div>
 
       <div className="flex flex-col gap-4 w-full">
-        {games.map(game => (
-          <GameCard
-            key={game.id}
-            game={game}
-            userPick={pickMap.get(game.id)}
-            effectiveTeam1={effectiveNames[game.id]?.team1 ?? game.team1_name}
-            effectiveTeam2={effectiveNames[game.id]?.team2 ?? game.team2_name}
-          />
-        ))}
+        {games.map(game => {
+          const eff = effectiveNames[game.id] || {
+            team1: { actual: game.team1_name, predicted: game.team1_name },
+            team2: { actual: game.team2_name, predicted: game.team2_name }
+          }
+
+          return (
+            <GameCard
+              key={game.id}
+              game={game}
+              gameNum={gameNumbers[game.id]}
+              eliminatedTeams={eliminatedTeams}
+              userPick={pickMap.get(game.id)}
+              effectiveTeam1={eff.team1}
+              effectiveTeam2={eff.team2}
+            />
+          )
+        })}
       </div>
     </div>
   )
 }
-
