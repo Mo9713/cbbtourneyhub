@@ -44,9 +44,7 @@ export default function AppShell() {
   }, [createTournament, pushToast])
 
   return (
-    // bg-slate-950 (#020617): hard-coded neutral dark.
-    // theme.appBg is reserved for panels/cards only — never the root shell.
-    <div className="flex h-screen overflow-hidden bg-slate-950 text-white">
+    <div className={`flex h-screen overflow-hidden ${theme.appBg} text-slate-900 dark:text-white transition-colors duration-300`}>
 
       {/* Desktop Sidebar — expanded */}
       {sidebarOpen && (
@@ -59,15 +57,12 @@ export default function AppShell() {
         </div>
       )}
 
-      {/* Desktop Sidebar — minimised stub
-          bg-slate-900: hard-coded neutral, NOT theme.sidebarBg.
-          theme.sidebarBg for plasma/ice themes is a strong blue/purple tint
-          (#0c0814, #060c14) that bleeds into the bracket canvas. */}
+      {/* Desktop Sidebar — minimised stub */}
       {!sidebarOpen && (
-        <div className="hidden md:flex flex-col items-center py-4 w-16 border-r border-slate-800 flex-shrink-0 bg-slate-900">
+        <div className={`hidden md:flex flex-col items-center py-4 w-16 border-r border-slate-200 dark:border-slate-800 flex-shrink-0 ${theme.sidebarBg} transition-colors duration-300`}>
           <button
             onClick={() => setSidebarOpen(true)}
-            className="p-2 rounded-lg text-slate-500 hover:text-white hover:bg-white/5 transition-colors"
+            className="p-2 rounded-lg text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
             title="Expand sidebar"
           >
             <PanelLeftOpen size={18} />
@@ -79,7 +74,7 @@ export default function AppShell() {
       {mobileMenuOpen && (
         <div className="md:hidden fixed inset-0 z-40 flex">
           <div
-            className="absolute inset-0 bg-black/60"
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
             onClick={() => setMobileMenuOpen(false)}
           />
           <div className="relative z-50">

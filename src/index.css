@@ -1,35 +1,25 @@
+/* src/index.css */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* ── Root background — hard override ────────────────────────
-   Forces html AND body to neutral slate-950 (#020617) before
-   any JS/React mounts and regardless of any theme class that
-   gets applied later. The !important beats Tailwind's specificity.
-   This is the nuclear option for killing the legacy purple bleed.
-─────────────────────────────────────────────────────────────── */
-html,
-body {
-  background-color: #020617 !important;
-  color: #e2e8f0;
-}
-
-/* ── Root body layer (Tailwind-friendly version) ─────────────
-   Redundant with the raw CSS above but satisfies Tailwind's
-   @layer base purge scanning.
-─────────────────────────────────────────────────────────────── */
 @layer base {
+  html,
   body {
-    @apply bg-slate-950 text-slate-200;
+    @apply m-0 p-0 w-full min-h-screen transition-colors duration-300;
+    @apply text-slate-900 dark:text-slate-200;
+  }
+  
+  /* Fallback background to prevent FOUC before React mounts */
+  html.dark body {
+    background-color: #020617;
+  }
+  
+  html:not(.dark) body {
+    background-color: #f8fafc;
   }
 }
 
-/* ── Sleek custom scrollbars ─────────────────────────────────
-   Applied via the .scrollbar-thin utility class.
-   Firefox: scrollbar-width + scrollbar-color
-   WebKit:  ::-webkit-scrollbar pseudo-elements
-   Both auto-hide at 4px thin and match the app's slate palette.
-─────────────────────────────────────────────────────────────── */
 .scrollbar-thin {
   scrollbar-width: thin;
   scrollbar-color: rgba(100, 116, 139, 0.35) transparent;

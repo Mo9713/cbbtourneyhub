@@ -1,10 +1,8 @@
-// src/features/auth/AuthContext.tsx
-
+// src/features/auth/model/AuthContext.tsx
 import {
   createContext,
   useContext,
   useEffect,
-  useRef,
   type ReactNode,
 } from 'react'
 
@@ -25,29 +23,20 @@ interface AuthProviderProps {
 
 export function AuthProvider({ children }: AuthProviderProps) {
   const auth = useAuth()
-
   const { profile, appLoading } = auth
 
-  const appliedModeRef = useRef<'light' | 'dark' | null>(null)
-
+  /**
+   * Syncs the user's UI mode preference to the document root.
+   * Strictly uses classList to avoid imperative style manipulation.
+   */
   useEffect(() => {
     const mode = profile?.ui_mode ?? 'dark'
-    const html  = document.documentElement
+    const html = document.documentElement
 
-    // Remove the previously applied mode class (if any)
-    if (appliedModeRef.current) {
-      html.classList.remove(appliedModeRef.current)
-    }
-
-    // Apply the current mode
-    html.classList.add(mode)
-    appliedModeRef.current = mode
-
-    // Cleanup on unmount: remove the class we added
-    return () => {
-      if (appliedModeRef.current) {
-        html.classList.remove(appliedModeRef.current)
-      }
+    if (mode === 'dark') {
+      html.classList.add('dark')
+    } else {
+      html.classList.remove('dark')
     }
   }, [profile?.ui_mode])
 
@@ -61,13 +50,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
   if (appLoading) {
     return (
       <div
-        className="min-h-screen bg-slate-950 flex items-center justify-center"
+        className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center transition-colors duration-300"
         role="status"
         aria-label="Loading application"
       >
         <div className="text-center">
           <div className="w-10 h-10 border-2 border-orange-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-slate-500 text-sm">Loading…</p>
+          <p className="text-slate-500 dark:text-slate-400 text-sm font-medium">Loading…</p>
         </div>
       </div>
     )
@@ -78,12 +67,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
   if (!auth.user || !auth.profile) {
     return (
       <AuthContext.Provider value={auth}>
-        {/* FIX W-4: The previous onAuth callback fired a real supabase.auth.getUser()
-            network request on every login and then discarded the result entirely
-            inside an empty if-block. The comment even admitted it was "a no-op
-            trigger". The onAuthStateChange subscription in useAuth.ts handles the
-            full SIGNED_IN → setUser → fetchProfile → appLoading:false cascade
-            automatically. No nudge is needed here. */}
         <AuthForm onAuth={() => {}} />
       </AuthContext.Provider>
     )
@@ -105,10 +88,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 export function useAuthContext(): AuthContextValue {
   const ctx = useContext(AuthContext)
   if (!ctx) {
-    throw new Error(
-      'useAuthContext() was called outside of <AuthProvider>.\n' +
-      'Ensure <AuthProvider> wraps your component tree in main.tsx.'
-    )
+    throw new Error('useAuthContext() was called outside of <AuthProvider>.')
   }
   return ctx
 }

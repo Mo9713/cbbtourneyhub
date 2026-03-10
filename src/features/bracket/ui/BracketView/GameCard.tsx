@@ -1,29 +1,22 @@
 // src/features/bracket/ui/BracketView/GameCard.tsx
 //
-// Purely presentational. No async calls.
+// Purely presentational. Adheres to the broadcast density aesthetic.
 //
-// ── Visual state matrix ───────────────────────────────────────────────────────
+// ── Visual state matrix (Final Polish) ───────────────────────────────────────
 //
 //  WINNER (any)        : bg-[#022c22]  ring-2 ring-inset ring-emerald-500
 //                        text-emerald-400 font-black
 //  WINNER + PICKED     : same + ✓ (emerald) on right
 //
-//  ELIMINATED + PICKED : text stays default styling but line-through rose
-//                        ✕ (rose) on right  ← dot is SUPPRESSED
-//
-//  ELIMINATED + NOT PICKED : row bg-black/30 (subtle fade), text-slate-500
-//                            no decoration, no icon
+//  ELIMINATED + PICKED : line-through text-rose-600 decoration-rose-600
+//                        ✕ (rose) on right
+//  ELIMINATED + CASCADED : (round > 1 and predicted) line-through text-rose-600, NO ✕
+//  ELIMINATED + NOT PICKED (round 1) : row bg-black/30 (subtle fade), text-slate-500, NO ✕
 //
 //  PENDING + PICKED    : text-slate-200 (unchanged from default)
 //                        emerald dot on right  ← only if NOT eliminated
 //
 //  DEFAULT             : text-slate-200
-//
-// ── Right-side indicator priority (mutually exclusive) ───────────────────────
-//  1. isWinner && isPicked          → ✓
-//  2. isEliminated && isPicked      → ✕  (dot never shown in this branch)
-//  3. isPicked && !isWinner && !isEliminated → emerald dot
-//  Only one ever renders per row.
 
 import { useBracketView } from './BracketViewContext'
 import type { Game, Pick } from '../../../../shared/types'
@@ -54,8 +47,8 @@ export default function GameCard({
 
   const hasWinner = !!game.actual_winner
 
-  // Card-level glow when game has a confirmed result
-  const cardBorderCls   = hasWinner ? 'border-emerald-900/50' : 'border-[#2a303c]'
+  // Card-level styling based on confirmed results
+  const cardBorderCls   = hasWinner ? 'border-emerald-900/50' : 'border-slate-200 dark:border-slate-800'
   const cardShadowStyle = hasWinner
     ? { boxShadow: '0 0 14px 2px rgba(6, 78, 59, 0.35)' }
     : undefined
@@ -80,7 +73,7 @@ export default function GameCard({
   return (
     <div className="relative w-full" style={{ overflow: 'visible' }}>
 
-      {/* ── Output anchor — 0×0 at right edge, vertical center ── */}
+      {/* Output anchor for SVG connectors */}
       <div
         data-out={game.id}
         className="absolute w-0 h-0 top-1/2"
@@ -88,18 +81,18 @@ export default function GameCard({
         aria-hidden
       />
 
-      {/* ── Floating game number ── */}
+      {/* Floating game metadata labels */}
       <div className="absolute -top-4 left-0 flex items-center gap-1">
-        <span className="text-[9px] font-bold text-slate-500 tracking-widest leading-none">
+        <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 tracking-widest leading-none">
           #{String(gameNum).padStart(2, '0')}
         </span>
-        <span className="text-[9px] text-slate-700 leading-none">·</span>
-        <span className="text-[9px] text-slate-600 leading-none">{pointValue}pt</span>
+        <span className="text-[9px] text-slate-300 dark:text-slate-700 leading-none">·</span>
+        <span className="text-[9px] text-slate-400 dark:text-slate-600 leading-none">{pointValue}pt</span>
       </div>
 
-      {/* ── Card body ── */}
+      {/* Card body */}
       <div
-        className={`flex flex-col w-full bg-[#11141d] border rounded-none ${cardBorderCls}`}
+        className={`flex flex-col w-full bg-slate-50 dark:bg-[#11141d] border rounded-none transition-colors duration-150 ${cardBorderCls}`}
         style={cardShadowStyle}
       >
         {rows.map(({ actual, predicted, seed, score, inKey }, idx) => {
@@ -112,13 +105,19 @@ export default function GameCard({
           const isPicked     = !isTBD && userPick?.predicted_winner === predicted
           const isEliminated = !isTBD && !isWinner && eliminatedTeams.has(predicted)
 
+          // If they are in round 2+, they are a user pick to reach this slot
+          const isUserPickToReachHere = game.round_num > 1
+          
+          // Cross out if user picked them for THIS game OR picked them to reach this slot
+          const shouldStrikeThrough = isEliminated && (isPicked || isUserPickToReachHere)
+          // Fade if eliminated but neither condition above is met (e.g., base round unpicked teams)
+          const shouldFade = isEliminated && !shouldStrikeThrough
+
           // ── Row background + ring ──────────────────────────────────────
-          // Winner gets emerald bg + inset ring.
-          // Eliminated-not-picked gets a subtle dark overlay (no text change to gray alone).
           const rowBg = isWinner
-            ? 'bg-[#022c22]'
-            : isEliminated && !isPicked
-              ? 'bg-black/30'
+            ? 'bg-emerald-500/10 dark:bg-[#022c22]'
+            : shouldFade
+              ? 'bg-black/5 dark:bg-black/30'
               : ''
           const rowRingCls = isWinner ? 'ring-2 ring-inset ring-emerald-500 z-10' : ''
 
@@ -127,58 +126,49 @@ export default function GameCard({
           let seedColorCls: string
 
           if (isWinner) {
-            // Confirmed winner: bold emerald
-            nameClass    = 'text-emerald-400 font-black'
-            seedColorCls = 'text-emerald-400'
-          } else if (isEliminated && isPicked) {
-            // User picked them AND they lost: strikethrough rose
-            nameClass    = 'line-through text-rose-600 decoration-rose-600 decoration-2'
+            nameClass    = 'text-emerald-600 dark:text-emerald-400 font-black'
+            seedColorCls = 'text-emerald-600 dark:text-emerald-400'
+          } else if (shouldStrikeThrough) {
+            nameClass    = 'line-through text-rose-600 decoration-rose-600 decoration-2 font-bold'
             seedColorCls = 'text-rose-600 line-through decoration-rose-600 decoration-2'
-          } else if (isEliminated && !isPicked) {
-            // Lost but user didn't pick them: quiet fade via row bg + slightly muted text.
-            // No strikethrough, no decoration — just a background tint and softer text.
+          } else if (shouldFade) {
             nameClass    = 'text-slate-500'
-            seedColorCls = 'text-slate-600'
+            seedColorCls = 'text-slate-400 dark:text-slate-600'
           } else if (isTBD) {
-            nameClass    = 'text-slate-600 italic'
-            seedColorCls = 'text-slate-700'
+            nameClass    = 'text-slate-400 dark:text-slate-600 italic'
+            seedColorCls = 'text-slate-300 dark:text-slate-700'
           } else {
-            // DEFAULT (includes pending picks — text color stays neutral)
-            nameClass    = 'text-slate-200'
-            seedColorCls = 'text-slate-500'
+            // DEFAULT / Pending
+            nameClass    = 'text-slate-900 dark:text-slate-200 font-bold'
+            seedColorCls = 'text-slate-400 dark:text-slate-500'
           }
 
-          const scoreCls = isWinner ? 'text-emerald-400 font-black' : 'text-slate-400'
+          const scoreCls = isWinner ? 'text-emerald-600 dark:text-emerald-400 font-black' : 'text-slate-400'
           const canPick  = !isTBD && !isLocked && !readOnly
 
-          // ── Right-side indicator (strictly one of three, priority order) ──
-          // Priority 1: winner + picked → ✓
-          // Priority 2: eliminated + picked → ✕  (prevents dot from also showing)
-          // Priority 3: pending alive pick → emerald dot
+          // ── Right-side indicator ───────────────────────────────────────
           const showCheck = isWinner && isPicked
-          const showX     = !showCheck && isEliminated && isPicked
+          const showX     = isEliminated && isPicked
           const showDot   = !showCheck && !showX && isPicked && !isWinner && !isEliminated
+
+          // Advancing Ghost Label
+          const showActualAdvancing = !isTBD && actual && actual !== predicted && !isTBDName(actual)
 
           return (
             <div
               key={idx}
               className={`
-                relative flex items-center justify-between h-8 px-2
-                border-b border-[#2a303c] last:border-b-0
+                relative flex items-center justify-between min-h-[32px] py-1 px-2
+                border-b border-slate-200 dark:border-[#2a303c] last:border-b-0
                 ${rowBg} ${rowRingCls}
                 ${canPick ? 'cursor-pointer hover:brightness-110' : 'cursor-default'}
-                transition-colors duration-75
+                transition-all duration-75
               `}
               onClick={() => canPick && onPick(game, predicted)}
             >
-              {/* Input anchor — strictly at left-0 of row */}
-              <div
-                {...{ [inKey]: game.id }}
-                className="absolute left-0 top-1/2 w-0 h-0"
-                aria-hidden
-              />
+              <div {...{ [inKey]: game.id }} className="absolute left-0 top-1/2 w-0 h-0" aria-hidden />
 
-              {/* ── Seed badge ── */}
+              {/* Seed badge */}
               {seed != null ? (
                 <span className={`w-3.5 text-[9px] font-bold text-right mr-1.5 flex-shrink-0 tabular-nums ${seedColorCls}`}>
                   {seed}
@@ -187,22 +177,29 @@ export default function GameCard({
                 <span className="w-3.5 mr-1.5 flex-shrink-0" aria-hidden />
               )}
 
-              {/* ── Team name ── */}
-              <span className={`flex-1 text-[11px] font-black uppercase tracking-tight truncate leading-none ${nameClass}`}>
-                {isTBD ? '—' : predicted}
-              </span>
+              {/* Names Block */}
+              <div className="flex-1 min-w-0 flex flex-col justify-center">
+                <span className={`text-[11px] uppercase tracking-tight truncate leading-tight ${nameClass}`}>
+                  {isTBD ? '—' : predicted}
+                </span>
+                {showActualAdvancing && (
+                  <span className="block text-[8px] text-slate-500 dark:text-slate-500 uppercase tracking-tighter leading-none mt-0.5 font-bold">
+                    Actual: {actual}
+                  </span>
+                )}
+              </div>
 
-              {/* ── Score ── */}
+              {/* Score */}
               {score != null && (
                 <span className={`text-[11px] font-bold ml-2 flex-shrink-0 tabular-nums ${scoreCls}`}>
                   {score}
                 </span>
               )}
 
-              {/* ── Right indicator — only one ever renders ── */}
+              {/* Indicator */}
               <div className="flex items-center justify-center w-5 flex-shrink-0">
                 {showCheck && (
-                  <span className="text-[10px] font-black text-emerald-400 leading-none">✓</span>
+                  <span className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 leading-none">✓</span>
                 )}
                 {showX && (
                   <span className="text-[10px] font-black text-rose-600 leading-none">✕</span>

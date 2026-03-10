@@ -12,20 +12,6 @@ export interface ThemeConfig {
   progressBar?: string
 }
 
-// ── Background neutralization ─────────────────────────────────────────────────
-// appBg / sidebarBg / panelBg / inputBg are now neutral slate across ALL themes.
-// The old values were deeply-tinted hex codes that leaked purple/blue/orange onto
-// the bracket canvas regardless of the root bg-slate-950 override.
-//
-// Accent colors (btn, accent, border, ring, etc.) are intentionally preserved —
-// those give each theme its personality without staining the background.
-//
-// Neutral scale used:
-//   appBg    → bg-slate-950   (#020617)  — outermost shell, same as root body
-//   sidebarBg → bg-slate-900  (#0f172a)  — sidebar strip
-//   panelBg   → bg-slate-900  (#0f172a)  — cards / panels
-//   inputBg   → bg-slate-800  (#1e293b)  — input fields
-
 export const THEMES: Record<ThemeKey, ThemeConfig> = {
   ember: {
     key: 'ember', label: 'Ember', emoji: '🔥',
@@ -39,11 +25,11 @@ export const THEMES: Record<ThemeKey, ThemeConfig> = {
     tabActive: 'border-orange-500 text-orange-400',
     headerBg:  'bg-orange-500/5 border-orange-500/20',
     logo:      'bg-orange-600',
-    // Neutralized (was: #0e0905, #120c07, #150e08, #1c140a)
-    appBg:     'bg-slate-950',
-    sidebarBg: 'bg-slate-900',
-    panelBg:   'bg-slate-900',
-    inputBg:   'bg-slate-800',
+    // Theme Slate (Neutral Blue-Gray)
+    appBg:     'bg-slate-50 dark:bg-slate-950',
+    sidebarBg: 'bg-slate-100 dark:bg-slate-900',
+    panelBg:   'bg-white dark:bg-slate-900',
+    inputBg:   'bg-slate-100 dark:bg-slate-800',
     progressBar: 'bg-orange-500',
   },
 
@@ -59,11 +45,11 @@ export const THEMES: Record<ThemeKey, ThemeConfig> = {
     tabActive: 'border-cyan-500 text-cyan-400',
     headerBg:  'bg-cyan-500/5 border-cyan-500/20',
     logo:      'bg-cyan-600',
-    // Neutralized (was: #040b10, #060e14, #081118, #0c1820)
-    appBg:     'bg-slate-950',
-    sidebarBg: 'bg-slate-900',
-    panelBg:   'bg-slate-900',
-    inputBg:   'bg-slate-800',
+    // Theme Zinc (Neutral Industrial)
+    appBg:     'bg-zinc-50 dark:bg-zinc-950',
+    sidebarBg: 'bg-zinc-100 dark:bg-zinc-900',
+    panelBg:   'bg-white dark:bg-zinc-900',
+    inputBg:   'bg-zinc-100 dark:bg-zinc-800',
     progressBar: 'bg-cyan-500',
   },
 
@@ -79,11 +65,11 @@ export const THEMES: Record<ThemeKey, ThemeConfig> = {
     tabActive: 'border-violet-500 text-violet-400',
     headerBg:  'bg-violet-500/5 border-violet-500/20',
     logo:      'bg-violet-600',
-    // Neutralized (was: #080510, #0c0814, #0f0b18, #150f20 — the main purple culprits)
-    appBg:     'bg-slate-950',
-    sidebarBg: 'bg-slate-900',
-    panelBg:   'bg-slate-900',
-    inputBg:   'bg-slate-800',
+    // Theme Neutral (Pure Neutral)
+    appBg:     'bg-neutral-50 dark:bg-neutral-950',
+    sidebarBg: 'bg-neutral-100 dark:bg-neutral-900',
+    panelBg:   'bg-white dark:bg-neutral-900',
+    inputBg:   'bg-neutral-100 dark:bg-neutral-800',
     progressBar: 'bg-violet-500',
   },
 
@@ -99,11 +85,11 @@ export const THEMES: Record<ThemeKey, ThemeConfig> = {
     tabActive: 'border-emerald-500 text-emerald-400',
     headerBg:  'bg-emerald-500/5 border-emerald-500/20',
     logo:      'bg-emerald-600',
-    // Neutralized (was: #04100a, #07130c, #091609, #0d1e0d)
-    appBg:     'bg-slate-950',
-    sidebarBg: 'bg-slate-900',
-    panelBg:   'bg-slate-900',
-    inputBg:   'bg-slate-800',
+    // Theme Stone (Warm Neutral)
+    appBg:     'bg-stone-50 dark:bg-stone-950',
+    sidebarBg: 'bg-stone-100 dark:bg-stone-900',
+    panelBg:   'bg-white dark:bg-stone-900',
+    inputBg:   'bg-stone-100 dark:bg-stone-800',
     progressBar: 'bg-emerald-500',
   },
 }
