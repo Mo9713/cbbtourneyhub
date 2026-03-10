@@ -42,7 +42,15 @@ export async function addGameToRound(
 
 export async function updateGame(
   id:      string,
-  updates: Partial<Pick<Game, 'team1_name' | 'team2_name' | 'sort_order' | 'next_game_id'>>,
+  // ── Widened to include seed/score display fields ──────────────────────
+  // The four new optional fields (team1_seed, team2_seed, team1_score,
+  // team2_score) must be listed here or Supabase will silently drop them.
+  updates: Partial<Pick<Game,
+    | 'team1_name'  | 'team2_name'
+    | 'sort_order'  | 'next_game_id'
+    | 'team1_seed'  | 'team2_seed'
+    | 'team1_score' | 'team2_score'
+  >>,
 ): Promise<ServiceResult<Game>> {
   return withAdminAuth(async () => {
     const { data, error } = await supabase

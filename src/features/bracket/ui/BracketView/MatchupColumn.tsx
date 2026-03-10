@@ -8,6 +8,10 @@
 //   • Header  — fixed 80px, flex-shrink-0
 //   • Slots   — flex-1, subdivided into equal flex-1 chunks (games + ghosts)
 //   • Ghosts  — invisible flex-1 spacers that hold geometric proportions
+//
+// IMPORTANT: each game slot wrapper has `pt-5` to give the GameCard's
+// floating `absolute -top-4` game number label room to breathe without
+// overlapping the row above or the column header.
 
 import { getRoundLabel, getScore }    from '../../../../shared/lib/helpers'
 import GameCard                        from './GameCard'
@@ -42,8 +46,8 @@ export default function MatchupColumn({
   round, maxRound, slots,
   pickMap, effectiveNames, tournament, gameNumbers, eliminatedTeams,
 }: Props) {
-  const label    = tournament.round_names?.[round - 1] || getRoundLabel(round, maxRound)
-  const pts      = tournament.scoring_config?.[String(round)] ?? getScore(round)
+  const label     = tournament.round_names?.[round - 1] || getRoundLabel(round, maxRound)
+  const pts       = tournament.scoring_config?.[String(round)] ?? getScore(round)
   const gameCount = slots.filter(s => s.type === 'game').length
 
   return (
@@ -77,8 +81,11 @@ export default function MatchupColumn({
           }
 
           return (
-            // flex-1: game slot takes its equal share; card centered vertically inside
-            <div key={game.id} className="flex-1 flex items-center min-h-0 px-1">
+            // flex-1: game slot takes its equal share; card centered vertically.
+            // pt-5: creates 20px of headroom so the GameCard's floating
+            //       `absolute -top-4` label (#NN) renders cleanly above the card
+            //       without overlapping the row above or the column header.
+            <div key={game.id} className="flex-1 flex items-center min-h-0 px-1 pt-5">
               <GameCard
                 game={game}
                 gameNum={gameNumbers[game.id] ?? 0}

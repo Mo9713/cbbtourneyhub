@@ -4,14 +4,13 @@
 //
 // Key design decisions:
 //
-//  SLOT_H = 68px   — tight & dense, matches broadcast bracket density.
+//  BASE_SLOT_H = 68px  — tight & dense, matches broadcast bracket density.
 //
-//  safeLeafSlots = Math.max(numLeafSlots, 4)
-//    Prevents 2-team or 4-team brackets from collapsing cards into each
-//    other. A 4-game bracket gets at minimum 4 × 68 + 80 = 352px of
-//    canvas — enough breathing room without giant whitespace.
+//  safeLeafSlots = Math.max(numLeafSlots, 8)   [raised from 4]
+//    Prevents floating game labels from overlapping in 4- and 8-team
+//    brackets. 8 × 68 + 80 = 624px minimum canvas height.
 //
-//  HEADER_H = 80px  — hard ceiling so no card ever drifts into the round
+//  HEADER_H = 80px — hard ceiling so no card ever drifts into the round
 //    label row regardless of how many slots exist.
 //
 //  Dynamic SLOT_H scaling:
@@ -38,23 +37,20 @@ import {
   type ConnectorLine,
   type EffectiveNames,
 }                                        from '../../../../shared/lib/bracketMath'
-import { getRoundLabel }                 from '../../../../shared/lib/helpers'
 import type { Game, Pick, Tournament }   from '../../../../shared/types'
 
 // ── Layout constants ──────────────────────────────────────────────────────────
 
 const BASE_SLOT_H  = 68   // px — target height per leaf slot
 const HEADER_H     = 80   // px — hard header buffer (prevents label bleed)
-const MIN_SLOTS    = 4    // safeLeafSlots floor — no bracket collapses below this
+const MIN_SLOTS    = 8    // ← raised from 4: prevents label overlap in small brackets
 const MAX_SLOT_H   = 80   // px — cap so tall brackets don't explode
 const MIN_SLOT_H   = 52   // px — floor so wide brackets stay readable
 
 /** Clamp slot height to stay sane across bracket sizes. */
 function computeSlotH(numLeafSlots: number): number {
-  // For huge brackets scale down; for tiny brackets scale up slightly
   if (numLeafSlots <= 4)  return Math.min(MAX_SLOT_H, BASE_SLOT_H)
   if (numLeafSlots >= 32) return MIN_SLOT_H
-  // Linear interpolation between BASE and MIN across [4, 32]
   const t = (numLeafSlots - 4) / (32 - 4)
   return Math.round(BASE_SLOT_H - t * (BASE_SLOT_H - MIN_SLOT_H))
 }
@@ -75,14 +71,6 @@ function resolveSlot(
 
 /**
  * Build Map<roundNum, SlotItem[]> via backward expansion from the final round.
- *
- *  ghost             → [ghost, ghost]
- *  game + 2 feeders  → [feeder-in1, feeder-in2]
- *  game + 1 feeder   → [feeder, ghost] | [ghost, feeder]
- *  game + 0 feeders  → [ghost, ghost]
- *
- * Result: every column has length 2^(maxRound - round), guaranteeing
- * that flex-1 slots center each game between its two feeders.
  */
 function buildSlotGrid(
   rounds:      [number, Game[]][],
@@ -96,12 +84,10 @@ function buildSlotGrid(
   const gamesByRound = new Map(rounds)
   const grid         = new Map<number, SlotItem[]>()
 
-  // Seed final round
   const lastGames = [...(gamesByRound.get(maxRound) ?? [])]
     .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
   grid.set(maxRound, lastGames.map(g => ({ type: 'game', game: g } as SlotItem)))
 
-  // Expand backwards
   for (let ri = roundNums.length - 2; ri >= 0; ri--) {
     const thisRound   = roundNums[ri]
     const parentRound = roundNums[ri + 1]
@@ -173,7 +159,6 @@ export default function BracketGrid({
     [rounds, allDisplayGames, gameNumbers],
   )
 
-  // safeLeafSlots: floor at MIN_SLOTS so tiny brackets never overlap
   const rawLeafSlots  = slotGrid.get(minRound)?.length ?? 1
   const safeLeafSlots = Math.max(rawLeafSlots, MIN_SLOTS)
   const slotH         = computeSlotH(safeLeafSlots)
@@ -188,7 +173,7 @@ export default function BracketGrid({
   const isPanning = useRef(false)
   const panOrigin = useRef({ x: 0, y: 0, sl: 0, st: 0 })
 
-  // ── Double-rAF measurement ────────────────────────────────────────────────
+  // ── Double-rAF SVG measurement ────────────────────────────────────────────
   const recomputeLines = useCallback(() => {
     const container = bracketRef.current
     if (!container) return
@@ -265,7 +250,8 @@ export default function BracketGrid({
   return (
     <div
       ref={bracketRef}
-      className="flex-1 overflow-auto p-6 scrollbar-thin select-none relative"
+      // bg-slate-950: explicit neutral canvas — prevents theme colors bleeding through
+      className="flex-1 overflow-auto p-6 scrollbar-thin select-none relative bg-slate-950"
       onMouseDown={handlePanStart}
       onMouseMove={handlePanMove}
       onMouseUp={handlePanEnd}
@@ -273,13 +259,6 @@ export default function BracketGrid({
     >
       <SvgConnectors lines={svgLines} dims={svgDims} />
 
-      {/*
-        items-stretch: all columns are exactly totalHeight tall.
-        gap-4: consistent gutter between columns.
-        Each column uses flex-1 per slot, so any later-round game
-        occupies proportionally more vertical space and centers itself
-        over its two feeder slots automatically.
-      */}
       <div
         className="flex items-stretch gap-4"
         style={{ height: totalHeight, width: 'max-content' }}
@@ -300,7 +279,6 @@ export default function BracketGrid({
 
         {/* Champion column */}
         <div className="flex flex-col h-full w-52 flex-shrink-0">
-          {/* Header row — height matches HEADER_H */}
           <div
             className="flex-shrink-0 flex items-center justify-center border-b border-slate-700/50"
             style={{ height: HEADER_H }}

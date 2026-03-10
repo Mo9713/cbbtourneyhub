@@ -1,8 +1,10 @@
-// src/features/tournament/AdminBuilderView/AdminGameCard.tsx
+// src/features/bracket/ui/AdminBracketGrid/AdminGameCard.tsx
+//
+// Fix 4: Output dot (link button) moved back to absolute -right-8 top-1/2 -translate-y-1/2.
+// Fix 5: Score onBlur handlers auto-call onSetWinner when both scores are valid integers.
+
 import { useState, useEffect } from 'react'
-import {
-  GripVertical, Unlink, Trash2, Target,
-} from 'lucide-react'
+import { Unlink, Trash2, Target, GripVertical } from 'lucide-react'
 import { getScore, isTBDName } from '../../../../shared/lib/helpers'
 import type { Game }            from '../../../../shared/types'
 
@@ -34,19 +36,24 @@ export default function AdminGameCard({
   onStartLink, onCompleteLink, onUnlink,
   onDragStart, onDragOver, onDragEnd, onDrop,
 }: Props) {
-  const [team1,      setTeam1]      = useState(game.team1_name)
-  const [team2,      setTeam2]      = useState(game.team2_name)
-  const [showWinner, setShowWinner] = useState(false)
+  const [team1,        setTeam1]        = useState(game.team1_name)
+  const [team2,        setTeam2]        = useState(game.team2_name)
+  const [seed1,        setSeed1]        = useState(String(game.team1_seed ?? ''))
+  const [seed2,        setSeed2]        = useState(String(game.team2_seed ?? ''))
+  const [score1,       setScore1]       = useState(String(game.team1_score ?? ''))
+  const [score2,       setScore2]       = useState(String(game.team2_score ?? ''))
+  const [showWinner,   setShowWinner]   = useState(false)
 
-  // Sync local input state if the DB value changes (realtime or undo)
-  useEffect(() => { setTeam1(game.team1_name) }, [game.team1_name])
-  useEffect(() => { setTeam2(game.team2_name) }, [game.team2_name])
+  useEffect(() => { setTeam1(game.team1_name) },              [game.team1_name])
+  useEffect(() => { setTeam2(game.team2_name) },              [game.team2_name])
+  useEffect(() => { setSeed1(String(game.team1_seed ?? '')) },  [game.team1_seed])
+  useEffect(() => { setSeed2(String(game.team2_seed ?? '')) },  [game.team2_seed])
+  useEffect(() => { setScore1(String(game.team1_score ?? '')) }, [game.team1_score])
+  useEffect(() => { setScore2(String(game.team2_score ?? '')) }, [game.team2_score])
 
   const isChampionship = game.round_num === maxRound
   const isLinkingFrom  = linkingFromId === game.id
 
-  // For TBD/placeholder slots: resolve "Winner of Game #N" → actual_winner
-  // if the feeder game has a confirmed result, so the admin sees the real name.
   const resolveSlotName = (slotName: string): string => {
     if (!slotName.startsWith('Winner of Game #')) return slotName
     const gNum   = parseInt(slotName.replace('Winner of Game #', ''), 10)
@@ -59,164 +66,243 @@ export default function AdminGameCard({
     onUpdate(game.id, { [field]: val.trim() || game[field] })
   }
 
-  // ── Dot styles ────────────────────────────────────────────
+  const handleSeedBlur = (field: 'team1_seed' | 'team2_seed', val: string) => {
+    const trimmed = val.trim()
+    if (trimmed === String(game[field] ?? '')) return
+    onUpdate(game.id, { [field]: trimmed || undefined })
+  }
+
+  // Fix 5: Auto-advance winner when both score fields contain valid integers
+  const handleScoreBlur = (field: 'team1_score' | 'team2_score', val: string) => {
+    const trimmed = val.trim()
+    if (trimmed !== String(game[field] ?? '')) {
+      onUpdate(game.id, { [field]: trimmed || undefined })
+    }
+
+    // Determine both score values after this blur
+    const s1Str = field === 'team1_score' ? trimmed : score1.trim()
+    const s2Str = field === 'team2_score' ? trimmed : score2.trim()
+    if (!s1Str || !s2Str) return
+
+    const s1 = parseInt(s1Str, 10)
+    const s2 = parseInt(s2Str, 10)
+    if (isNaN(s1) || isNaN(s2) || s1 === s2) return   // no tie-breaking
+
+    const winner = s1 > s2 ? team1 : team2
+    if (!isTBDName(winner)) {
+      onSetWinner(game, winner)
+    }
+  }
+
+  // ── Dot styles ────────────────────────────────────────────────────────────
   const inDotCls = `w-2.5 h-2.5 rounded-full border-2 flex-shrink-0 transition-all
     ${isValidLinkTarget
       ? 'border-sky-400 bg-sky-400/40 hover:bg-sky-400 cursor-pointer animate-pulse'
       : 'border-slate-600 bg-slate-800'
     }`
 
-  const outDotCls = `w-2.5 h-2.5 rounded-full border-2 flex-shrink-0 transition-all cursor-pointer
-    ${isLinkingFrom
-      ? 'border-amber-400 bg-amber-400 scale-150 shadow-lg shadow-amber-400/40'
-      : game.next_game_id
-        ? 'border-emerald-500 bg-emerald-500/30 hover:bg-emerald-500/60'
-        : 'border-slate-600 bg-slate-800 hover:border-amber-400'
-    }`
+  const pts        = getScore(game.round_num)
+  const hasLinked  = !!game.next_game_id
+  const linkedGame = hasLinked ? allGames.find(g => g.id === game.next_game_id) : null
 
-  // Slot rows: team1 → data-in1, team2 → data-in2
-  const slots = [
-    { val: team1, setter: setTeam1, field: 'team1_name' as const, dataAttr: { 'data-in1': game.id } },
-    { val: team2, setter: setTeam2, field: 'team2_name' as const, dataAttr: { 'data-in2': game.id } },
+  const rows = [
+    {
+      field:       'team1_name'  as const,
+      seedField:   'team1_seed'  as const,
+      scoreField:  'team1_score' as const,
+      val:         team1,
+      setter:      setTeam1,
+      seedVal:     seed1,
+      seedSetter:  setSeed1,
+      scoreVal:    score1,
+      scoreSetter: setScore1,
+      isTBD:       isTBDName(team1),
+      isWinner:    game.actual_winner === team1 && !isTBDName(team1),
+      dataAttr:    { 'data-in1': game.id },
+    },
+    {
+      field:       'team2_name'  as const,
+      seedField:   'team2_seed'  as const,
+      scoreField:  'team2_score' as const,
+      val:         team2,
+      setter:      setTeam2,
+      seedVal:     seed2,
+      seedSetter:  setSeed2,
+      scoreVal:    score2,
+      scoreSetter: setScore2,
+      isTBD:       isTBDName(team2),
+      isWinner:    game.actual_winner === team2 && !isTBDName(team2),
+      dataAttr:    { 'data-in2': game.id },
+    },
   ]
 
   return (
+    // `relative` is required for the absolute-positioned output dot (Fix 4)
     <div
+      className={`
+        relative bg-slate-900 border rounded-xl overflow-visible transition-all
+        ${isDragOver        ? 'border-amber-400/60 shadow-lg shadow-amber-500/10' : 'border-slate-700/80'}
+        ${isValidLinkTarget ? 'border-sky-400/60 shadow-lg shadow-sky-500/10'    : ''}
+        ${isLinkingFrom     ? 'border-amber-400/80 shadow-lg shadow-amber-500/20' : ''}
+      `}
       draggable
       onDragStart={() => onDragStart(game.id)}
-      onDragOver={e => onDragOver(e, game.id)}
+      onDragOver={e  => onDragOver(e, game.id)}
       onDragEnd={onDragEnd}
-      onDrop={e => onDrop(e, game.id)}
-      style={{ overflow: 'visible', position: 'relative' }}
-      className={`transition-all ${isDragOver ? 'opacity-50 scale-95' : ''}`}
+      onDrop={e      => onDrop(e, game.id)}
     >
-      {/* Output dot — right edge, vertically centred */}
-      {!isChampionship && (
-        <div
-          data-out={game.id}
-          className={`absolute -right-4 top-1/2 -translate-y-1/2 z-10 ${outDotCls}`}
-          onClick={() => onStartLink(game.id)}
-        />
-      )}
-
-      <div
-        className={`w-52 rounded-xl border overflow-hidden shadow transition-all bg-slate-900/90
+      {/* Fix 4: Output dot — absolute at right center of the whole card */}
+      <button
+        data-out={game.id}
+        title="Link output to another game's input"
+        onClick={e => { e.stopPropagation(); onStartLink(game.id) }}
+        className={`
+          absolute -right-8 top-1/2 -translate-y-1/2
+          w-2.5 h-2.5 rounded-full border-2 transition-all cursor-pointer z-10
           ${isLinkingFrom
-            ? 'border-amber-400/60 shadow-amber-400/20 shadow-lg'
-            : isValidLinkTarget
-              ? 'border-sky-400/60 shadow-sky-400/20 shadow-lg cursor-pointer'
-              : 'border-slate-700 hover:border-slate-600'
-          }`}
-        // Clicking anywhere on a valid target defaults to slot team1_name
-        onClick={() => isValidLinkTarget && onCompleteLink(game.id, 'team1_name')}
-      >
+            ? 'border-amber-400 bg-amber-400/40 animate-pulse'
+            : 'border-slate-500 bg-slate-900 hover:border-amber-400 hover:bg-amber-400/20'
+          }
+        `}
+      />
 
-        {/* ── Card header ── */}
-        <div className="px-3 py-1.5 bg-slate-800/60 border-b border-slate-800 flex items-center justify-between">
-          <div className="flex items-center gap-1.5">
-            <GripVertical size={10} className="text-slate-700 cursor-grab" />
-            <span className="text-[10px] font-bold text-amber-400/70 uppercase tracking-widest">
-              #{gameNum} · R{game.round_num} · {getScore(game.round_num)}pt
+      {/* ── Card header ── */}
+      <div className="flex items-center justify-between px-2 py-1.5 border-b border-slate-800">
+        <div className="flex items-center gap-1.5">
+          <GripVertical size={11} className="text-slate-600 cursor-grab" />
+          <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">
+            #{String(gameNum).padStart(2, '0')}
+          </span>
+          {isChampionship && (
+            <span className="text-[8px] font-bold text-amber-400 uppercase tracking-widest">
+              Final
             </span>
-          </div>
-          <div className="flex items-center gap-1">
-            {game.next_game_id && (
-              <button
-                onClick={e => { e.stopPropagation(); onUnlink(game.id) }}
-                title="Unlink from next game"
-                className="p-1 rounded hover:bg-slate-700 text-slate-600 hover:text-amber-400 transition-all">
-                <Unlink size={9} />
-              </button>
-            )}
-            <button
-              onClick={e => { e.stopPropagation(); setShowWinner(v => !v) }}
-              title="Set winner"
-              className={`p-1 rounded hover:bg-slate-700 transition-all
-                ${showWinner ? 'text-emerald-400' : 'text-slate-600 hover:text-emerald-400'}`}>
-              <Target size={9} />
-            </button>
-            <button
-              onClick={e => { e.stopPropagation(); onDelete(game) }}
-              title="Delete game"
-              className="p-1 rounded hover:bg-slate-700 text-slate-600 hover:text-rose-400 transition-all">
-              <Trash2 size={9} />
-            </button>
-          </div>
+          )}
+          <span className="text-[9px] text-slate-600">·</span>
+          <span className="text-[9px] text-slate-600">{pts}pt</span>
         </div>
 
-        {/* ── Team slots ── */}
-        {slots.map(({ val, setter, field, dataAttr }) => {
-          const isTBD    = isTBDName(val)
-          const isWinner = game.actual_winner === val
-          return (
-            <div
-              key={field}
-              className={`flex items-center gap-2 px-2 py-1.5 border-b border-slate-800/60 last:border-0
-                ${isWinner ? 'bg-emerald-500/10' : ''}`}
-              onClick={e => {
-                // Clicking a slot row precisely targets that slot when linking
-                if (isValidLinkTarget) {
-                  e.stopPropagation()
-                  onCompleteLink(game.id, field)
-                }
-              }}
+        <div className="flex items-center gap-1">
+          {hasLinked && (
+            <button
+              title={`Unlink from Game #${gameNumbers[linkedGame?.id ?? ''] ?? '?'}`}
+              onClick={e => { e.stopPropagation(); onUnlink(game.id) }}
+              className="text-slate-600 hover:text-rose-400 transition-colors"
             >
-              {/* Input dot with data attribute — used by AdminSvgConnectors to measure position */}
-              <div className={inDotCls} {...dataAttr} />
-              <input
-                value={isTBD ? resolveSlotName(val) : val}
-                onChange={e => setter(e.target.value)}
-                onBlur={e => handleBlur(field, e.target.value)}
-                onClick={e => e.stopPropagation()}
-                className={`flex-1 bg-transparent text-xs font-medium focus:outline-none truncate
-                  ${isWinner   ? 'text-emerald-400 font-bold'
-                  : isTBD      ? 'text-slate-600 italic'
-                               : 'text-white'}`}
-              />
-              {isWinner && <span className="text-[9px] text-emerald-400 font-bold">✓</span>}
-            </div>
-          )
-        })}
-
-        {/* ── Winner setter (toggle panel) ── */}
-        {showWinner && (
-          <div
-            className="px-2 py-2 bg-slate-800/40 border-t border-slate-800 space-y-1"
-            onClick={e => e.stopPropagation()}
+              <Unlink size={10} />
+            </button>
+          )}
+          <button
+            title="Set winner"
+            onClick={e => { e.stopPropagation(); setShowWinner(v => !v) }}
+            className={`transition-colors ${showWinner ? 'text-amber-400' : 'text-slate-600 hover:text-amber-400'}`}
           >
-            {[team1, team2].filter(t => !isTBDName(t)).map(team => (
-              <button key={team}
-                onClick={() => onSetWinner(game, team)}
-                className={`w-full py-1 rounded-lg text-[10px] font-bold border transition-all
-                  ${game.actual_winner === team
-                    ? 'bg-emerald-600 border-emerald-500 text-white'
-                    : 'bg-slate-800 border-slate-700 text-slate-300 hover:border-slate-500'
-                  }`}>
-                {team}{game.actual_winner === team && ' ✓'}
-              </button>
-            ))}
-            {[team1, team2].filter(t => !isTBDName(t)).length === 0 && (
-              <p className="text-[10px] text-slate-600 italic">
-                {team1.startsWith('Winner of Game') && team2.startsWith('Winner of Game')
-                  ? 'Set winners in earlier rounds first'
-                  : 'Add team names first'}
-              </p>
-            )}
-            {game.actual_winner && (
-              <button onClick={() => onSetWinner(game, '')}
-                className="w-full py-1 rounded-lg text-[10px] text-rose-400 border border-rose-500/20 bg-rose-500/5 hover:bg-rose-500/10 transition-colors">
-                Clear Winner
-              </button>
-            )}
-          </div>
-        )}
-
+            <Target size={10} />
+          </button>
+          <button
+            title="Delete game"
+            onClick={e => { e.stopPropagation(); onDelete(game) }}
+            className="text-slate-600 hover:text-rose-400 transition-colors"
+          >
+            <Trash2 size={10} />
+          </button>
+        </div>
       </div>
+
+      {/* ── Team rows ── */}
+      {rows.map(({
+        field, seedField, scoreField,
+        val, setter, seedVal, seedSetter,
+        scoreVal, scoreSetter,
+        isTBD, isWinner, dataAttr,
+      }) => (
+        <div
+          key={field}
+          className={`
+            flex items-center gap-1 px-2 py-1 border-b border-slate-800 last:border-b-0
+            ${isValidLinkTarget ? 'hover:bg-sky-500/10 cursor-pointer' : ''}
+            ${isWinner ? 'bg-emerald-500/10' : ''}
+          `}
+          onClick={e => {
+            if (isValidLinkTarget) {
+              e.stopPropagation()
+              onCompleteLink(game.id, field)
+            }
+          }}
+        >
+          {/* Input dot */}
+          <div className={inDotCls} {...dataAttr} />
+
+          {/* Seed input */}
+          <input
+            value={seedVal}
+            onChange={e => seedSetter(e.target.value)}
+            onBlur={e => handleSeedBlur(seedField, e.target.value)}
+            onClick={e => e.stopPropagation()}
+            placeholder="#"
+            className="w-6 bg-slate-800/80 border border-slate-700/60 rounded px-1 text-[9px] font-bold text-slate-400 text-center focus:outline-none focus:border-amber-500/50 transition-colors placeholder:text-slate-700"
+          />
+
+          {/* Team name input */}
+          <input
+            value={isTBD ? resolveSlotName(val) : val}
+            onChange={e => setter(e.target.value)}
+            onBlur={e => handleBlur(field, e.target.value)}
+            onClick={e => e.stopPropagation()}
+            className={`flex-1 bg-transparent text-xs font-medium focus:outline-none truncate min-w-0
+              ${isWinner ? 'text-emerald-400 font-bold'
+              : isTBD   ? 'text-slate-600 italic'
+                        : 'text-white'}`}
+          />
+
+          {/* Score input — Fix 5: onBlur auto-compares and sets winner */}
+          <input
+            value={scoreVal}
+            onChange={e => scoreSetter(e.target.value)}
+            onBlur={e => handleScoreBlur(scoreField, e.target.value)}
+            onClick={e => e.stopPropagation()}
+            placeholder="—"
+            className="w-8 bg-slate-800/80 border border-slate-700/60 rounded px-1 text-[9px] font-bold text-slate-400 text-center focus:outline-none focus:border-amber-500/50 transition-colors placeholder:text-slate-700"
+          />
+
+          {isWinner && (
+            <span className="text-[9px] text-emerald-400 font-bold flex-shrink-0">✓</span>
+          )}
+        </div>
+      ))}
+
+      {/* ── Winner setter (toggle panel) ── */}
+      {showWinner && (
+        <div
+          className="px-2 py-2 bg-slate-800/40 border-t border-slate-800 space-y-1"
+          onClick={e => e.stopPropagation()}
+        >
+          {[team1, team2].filter(t => !isTBDName(t)).map(team => (
+            <button key={team}
+              onClick={() => onSetWinner(game, team)}
+              className={`w-full py-1 rounded-lg text-[10px] font-bold border transition-all
+                ${game.actual_winner === team
+                  ? 'bg-emerald-600 border-emerald-500 text-white'
+                  : 'bg-slate-800 border-slate-700 text-slate-300 hover:border-slate-500'
+                }`}>
+              {team}{game.actual_winner === team && ' ✓'}
+            </button>
+          ))}
+          {[team1, team2].filter(t => !isTBDName(t)).length === 0 && (
+            <p className="text-[10px] text-slate-600 italic">
+              {team1.startsWith('Winner of Game') && team2.startsWith('Winner of Game')
+                ? 'Set winners in earlier rounds first'
+                : 'Add team names first'}
+            </p>
+          )}
+          {game.actual_winner && (
+            <button onClick={() => onSetWinner(game, '')}
+              className="w-full py-1 rounded-lg text-[10px] text-rose-400 border border-rose-500/20 bg-rose-500/5 hover:bg-rose-500/10 transition-colors">
+              Clear Winner
+            </button>
+          )}
+        </div>
+      )}
     </div>
   )
 }
-
-
-
-
-

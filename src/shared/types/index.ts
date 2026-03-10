@@ -45,6 +45,13 @@ export interface Game {
   next_game_id:  string | null
   sort_order:    number | null
   region?:       string | null
+  // ── Display fields (broadcast aesthetic) ──────────────────
+  // Optional — only populated when the admin sets them.
+  // Stored as TEXT in the DB so values like "(1)" or "OT 88" are valid.
+  team1_seed?:   number | string
+  team2_seed?:   number | string
+  team1_score?:  number | string
+  team2_score?:  number | string
 }
 
 export interface Pick {

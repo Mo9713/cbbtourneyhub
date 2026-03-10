@@ -44,9 +44,8 @@ export default function AppShell() {
   }, [createTournament, pushToast])
 
   return (
-    // Root shell: always dark slate, text-white. theme.appBg is for panels/cards,
-    // not the root wrapper — using theme.bg here caused the flashbang (it's an
-    // accent tint like bg-orange-600/10, not a background color).
+    // Root shell: bg-slate-950 (#020617) — neutral dark, never a theme tint.
+    // theme.appBg is for panels/cards only, not this root wrapper.
     <div className="flex h-screen overflow-hidden bg-slate-950 text-white">
 
       {/* Desktop Sidebar — expanded */}
@@ -60,9 +59,12 @@ export default function AppShell() {
         </div>
       )}
 
-      {/* Desktop Sidebar — minimised stub */}
+      {/* Desktop Sidebar — minimised stub
+          Fix 8: was `theme.sidebarBg` which for purple/blue themes renders a
+          strong tinted backdrop (plasma: #0c0814). Hard-coded to bg-slate-900
+          so the app canvas stays visually neutral regardless of active theme. */}
       {!sidebarOpen && (
-        <div className={`hidden md:flex flex-col items-center py-4 w-16 border-r border-slate-800 flex-shrink-0 ${theme.sidebarBg}`}>
+        <div className="hidden md:flex flex-col items-center py-4 w-16 border-r border-slate-800 flex-shrink-0 bg-slate-900">
           <button
             onClick={() => setSidebarOpen(true)}
             className="p-2 rounded-lg text-slate-500 hover:text-white hover:bg-white/5 transition-colors"
@@ -96,7 +98,6 @@ export default function AppShell() {
           sidebarBg={theme.sidebarBg}
           logo={theme.logo}
         />
-        {/* Added overflow-y-auto and scrollbar-thin to fix the Home/Leaderboard bars */}
         <main className="flex-1 overflow-y-auto scrollbar-thin">
           <ViewRouter />
         </main>
