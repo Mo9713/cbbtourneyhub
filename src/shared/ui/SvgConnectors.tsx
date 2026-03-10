@@ -1,12 +1,17 @@
 // src/shared/ui/SvgConnectors.tsx
 //
 // User-facing bracket connector lines — orthogonal right-angle "elbow" style.
-// Path: exit right → horizontal to column midpoint → vertical step → arrive left.
+// Matches the sharp, aggressive corners of the broadcast-block GameCard.
 //
-
-// This is the *shared* connector renderer for the read-only BracketView.
-// The Admin view keeps its own copy at:
-//   src/features/bracket/ui/AdminBracketGrid/SvgConnectors.tsx  (bezier curves)
+// Path shape (H → V → H):
+//   M x1 y1  — start at output anchor (right edge of source card)
+//   H midX   — run right to the column midpoint gap
+//   V y2     — vertical step to destination row
+//   H x2     — run right into the input anchor (left edge of dest card)
+//
+// ⚠️  ARCHITECTURAL NOTE
+// This is the *shared* renderer used only by the read-only BracketView.
+// AdminBracketGrid keeps its own SvgConnectors (bezier curves) — untouched.
 
 import type { ConnectorLine } from '../lib/bracketMath'
 
@@ -32,11 +37,6 @@ export default function SvgConnectors({ lines, dims }: Props) {
       }}
     >
       {lines.map((line, i) => {
-        // Orthogonal elbow connector (right-angle, like the screenshot):
-        //   M x1 y1   — start at output anchor (right edge of source card)
-        //   H midX    — run horizontally to the column midpoint
-        //   V y2      — drop or rise vertically to the destination row
-        //   H x2      — run horizontally into the input anchor (left edge of dest card)
         const midX = (line.x1 + line.x2) / 2
         const d    = `M ${line.x1} ${line.y1} H ${midX} V ${line.y2} H ${line.x2}`
 
@@ -44,11 +44,11 @@ export default function SvgConnectors({ lines, dims }: Props) {
           <path
             key={`${line.gameId}-${i}`}
             d={d}
-            stroke="#10b981"
-            strokeWidth="3"
+            stroke="#10b981"        /* emerald-500 — high contrast against dark bg */
+            strokeWidth="2"
             fill="none"
-            strokeOpacity="0.75"     // Bumped opacity up slightly so it pops
-            strokeLinecap="square"
+            strokeOpacity="0.7"
+            strokeLinecap="square"  /* crisp 90° corners, no rounded caps */
             strokeLinejoin="miter"
           />
         )

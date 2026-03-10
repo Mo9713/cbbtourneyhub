@@ -1,62 +1,88 @@
 // src/features/bracket/ui/BracketView/BracketGrid.tsx
+//
+// Layout engine for the user-facing read-only bracket.
+//
+// Key design decisions:
+//
+//  SLOT_H = 68px   — tight & dense, matches broadcast bracket density.
+//
+//  safeLeafSlots = Math.max(numLeafSlots, 4)
+//    Prevents 2-team or 4-team brackets from collapsing cards into each
+//    other. A 4-game bracket gets at minimum 4 × 68 + 80 = 352px of
+//    canvas — enough breathing room without giant whitespace.
+//
+//  HEADER_H = 80px  — hard ceiling so no card ever drifts into the round
+//    label row regardless of how many slots exist.
+//
+//  Dynamic SLOT_H scaling:
+//    For very large brackets (numLeafSlots > 32) we clamp SLOT_H down
+//    further to avoid runaway height on 64/128-team brackets.
+//
+//  Ghost-node algorithm: backward expansion from the final round.
+//    Every parent slot expands into exactly 2 child slots (game or ghost).
+//    This gives every column a power-of-2 slot count. Because each slot
+//    is flex-1 inside a fixed-height column, later-round games are
+//    automatically centered between their two feeder slots. ✓
+//
+//  Double-rAF SVG measurement: mirrors AdminBracketGrid exactly so
+//    getBoundingClientRect() fires after all CSS transforms settle.
 
-// ── Imports ───────────────────────────────────────────────────────────────────
 import {
   useRef, useState, useCallback, useLayoutEffect, useMemo,
 } from 'react'
 import MatchupColumn, { type SlotItem } from './MatchupColumn'
-import ChampionCallout                    from './ChampionCallout'
-import SvgConnectors                      from '../../../../shared/ui/SvgConnectors'
+import ChampionCallout                   from './ChampionCallout'
+import SvgConnectors                     from '../../../../shared/ui/SvgConnectors'
 import {
   computeConnectorLines,
   type ConnectorLine,
   type EffectiveNames,
-}                                         from '../../../../shared/lib/bracketMath'
+}                                        from '../../../../shared/lib/bracketMath'
+import { getRoundLabel }                 from '../../../../shared/lib/helpers'
 import type { Game, Pick, Tournament }   from '../../../../shared/types'
 
 // ── Layout constants ──────────────────────────────────────────────────────────
-// HEADER_H: must match the h-12 (48px) column header in MatchupColumn.
-const HEADER_H = 64   // px
 
-// SLOT_H: height (px) for each leaf slot in round 1.
-// Reverted from 88 to 58. This compacts the layout horizontally,
-// stopping the overlap with the round headers.
-const SLOT_H   = 64   // px
+const BASE_SLOT_H  = 68   // px — target height per leaf slot
+const HEADER_H     = 80   // px — hard header buffer (prevents label bleed)
+const MIN_SLOTS    = 4    // safeLeafSlots floor — no bracket collapses below this
+const MAX_SLOT_H   = 80   // px — cap so tall brackets don't explode
+const MIN_SLOT_H   = 52   // px — floor so wide brackets stay readable
+
+/** Clamp slot height to stay sane across bracket sizes. */
+function computeSlotH(numLeafSlots: number): number {
+  // For huge brackets scale down; for tiny brackets scale up slightly
+  if (numLeafSlots <= 4)  return Math.min(MAX_SLOT_H, BASE_SLOT_H)
+  if (numLeafSlots >= 32) return MIN_SLOT_H
+  // Linear interpolation between BASE and MIN across [4, 32]
+  const t = (numLeafSlots - 4) / (32 - 4)
+  return Math.round(BASE_SLOT_H - t * (BASE_SLOT_H - MIN_SLOT_H))
+}
 
 // ── Ghost-node slot grid ──────────────────────────────────────────────────────
 
-/**
- * Determines which input slot (in1 = top / in2 = bottom) a feeder game
- * advances into on its next game.  Lower game-number sibling → in1.
- */
 function resolveSlot(
   feeder:      Game,
   allGames:    Game[],
   gameNumbers: Record<string, number>,
 ): 'in1' | 'in2' {
   if (!feeder.next_game_id) return 'in1'
-
   const siblings = allGames
     .filter(g => g.next_game_id === feeder.next_game_id)
     .sort((a, b) => (gameNumbers[a.id] ?? 0) - (gameNumbers[b.id] ?? 0))
-
   return siblings.length === 0 || siblings[0].id === feeder.id ? 'in1' : 'in2'
 }
 
 /**
- * Builds a Map<roundNumber, SlotItem[]> where each round's array is
- * a power-of-2 expansion of the final round.
+ * Build Map<roundNum, SlotItem[]> via backward expansion from the final round.
  *
- * Backward expansion:
- *  • Seed the last round's games as 'game' slots.
- *  • For each earlier round, expand every parent slot:
- *      ghost          → [ghost, ghost]
- *      game + 2 feeders → [feeder-in1, feeder-in2]
- *      game + 1 feeder  → [feeder, ghost]  or  [ghost, feeder]
- *      game + 0 feeders → [ghost, ghost]
+ *  ghost             → [ghost, ghost]
+ *  game + 2 feeders  → [feeder-in1, feeder-in2]
+ *  game + 1 feeder   → [feeder, ghost] | [ghost, feeder]
+ *  game + 0 feeders  → [ghost, ghost]
  *
- * This guarantees equal flex-1 distribution makes round-(N+1) games
- * vertically centered between their round-N feeders. ✓
+ * Result: every column has length 2^(maxRound - round), guaranteeing
+ * that flex-1 slots center each game between its two feeders.
  */
 function buildSlotGrid(
   rounds:      [number, Game[]][],
@@ -65,17 +91,17 @@ function buildSlotGrid(
 ): Map<number, SlotItem[]> {
   if (!rounds.length) return new Map()
 
-  const roundNums = rounds.map(([r]) => r).sort((a, b) => a - b)
-  const maxRound  = roundNums[roundNums.length - 1]
+  const roundNums    = rounds.map(([r]) => r).sort((a, b) => a - b)
+  const maxRound     = roundNums[roundNums.length - 1]
   const gamesByRound = new Map(rounds)
   const grid         = new Map<number, SlotItem[]>()
 
-  // Seed: final round
+  // Seed final round
   const lastGames = [...(gamesByRound.get(maxRound) ?? [])]
     .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
-  grid.set(maxRound, lastGames.map(g => ({ type: 'game', game: g })))
+  grid.set(maxRound, lastGames.map(g => ({ type: 'game', game: g } as SlotItem)))
 
-  // Backward expansion
+  // Expand backwards
   for (let ri = roundNums.length - 2; ri >= 0; ri--) {
     const thisRound   = roundNums[ri]
     const parentRound = roundNums[ri + 1]
@@ -135,8 +161,8 @@ export default function BracketGrid({
 }: Props) {
 
   const maxRound = rounds.length > 0 ? Math.max(...rounds.map(([r]) => r)) : 1
+  const minRound = rounds.length > 0 ? Math.min(...rounds.map(([r]) => r)) : 1
 
-  // Flat list for connector measurement + ghost algorithm
   const allDisplayGames = useMemo(
     () => rounds.flatMap(([, gs]) => gs),
     [rounds],
@@ -147,21 +173,22 @@ export default function BracketGrid({
     [rounds, allDisplayGames, gameNumbers],
   )
 
-  const minRound     = rounds.length > 0 ? Math.min(...rounds.map(([r]) => r)) : 1
-  const numLeafSlots = slotGrid.get(minRound)?.length ?? 1
-  const safeLeafSlots = Math.max(numLeafSlots, 4);
-  const totalHeight  = safeLeafSlots * SLOT_H + HEADER_H;
+  // safeLeafSlots: floor at MIN_SLOTS so tiny brackets never overlap
+  const rawLeafSlots  = slotGrid.get(minRound)?.length ?? 1
+  const safeLeafSlots = Math.max(rawLeafSlots, MIN_SLOTS)
+  const slotH         = computeSlotH(safeLeafSlots)
+  const totalHeight   = safeLeafSlots * slotH + HEADER_H
 
-  // ── SVG connector state ───────────────────────────────────────────────────
+  // ── SVG state ─────────────────────────────────────────────────────────────
   const bracketRef              = useRef<HTMLDivElement>(null)
   const [svgLines, setSvgLines] = useState<ConnectorLine[]>([])
   const [svgDims,  setSvgDims]  = useState({ w: 0, h: 0 })
 
-  // ── Drag-to-pan ───────────────────────────────────────────────────────────
+  // ── Pan state ─────────────────────────────────────────────────────────────
   const isPanning = useRef(false)
   const panOrigin = useRef({ x: 0, y: 0, sl: 0, st: 0 })
 
-  // ── Double-rAF measurement (mirrors AdminBracketGrid exactly) ─────────────
+  // ── Double-rAF measurement ────────────────────────────────────────────────
   const recomputeLines = useCallback(() => {
     const container = bracketRef.current
     if (!container) return
@@ -169,14 +196,12 @@ export default function BracketGrid({
     const cRect = container.getBoundingClientRect()
 
     const getOutRect = (gameId: string): DOMRect | null =>
-      container
-        .querySelector<HTMLElement>(`[data-out="${gameId}"]`)
-        ?.getBoundingClientRect() ?? null
+      container.querySelector<HTMLElement>(`[data-out="${gameId}"]`)
+               ?.getBoundingClientRect() ?? null
 
     const getInRect = (gameId: string, slot: 'in1' | 'in2'): DOMRect | null =>
-      container
-        .querySelector<HTMLElement>(`[data-${slot}="${gameId}"]`)
-        ?.getBoundingClientRect() ?? null
+      container.querySelector<HTMLElement>(`[data-${slot}="${gameId}"]`)
+               ?.getBoundingClientRect() ?? null
 
     const lines = computeConnectorLines(
       allDisplayGames, gameNumbers,
@@ -191,7 +216,6 @@ export default function BracketGrid({
   useLayoutEffect(() => {
     let rafA = 0
     let rafB = 0
-
     rafA = requestAnimationFrame(() => {
       rafB = requestAnimationFrame(recomputeLines)
     })
@@ -247,16 +271,17 @@ export default function BracketGrid({
       onMouseUp={handlePanEnd}
       onMouseLeave={handlePanEnd}
     >
-      {/* SVG connector overlay */}
       <SvgConnectors lines={svgLines} dims={svgDims} />
 
-      {/* ── Bracket columns ──────────────────────────────────────────────
-          items-stretch: every column shares the same totalHeight.
-          gap-3: 12px gutter between columns (tight, like the screenshot).
-          Each column's slots use flex-1, distributing height equally
-          so later rounds occupy proportionally more space. ✓              */}
+      {/*
+        items-stretch: all columns are exactly totalHeight tall.
+        gap-4: consistent gutter between columns.
+        Each column uses flex-1 per slot, so any later-round game
+        occupies proportionally more vertical space and centers itself
+        over its two feeder slots automatically.
+      */}
       <div
-        className="flex items-stretch gap-3"
+        className="flex items-stretch gap-4"
         style={{ height: totalHeight, width: 'max-content' }}
       >
         {rounds.map(([round]) => (
@@ -273,11 +298,14 @@ export default function BracketGrid({
           />
         ))}
 
-        {/* ── Champion column ─────────────────────────────────────────── */}
+        {/* Champion column */}
         <div className="flex flex-col h-full w-52 flex-shrink-0">
-          <div className="h-12 flex-shrink-0 flex items-center justify-center
-                          border-b border-slate-700/50">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-orange-400">
+          {/* Header row — height matches HEADER_H */}
+          <div
+            className="flex-shrink-0 flex items-center justify-center border-b border-slate-700/50"
+            style={{ height: HEADER_H }}
+          >
+            <span className="text-[10px] font-black uppercase tracking-widest text-emerald-500/80">
               Champion
             </span>
           </div>
