@@ -6,11 +6,10 @@ import {
 } from 'lucide-react'
 
 import { useTheme }             from '../lib/theme'
-import { useAuthContext }       from '../../features/auth/model/AuthContext'
-import { useTournamentContext } from '../../features/tournament/model/TournamentContext'
-
-// FIX: Changed from useBracketPickCounts to useMyPickCounts
-import { useMyPickCounts }      from '../../features/bracket/model/queries' 
+import { useUIStore }           from '../store/uiStore'
+import { useAuthContext }       from '../../features/auth'
+import { useTournamentContext } from '../../features/tournament'
+import { useBracketPickCounts } from '../../features/bracket'
 import Avatar                   from './Avatar'
 
 interface SidebarProps {
@@ -23,14 +22,16 @@ const statusDot = (s: string) =>
   s === 'open' ? 'bg-emerald-400' : s === 'draft' ? 'bg-amber-400' : 'bg-slate-600'
 
 export default function Sidebar({ onClose, onOpenAddTournament, onToggleDesktop }: SidebarProps) {
-  const theme = useTheme()
+  const theme      = useTheme()
+  const activeView = useUIStore(s => s.activeView)
 
   const { profile, signOut } = useAuthContext()
   const {
     tournaments, selectedTournament, gamesCache,
-    activeView, selectTournament, navigateTo, navigateHome,
+    selectTournament, navigateTo, navigateHome,
   } = useTournamentContext()
-  const myPickCounts = useMyPickCounts(gamesCache)
+
+  const myPickCounts = useBracketPickCounts()
 
   const missingPicks = useMemo(() => {
     const s = new Set<string>()
@@ -69,28 +70,31 @@ export default function Sidebar({ onClose, onOpenAddTournament, onToggleDesktop 
       {/* Nav */}
       <nav className="px-3 py-3 space-y-0.5 border-b border-slate-800">
         <button onClick={() => nav(() => navigateHome())}
-          className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all ${activeView === 'home' ? `${theme.bg} ${theme.accent}` : 'text-slate-400 hover:text-white hover:bg-slate-800/60'}`}>
+          className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all
+            ${activeView === 'home' ? `${theme.bg} ${theme.accent}` : 'text-slate-400 hover:text-white hover:bg-slate-800/60'}`}>
           <div className="w-8 h-8 flex items-center justify-center flex-shrink-0">
-            <Home size={24} />
+            <Home size={20} />
           </div>
           Home
         </button>
         <button onClick={() => nav(() => navigateTo('leaderboard'))}
-          className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all ${activeView === 'leaderboard' ? `${theme.bg} ${theme.accent}` : 'text-slate-400 hover:text-white hover:bg-slate-800/60'}`}>
+          className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all
+            ${activeView === 'leaderboard' ? `${theme.bg} ${theme.accent}` : 'text-slate-400 hover:text-white hover:bg-slate-800/60'}`}>
           <div className="w-8 h-8 flex items-center justify-center flex-shrink-0">
-            <BarChart2 size={24} />
+            <BarChart2 size={20} />
           </div>
           Leaderboard
         </button>
         <button onClick={() => nav(() => navigateTo('settings'))}
-          className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all ${activeView === 'settings' ? `${theme.bg} ${theme.accent}` : 'text-slate-400 hover:text-white hover:bg-slate-800/60'}`}>
+          className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all
+            ${activeView === 'settings' ? `${theme.bg} ${theme.accent}` : 'text-slate-400 hover:text-white hover:bg-slate-800/60'}`}>
           <Avatar profile={profile} size="md" />
           Profile
         </button>
       </nav>
 
-      {/* Tournaments */}
-      <div className="flex-1 overflow-y-auto px-3 py-3 space-y-0.5">
+      {/* Tournaments — scrollbar-thin applied here */}
+      <div className="flex-1 overflow-y-auto scrollbar-thin px-3 py-3 space-y-0.5">
         {tournaments.map(t => {
           const isSelected = selectedTournament?.id === t.id
           const hasMissing = missingPicks.has(t.id)
@@ -110,7 +114,6 @@ export default function Sidebar({ onClose, onOpenAddTournament, onToggleDesktop 
               {hasMissing && (
                 <AlertTriangle size={11} className="text-amber-400 flex-shrink-0" />
               )}
-              {/* Admin settings gear restored */}
               {profile.is_admin && (
                 <button
                   onClick={e => {
@@ -161,5 +164,3 @@ export default function Sidebar({ onClose, onOpenAddTournament, onToggleDesktop 
     </div>
   )
 }
-
-

@@ -1,4 +1,5 @@
 // src/features/bracket/ui/BracketView/MatchupColumn.tsx
+
 import { useTheme }                from '../../../../shared/lib/theme'
 import { getRoundLabel, getScore } from '../../../../shared/lib/helpers'
 import GameCard                    from './GameCard'
@@ -21,6 +22,8 @@ export default function MatchupColumn({
 }: Props) {
   const theme = useTheme()
   const label = tournament.round_names?.[round - 1] || getRoundLabel(round, maxRound)
+  // pts is computed once per column, then passed to every GameCard as a plain
+  // prop — GameCard no longer needs to subscribe to TournamentContext itself.
   const pts   = tournament.scoring_config?.[String(round)] ?? getScore(round)
 
   return (
@@ -38,7 +41,7 @@ export default function MatchupColumn({
         {games.map(game => {
           const eff = effectiveNames[game.id] || {
             team1: { actual: game.team1_name, predicted: game.team1_name },
-            team2: { actual: game.team2_name, predicted: game.team2_name }
+            team2: { actual: game.team2_name, predicted: game.team2_name },
           }
 
           return (
@@ -46,6 +49,7 @@ export default function MatchupColumn({
               key={game.id}
               game={game}
               gameNum={gameNumbers[game.id]}
+              pointValue={pts}
               eliminatedTeams={eliminatedTeams}
               userPick={pickMap.get(game.id)}
               effectiveTeam1={eff.team1}

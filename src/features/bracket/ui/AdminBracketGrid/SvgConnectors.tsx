@@ -1,14 +1,16 @@
-// src/features/tournament/AdminBuilderView/AdminSvgConnectors.tsx
+// src/features/bracket/ui/AdminBracketGrid/SvgConnectors.tsx
+
 // Pure renderer: receives pre-computed line data and draws it.
-// All DOM measurement and slot resolution live in AdminBracketGrid.
-import type { SVGLine } from '../../../../shared/types'
+// All DOM measurement and slot resolution live in computeConnectorLines()
+// (shared/lib/bracketMath), called by AdminBracketGrid.
+import type { ConnectorLine } from '../../../../shared/lib/bracketMath'
 
 interface Props {
-  lines: SVGLine[]
+  lines: ConnectorLine[]
   dims:  { w: number; h: number }
 }
 
-export default function AdminSvgConnectors({ lines, dims }: Props) {
+export default function SvgConnectors({ lines, dims }: Props) {
   return (
     <svg
       style={{
@@ -22,7 +24,6 @@ export default function AdminSvgConnectors({ lines, dims }: Props) {
       className="overflow-visible"
     >
       <defs>
-        {/* Soft glow so connectors don't visually compete with card borders */}
         <filter id="connector-glow">
           <feGaussianBlur stdDeviation="2" result="coloredBlur" />
           <feMerge>
@@ -33,7 +34,7 @@ export default function AdminSvgConnectors({ lines, dims }: Props) {
       </defs>
 
       {lines.map((line, i) => {
-        // Cubic bezier: exit horizontally from out-dot, arrive horizontally at in-dot
+        // Cubic bezier: exits horizontally from out-dot, arrives horizontally at in-dot
         const cx = (line.x1 + line.x2) / 2
         return (
           <path
@@ -52,7 +53,3 @@ export default function AdminSvgConnectors({ lines, dims }: Props) {
     </svg>
   )
 }
-
-
-
-

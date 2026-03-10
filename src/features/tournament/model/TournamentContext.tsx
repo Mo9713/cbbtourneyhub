@@ -1,4 +1,5 @@
 // src/features/tournament/model/TournamentContext.tsx
+
 import {
   createContext, useContext, useEffect, useMemo, useCallback, type ReactNode,
 } from 'react'
@@ -10,18 +11,22 @@ import {
   useTournamentListQuery,
   useAllTournamentGames,
   tournamentKeys,
-}                           from './queries'
+}                          from './queries'
 import * as api            from '../api/api'
 
 import type { ActiveView, Game, Tournament, TemplateKey } from '../../../shared/types'
 
 // ── Context shape ─────────────────────────────────────────────
+// activeView, navigateHome, and navigateTo are intentionally NOT in this
+// interface. They caused every navigation action to re-render the entire
+// consumer subtree (BracketView, AdminBuilderView, Sidebar, ViewRouter)
+// because activeView changes on every nav click. Those values are now
+// read directly from useUIStore by consumers, or via useTournamentNav().
 
 interface TournamentContextValue {
   tournaments:        Tournament[]
   selectedTournament: Tournament | null
   gamesCache:         Record<string, Game[]>
-  activeView:         ActiveView
   patchGamesCache:    (tid: string, updater: (prev: Game[]) => Game[]) => void
   selectTournament:   (t: Tournament) => void
   navigateHome:       () => void
@@ -61,7 +66,9 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
   }, [qc])
 
   // ── Nav state from Zustand ────────────────────────────────
-  const activeView           = useUIStore(s => s.activeView)
+  // NOTE: Only selectedTournamentId is read reactively here because we need
+  // it to derive selectedTournament. navigateHome and setActiveView are
+  // stable Zustand action refs — they don't cause re-renders.
   const selectedTournamentId = useUIStore(s => s.selectedTournamentId)
   const uiSelectTournament   = useUIStore(s => s.selectTournament)
   const navigateHome         = useUIStore(s => s.navigateHome)
@@ -72,15 +79,15 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
     [tournaments, selectedTournamentId],
   )
 
-  // FIX C-1: Was an orphaned useCallback whose return value was silently
-  // discarded, meaning the auto-navigate logic never executed. Replaced
-  // with useEffect so this side-effect actually runs when tournaments
-  // change and the selected ID no longer maps to a valid tournament
-  // (e.g. after an admin deletes the currently-viewed tournament).
+  // Auto-navigate home when the selected tournament is deleted while viewing it.
+  // Uses getState() to avoid adding navigateHome to the deps array — it's a
+  // stable ref but keeping deps minimal makes the effect's intent clearer.
   useEffect(() => {
     if (!selectedTournamentId || !tournaments.length) return
-    if (!tournaments.find((t: Tournament) => t.id === selectedTournamentId)) navigateHome()
-  }, [tournaments, selectedTournamentId, navigateHome])
+    if (!tournaments.find((t: Tournament) => t.id === selectedTournamentId)) {
+      useUIStore.getState().navigateHome()
+    }
+  }, [tournaments, selectedTournamentId])
 
   const selectTournament = useCallback(
     (t: Tournament) => uiSelectTournament(t.id),
@@ -152,7 +159,6 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
     tournaments,
     selectedTournament,
     gamesCache,
-    activeView,
     patchGamesCache,
     selectTournament,
     navigateHome,
@@ -164,7 +170,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
     updateTournament,
     deleteTournament,
   }), [
-    tournaments, selectedTournament, gamesCache, activeView,
+    tournaments, selectedTournament, gamesCache,
     patchGamesCache, selectTournament, navigateHome, setActiveView,
     createTournament, publishTournament, lockTournament,
     renameTournament, updateTournament, deleteTournament,
@@ -185,13 +191,17 @@ export function useTournamentContext(): TournamentContextValue {
   return ctx
 }
 
-// Named differently from the query primitive to avoid collision
 export function useTournamentList() {
   return { tournaments: useTournamentContext().tournaments }
 }
 
+// useTournamentNav now reads activeView directly from Zustand rather than
+// re-exposing it through TournamentContext. This prevents navigation actions
+// from triggering re-renders in components that subscribe to TournamentContext
+// for unrelated reasons (e.g. gamesCache updates).
 export function useTournamentNav() {
-  const { selectedTournament, activeView, selectTournament, navigateHome, navigateTo } =
+  const { selectedTournament, selectTournament, navigateHome, navigateTo } =
     useTournamentContext()
+  const activeView = useUIStore(s => s.activeView)
   return { selectedTournament, activeView, selectTournament, navigateHome, navigateTo }
 }

@@ -1,3 +1,37 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ── Sleek custom scrollbars ─────────────────────────────────
+   Applied via the .scrollbar-thin utility class.
+   Firefox: scrollbar-width + scrollbar-color
+   WebKit:  ::-webkit-scrollbar pseudo-elements
+   Both auto-hide at 4px thin and match the app's slate palette.
+─────────────────────────────────────────────────────────────── */
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(100, 116, 139, 0.35) transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  width:  5px;
+  height: 5px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background:    rgba(100, 116, 139, 0.35);
+  border-radius: 999px;
+  transition:    background 0.2s;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.6);
+}
+
+.scrollbar-thin::-webkit-scrollbar-corner {
+  background: transparent;
+}

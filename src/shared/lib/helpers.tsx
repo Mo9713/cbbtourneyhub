@@ -23,7 +23,6 @@ export function getScore(r: number): number {
   }
   return b;
 }
-export { resolveScore } from '../types'
 
 export function getRoundLabel(roundNum: number, maxRound: number): string {
   const gap = maxRound - roundNum

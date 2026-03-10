@@ -1,7 +1,7 @@
-// src/shared/libs/bracketMath.ts
+// src/shared/lib/bracketMath.ts
 // ─────────────────────────────────────────────────────────────
 
-import type { Game, Pick, Tournament } from '../../shared/types'
+import type { Game, Pick, Tournament } from '../types'
 import { isTBDName, getScore }         from './helpers'
 
 // ─────────────────────────────────────────────────────────────
@@ -12,9 +12,9 @@ export function collectDownstreamGameIds(
   startGame: Game,
   allGames:  Game[],
 ): string[] {
-  const gameById   = new Map(allGames.map(g => [g.id, g]))
+  const gameById    = new Map(allGames.map(g => [g.id, g]))
   const downstream: string[] = []
-  let currentId    = startGame.next_game_id
+  let currentId     = startGame.next_game_id
 
   while (currentId) {
     downstream.push(currentId)
@@ -74,7 +74,7 @@ export function resolveAdvancingSlot(
 // § 3. Effective Name Derivation (DUAL-TRACK PREDICTION)
 // ─────────────────────────────────────────────────────────────
 
-export type DualSlot = { actual: string; predicted: string }
+export type DualSlot     = { actual: string; predicted: string }
 export type EffectiveNames = Record<string, { team1: DualSlot; team2: DualSlot }>
 
 export function deriveEffectiveNames(
@@ -84,9 +84,9 @@ export function deriveEffectiveNames(
 
   const names: EffectiveNames = {}
   games.forEach(g => {
-    names[g.id] = { 
-      team1: { actual: g.team1_name, predicted: g.team1_name }, 
-      team2: { actual: g.team2_name, predicted: g.team2_name } 
+    names[g.id] = {
+      team1: { actual: g.team1_name, predicted: g.team1_name },
+      team2: { actual: g.team2_name, predicted: g.team2_name },
     }
   })
 
@@ -102,12 +102,12 @@ export function deriveEffectiveNames(
   for (const game of sorted) {
     if (!game.next_game_id) continue
 
-    const eff = names[game.id]
+    const eff      = names[game.id]
     const curTeam1 = eff?.team1 ?? { actual: game.team1_name, predicted: game.team1_name }
     const curTeam2 = eff?.team2 ?? { actual: game.team2_name, predicted: game.team2_name }
 
-    const actualWinner = game.actual_winner
-    const predSlotsAreReal = !isTBDName(curTeam1.predicted) && !isTBDName(curTeam2.predicted)
+    const actualWinner      = game.actual_winner
+    const predSlotsAreReal  = !isTBDName(curTeam1.predicted) && !isTBDName(curTeam2.predicted)
 
     let userPick = pickMap.get(game.id)
     if (userPick && userPick !== curTeam1.predicted && userPick !== curTeam2.predicted) {
@@ -139,17 +139,16 @@ export function deriveEffectiveNames(
 // § 4. Deep Elimination & Local Scoring
 // ─────────────────────────────────────────────────────────────
 
-/**
- * Returns a Set of team names that have officially lost a game.
- */
-export function deriveEliminatedTeams(games: Game[], effectiveNames: EffectiveNames): Set<string> {
+export function deriveEliminatedTeams(
+  games:         Game[],
+  effectiveNames: EffectiveNames
+): Set<string> {
   const eliminated = new Set<string>()
   for (const game of games) {
     if (game.actual_winner) {
       const eff = effectiveNames[game.id]
-      const t1 = eff?.team1.actual ?? game.team1_name
-      const t2 = eff?.team2.actual ?? game.team2_name
-
+      const t1  = eff?.team1.actual ?? game.team1_name
+      const t2  = eff?.team2.actual ?? game.team2_name
       if (t1 && t1 !== game.actual_winner && !isTBDName(t1)) eliminated.add(t1)
       if (t2 && t2 !== game.actual_winner && !isTBDName(t2)) eliminated.add(t2)
     }
@@ -157,36 +156,26 @@ export function deriveEliminatedTeams(games: Game[], effectiveNames: EffectiveNa
   return eliminated
 }
 
-/**
- * Lightweight, modular scoring engine for a single bracket view.
- */
 export function calculateLocalScore(
-  games: Game[],
-  picks: Pick[],
+  games:          Game[],
+  picks:          Pick[],
   effectiveNames: EffectiveNames,
-  tournament: Tournament
+  tournament:     Tournament,
 ): { current: number; max: number } {
   let current = 0
-  let max = 0
+  let max     = 0
   const eliminated = deriveEliminatedTeams(games, effectiveNames)
-  const pickMap = new Map(picks.map(p => [p.game_id, p.predicted_winner]))
+  const pickMap    = new Map(picks.map(p => [p.game_id, p.predicted_winner]))
 
   for (const game of games) {
-    const pts = tournament.scoring_config?.[String(game.round_num)] ?? getScore(game.round_num)
+    const pts      = tournament.scoring_config?.[String(game.round_num)] ?? getScore(game.round_num)
     const userPick = pickMap.get(game.id)
-
     if (!userPick || isTBDName(userPick)) continue
 
     if (game.actual_winner) {
-      if (game.actual_winner === userPick) {
-        current += pts
-        max += pts
-      }
+      if (game.actual_winner === userPick) { current += pts; max += pts }
     } else {
-      // Game hasn't happened. Is the predicted team still alive?
-      if (!eliminated.has(userPick)) {
-        max += pts
-      }
+      if (!eliminated.has(userPick)) max += pts
     }
   }
 
@@ -205,13 +194,11 @@ export function deriveChampion(
   if (games.length === 0) return null
 
   const maxRound = Math.max(...games.map(g => g.round_num))
-
   const champGame =
     games.find(g => g.round_num === maxRound && !g.next_game_id) ??
     games.find(g => g.round_num === maxRound)
 
   if (!champGame) return null
-
   if (champGame.actual_winner) return champGame.actual_winner
 
   const eff          = effectiveNames[champGame.id]
@@ -234,7 +221,6 @@ export interface ConnectorLine {
   x1:       number
   y1:       number
   x2:       number
-  x3?:      number 
   y2:       number
   gameId:   string
   fromSlot: 'in1' | 'in2'
@@ -247,7 +233,7 @@ export function computeConnectorLines(
   getInRect:     (gameId: string, slot: 'in1' | 'in2') => DOMRect | null,
   containerRect: DOMRect,
   scrollLeft:    number,
-  scrollTop:     number
+  scrollTop:     number,
 ): ConnectorLine[] {
   const lines: ConnectorLine[] = []
 
@@ -264,6 +250,7 @@ export function computeConnectorLines(
     const inR  = getInRect(game.next_game_id, slot)
     if (!inR) continue
 
+    // No Y_OFFSET — coordinates land on the true geometric center of each dot.
     const inX = inR.left + inR.width  / 2 - containerRect.left + scrollLeft
     const inY = inR.top  + inR.height / 2 - containerRect.top  + scrollTop
 
@@ -277,6 +264,9 @@ export function computeConnectorLines(
 // § 7. Leaderboard Scoring Resolution
 // ─────────────────────────────────────────────────────────────
 
-export function resolveScore(roundNum: number, config?: Record<string, number> | null): number {
+export function resolveScore(
+  roundNum: number,
+  config?:  Record<string, number> | null,
+): number {
   return config?.[String(roundNum)] ?? getScore(roundNum)
 }

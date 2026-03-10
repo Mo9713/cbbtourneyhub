@@ -1,4 +1,5 @@
-// src/components/ViewRouter.tsx
+// src/app/ViewRouter.tsx
+
 import { useCallback } from 'react'
 
 import { useAuthContext, SettingsView }   from '../features/auth'
@@ -11,21 +12,19 @@ import { useUIStore } from '../shared/store/uiStore'
 import type { Game }  from '../shared/types'
 
 export default function ViewRouter() {
-  const { profile, user, setProfile }   = useAuthContext()
-  const { activeView, selectedTournament,
-          gamesCache, deleteTournament } = useTournamentContext()
-  const { deleteGame }                  = useGameMutations()
-  const { openSnoop, setConfirmModal,
-          pushToast }                   = useUIStore()
+  const { profile, user, setProfile }           = useAuthContext()
+  const { selectedTournament,
+          gamesCache, deleteTournament }         = useTournamentContext()
+  const { deleteGame }                          = useGameMutations()
+  const { openSnoop, setConfirmModal, pushToast } = useUIStore()
+
+  // activeView is read directly from Zustand — NOT from TournamentContext.
+  // TournamentContext no longer exposes activeView because it changed on
+  // every navigation, causing the entire consumer subtree to re-render.
+  const activeView = useUIStore(s => s.activeView)
 
   if (!profile) return null
 
-  // FIX: Was `useCallback((id: string) => openSnoop(id), [openSnoop])`.
-  // Zustand action creators are stable by contract — the store guarantees
-  // referential equality across renders (same function object, always).
-  // Wrapping a stable function in useCallback adds overhead (hook call,
-  // dependency tracking, memory for the memoized ref) with zero benefit.
-  // Direct assignment is both more accurate and more readable.
   const handleSnoop = openSnoop
 
   const handleDeleteGame = useCallback((game: Game) => {

@@ -11,6 +11,7 @@ import {
 } from '../shared/ui'
 import { useTheme }        from '../shared/lib/theme'
 import { useRealtimeSync } from './hooks/useRealtimeSync'
+import { useHashRouter }   from './hooks/useHashRouter'
 import { useUIStore }      from '../shared/store/uiStore'
 
 import ViewRouter from './ViewRouter'
@@ -31,6 +32,7 @@ export default function AppShell() {
   const { createTournament } = useTournamentContext()
 
   useRealtimeSync()
+  useHashRouter()
 
   const handleCreateTournament = useCallback(async (
     name: string, template: TemplateKey, teamCount?: number,
@@ -42,6 +44,9 @@ export default function AppShell() {
   }, [createTournament, pushToast])
 
   return (
+    // Root shell: always dark slate, text-white. theme.appBg is for panels/cards,
+    // not the root wrapper — using theme.bg here caused the flashbang (it's an
+    // accent tint like bg-orange-600/10, not a background color).
     <div className="flex h-screen overflow-hidden bg-slate-950 text-white">
 
       {/* Desktop Sidebar — expanded */}
@@ -71,7 +76,10 @@ export default function AppShell() {
       {/* Mobile Sidebar overlay */}
       {mobileMenuOpen && (
         <div className="md:hidden fixed inset-0 z-40 flex">
-          <div className="absolute inset-0 bg-black/60" onClick={() => setMobileMenuOpen(false)} />
+          <div
+            className="absolute inset-0 bg-black/60"
+            onClick={() => setMobileMenuOpen(false)}
+          />
           <div className="relative z-50">
             <Sidebar
               onClose={() => setMobileMenuOpen(false)}
