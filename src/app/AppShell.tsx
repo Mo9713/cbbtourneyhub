@@ -44,8 +44,8 @@ export default function AppShell() {
   }, [createTournament, pushToast])
 
   return (
-    // Root shell: bg-slate-950 (#020617) — neutral dark, never a theme tint.
-    // theme.appBg is for panels/cards only, not this root wrapper.
+    // bg-slate-950 (#020617): hard-coded neutral dark.
+    // theme.appBg is reserved for panels/cards only — never the root shell.
     <div className="flex h-screen overflow-hidden bg-slate-950 text-white">
 
       {/* Desktop Sidebar — expanded */}
@@ -60,9 +60,9 @@ export default function AppShell() {
       )}
 
       {/* Desktop Sidebar — minimised stub
-          Fix 8: was `theme.sidebarBg` which for purple/blue themes renders a
-          strong tinted backdrop (plasma: #0c0814). Hard-coded to bg-slate-900
-          so the app canvas stays visually neutral regardless of active theme. */}
+          bg-slate-900: hard-coded neutral, NOT theme.sidebarBg.
+          theme.sidebarBg for plasma/ice themes is a strong blue/purple tint
+          (#0c0814, #060c14) that bleeds into the bracket canvas. */}
       {!sidebarOpen && (
         <div className="hidden md:flex flex-col items-center py-4 w-16 border-r border-slate-800 flex-shrink-0 bg-slate-900">
           <button
