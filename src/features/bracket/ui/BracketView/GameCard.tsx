@@ -10,8 +10,9 @@
 //
 //  ELIMINATED + PICKED : line-through text-rose-600 decoration-rose-600
 //                        ✕ (rose) on right
-//  ELIMINATED + CASCADED : (round > 1 and predicted) line-through text-rose-600, NO ✕
-//  ELIMINATED + NOT PICKED (round 1) : row bg-black/30 (subtle fade), text-slate-500, NO ✕
+//  ELIMINATED + CASCADED (INCORRECT ADVANCEMENT): line-through text-rose-600 decoration-rose-600, NO ✕
+//  ELIMINATED + NOT PICKED (ACTUAL): row bg-black/30 (subtle fade), text-slate-500, NO ✕
+//                        (Applies to base round unpicked teams OR teams correctly predicted to lose)
 //
 //  PENDING + PICKED    : text-slate-200 (unchanged from default)
 //                        emerald dot on right  ← only if NOT eliminated
@@ -105,12 +106,15 @@ export default function GameCard({
           const isPicked     = !isTBD && userPick?.predicted_winner === predicted
           const isEliminated = !isTBD && !isWinner && eliminatedTeams.has(predicted)
 
-          // If they are in round 2+, they are a user pick to reach this slot
-          const isUserPickToReachHere = game.round_num > 1
+          // If the predicted team doesn't match the actual team in this slot, 
+          // their presence here is a cascaded failure from a previous round.
+          const isIncorrectAdvancement = isEliminated && actual !== predicted
+
+          // Cross out ONLY if user picked them for THIS game and they were eliminated,
+          // OR if they were incorrectly predicted to reach this slot (cascaded failure).
+          const shouldStrikeThrough = isEliminated && (isPicked || isIncorrectAdvancement)
           
-          // Cross out if user picked them for THIS game OR picked them to reach this slot
-          const shouldStrikeThrough = isEliminated && (isPicked || isUserPickToReachHere)
-          // Fade if eliminated but neither condition above is met (e.g., base round unpicked teams)
+          // Fade to black if eliminated but they actually reached this slot and the user didn't pick them to advance further.
           const shouldFade = isEliminated && !shouldStrikeThrough
 
           // ── Row background + ring ──────────────────────────────────────
