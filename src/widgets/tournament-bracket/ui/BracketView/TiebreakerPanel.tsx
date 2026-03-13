@@ -1,8 +1,8 @@
 // src/widgets/tournament-bracket/ui/BracketView/TiebreakerPanel.tsx
-import { useState, useEffect } from 'react'
-import { Hash, Check, Loader } from 'lucide-react'
-import { useTheme }            from '../../../shared/lib/theme'
-import type { Game, Pick }     from '../../../shared/types'
+import { useState, useEffect }  from 'react'
+import { Hash, Check, Loader }  from 'lucide-react'
+import { useTheme }             from '../../../../shared/lib/theme'
+import type { Game, Pick }      from '../../../../shared/types'
 
 interface Props {
   champGame: Game

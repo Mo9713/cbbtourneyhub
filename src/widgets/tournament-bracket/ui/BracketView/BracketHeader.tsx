@@ -1,11 +1,11 @@
 // src/widgets/tournament-bracket/ui/BracketView/BracketHeader.tsx
-import { Eye, Lock, Clock }              from 'lucide-react'
-import { useTheme }                      from '../../../shared/lib/theme'
-import { statusLabel, statusIcon }       from '../../../shared/lib/helpers'
-import { isPicksLocked, isBeforeUnlock } from '../../../shared/lib/time'
-import { useAuth }                       from '../../../features/auth/model/useAuth'
-import Countdown                         from '../../../shared/ui/Countdown'
-import type { Tournament }               from '../../../shared/types'
+import { Eye, Lock, Clock } from 'lucide-react'
+import { useTheme }    from '../../../../shared/lib/theme'
+import { statusLabel, statusIcon } from '../../../../shared/lib/helpers'
+import { isPicksLocked, isBeforeUnlock } from '../../../../shared/lib/time'
+import { useAuth } from '../../../../features/auth/model/useAuth'
+import Countdown from '../../../../shared/ui/Countdown'
+import type { Tournament } from '../../../../shared/types'
 
 interface Props {
   tournament:  Tournament
@@ -16,12 +16,10 @@ interface Props {
   score:       { current: number; max: number }
 }
 
-export default function BracketHeader({
-  tournament, pickedCount, totalGames, readOnly, ownerName, score,
-}: Props) {
+export default function BracketHeader({ tournament, pickedCount, totalGames, readOnly, ownerName, score }: Props) {
   const theme = useTheme()
   const { profile } = useAuth()
-  const pct = totalGames > 0 ? Math.round((pickedCount / totalGames) * 100) : 0
+  const pct   = totalGames > 0 ? Math.round((pickedCount / totalGames) * 100) : 0
 
   const lockedByTime = isPicksLocked(tournament, profile?.is_admin ?? false)
   const beforeOpen   = isBeforeUnlock(tournament)
@@ -67,10 +65,10 @@ export default function BracketHeader({
       </div>
 
       <div className="flex items-center gap-5 flex-shrink-0">
-        <Countdown
-          tournament={tournament}
-          isAdmin={profile?.is_admin ?? false}
-          timezone={profile?.timezone ?? null}
+        <Countdown 
+          tournament={tournament} 
+          isAdmin={profile?.is_admin ?? false} 
+          timezone={profile?.timezone ?? null} 
         />
 
         <div className="text-right">
@@ -78,9 +76,7 @@ export default function BracketHeader({
             <div className="flex flex-col items-end">
               <div className="flex items-center gap-2 mb-1">
                 <span className="text-xs text-slate-500 dark:text-slate-400">Score</span>
-                <span className={`text-xl font-bold ${readOnly ? 'text-violet-600 dark:text-violet-400' : theme.accent}`}>
-                  {score.current}
-                </span>
+                <span className={`text-xl font-bold ${readOnly ? 'text-violet-600 dark:text-violet-400' : theme.accent}`}>{score.current}</span>
               </div>
               <div className="text-[10px] text-slate-500 font-medium uppercase tracking-widest">
                 Max: <span className="text-slate-700 dark:text-slate-300">{score.max}</span>
@@ -90,9 +86,7 @@ export default function BracketHeader({
             <>
               <div className="flex items-center gap-2 justify-end mb-1">
                 <span className="text-xs text-slate-500 dark:text-slate-400">Progress</span>
-                <span className={`text-sm font-bold ${readOnly ? 'text-violet-600 dark:text-violet-400' : theme.accent}`}>
-                  {pickedCount}/{totalGames}
-                </span>
+                <span className={`text-sm font-bold ${readOnly ? 'text-violet-600 dark:text-violet-400' : theme.accent}`}>{pickedCount}/{totalGames}</span>
               </div>
               <div className="w-28 h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
                 <div

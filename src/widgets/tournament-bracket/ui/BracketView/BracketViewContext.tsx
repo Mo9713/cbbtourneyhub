@@ -1,6 +1,6 @@
 // src/widgets/tournament-bracket/ui/BracketView/BracketViewContext.tsx
 import { createContext, useContext, type ReactNode } from 'react'
-import type { Game } from '../../../shared/types'
+import type { Game } from '../../../../shared/types'
 
 export interface BracketViewContextValue {
   isLocked:  boolean
