@@ -49,9 +49,9 @@ export default function GameCard({
   const hasWinner = !!game.actual_winner
 
   // Card-level styling based on confirmed results
-  const cardBorderCls   = hasWinner ? 'border-emerald-900/50' : 'border-slate-200 dark:border-slate-800'
+  const cardBorderCls   = hasWinner ? 'border-emerald-500/50 dark:border-emerald-900/50' : 'border-slate-300 dark:border-slate-800'
   const cardShadowStyle = hasWinner
-    ? { boxShadow: '0 0 14px 2px rgba(6, 78, 59, 0.35)' }
+    ? { boxShadow: '0 0 14px 2px rgba(16, 185, 129, 0.25)' }
     : undefined
 
   const rows = [
@@ -88,12 +88,12 @@ export default function GameCard({
           #{String(gameNum).padStart(2, '0')}
         </span>
         <span className="text-[9px] text-slate-300 dark:text-slate-700 leading-none">·</span>
-        <span className="text-[9px] text-slate-400 dark:text-slate-600 leading-none">{pointValue}pt</span>
+        <span className="text-[9px] text-slate-500 dark:text-slate-600 leading-none">{pointValue}pt</span>
       </div>
 
       {/* Card body */}
       <div
-        className={`flex flex-col w-full bg-slate-50 dark:bg-[#11141d] border rounded-none transition-colors duration-150 ${cardBorderCls}`}
+        className={`flex flex-col w-full bg-white dark:bg-[#11141d] border rounded-none transition-colors duration-150 ${cardBorderCls}`}
         style={cardShadowStyle}
       >
         {rows.map(({ actual, predicted, seed, score, inKey }, idx) => {
@@ -119,9 +119,9 @@ export default function GameCard({
 
           // ── Row background + ring ──────────────────────────────────────
           const rowBg = isWinner
-            ? 'bg-emerald-500/10 dark:bg-[#022c22]'
+            ? 'bg-emerald-50 dark:bg-[#022c22]'
             : shouldFade
-              ? 'bg-black/5 dark:bg-black/30'
+              ? 'bg-slate-100/50 dark:bg-black/30'
               : ''
           const rowRingCls = isWinner ? 'ring-2 ring-inset ring-emerald-500 z-10' : ''
 
@@ -133,11 +133,11 @@ export default function GameCard({
             nameClass    = 'text-emerald-600 dark:text-emerald-400 font-black'
             seedColorCls = 'text-emerald-600 dark:text-emerald-400'
           } else if (shouldStrikeThrough) {
-            nameClass    = 'line-through text-rose-600 decoration-rose-600 decoration-2 font-bold'
-            seedColorCls = 'text-rose-600 line-through decoration-rose-600 decoration-2'
+            nameClass    = 'line-through text-rose-600 dark:text-rose-500 decoration-rose-600 dark:decoration-rose-500 decoration-2 font-bold'
+            seedColorCls = 'text-rose-600 dark:text-rose-500 line-through decoration-rose-600 dark:decoration-rose-500 decoration-2'
           } else if (shouldFade) {
-            nameClass    = 'text-slate-500'
-            seedColorCls = 'text-slate-400 dark:text-slate-600'
+            nameClass    = 'text-slate-400 dark:text-slate-500'
+            seedColorCls = 'text-slate-300 dark:text-slate-600'
           } else if (isTBD) {
             nameClass    = 'text-slate-400 dark:text-slate-600 italic'
             seedColorCls = 'text-slate-300 dark:text-slate-700'
@@ -147,7 +147,7 @@ export default function GameCard({
             seedColorCls = 'text-slate-400 dark:text-slate-500'
           }
 
-          const scoreCls = isWinner ? 'text-emerald-600 dark:text-emerald-400 font-black' : 'text-slate-400'
+          const scoreCls = isWinner ? 'text-emerald-600 dark:text-emerald-400 font-black' : 'text-slate-600 dark:text-slate-400'
           const canPick  = !isTBD && !isLocked && !readOnly
 
           // ── Right-side indicator ───────────────────────────────────────
@@ -165,7 +165,7 @@ export default function GameCard({
                 relative flex items-center justify-between min-h-[32px] py-1 px-2
                 border-b border-slate-200 dark:border-[#2a303c] last:border-b-0
                 ${rowBg} ${rowRingCls}
-                ${canPick ? 'cursor-pointer hover:brightness-110' : 'cursor-default'}
+                ${canPick ? 'cursor-pointer hover:bg-slate-50 dark:hover:brightness-110' : 'cursor-default'}
                 transition-all duration-75
               `}
               onClick={() => canPick && onPick(game, predicted)}
@@ -206,7 +206,7 @@ export default function GameCard({
                   <span className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 leading-none">✓</span>
                 )}
                 {showX && (
-                  <span className="text-[10px] font-black text-rose-600 leading-none">✕</span>
+                  <span className="text-[10px] font-black text-rose-600 dark:text-rose-500 leading-none">✕</span>
                 )}
                 {showDot && (
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />

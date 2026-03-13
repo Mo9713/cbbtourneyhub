@@ -1,6 +1,6 @@
 // src/features/leaderboard/ui/LeaderboardView/index.tsx
 
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect }  from 'react'
 import { BarChart2, Shield }             from 'lucide-react'
 import { useTheme }                      from '../../../../shared/lib/theme'
 import { useAuth }                       from '../../../auth/model/useAuth'
@@ -68,9 +68,16 @@ export default function LeaderboardView({ onSnoop }: LeaderboardViewProps) {
     )
   }, [raw, tournaments, selectedTournaments])
 
-  const maxPoints = leaderboard[0]?.points ?? 0
   const isAdmin   = profile?.is_admin ?? false
   const currentId = profile?.id ?? ''
+
+  // ── SNOOPING LOGIC FRAMEWORK ────────────────────────────────
+  // TODO(Groups) Phase 4: Integrate group lock status here.
+  const isGroupContext = false // Replace in Phase 4: e.g., !!selectedGroupId
+  const isGroupLocked  = false // Replace in Phase 4: e.g., isPicksLocked(groupTournament, false)
+  
+  const canSnoop = isAdmin || (isGroupContext && isGroupLocked)
+  // ────────────────────────────────────────────────────────────
 
   return (
     <div className="flex flex-col h-full">
@@ -116,72 +123,77 @@ export default function LeaderboardView({ onSnoop }: LeaderboardViewProps) {
       )}
 
       <div className="flex-1 overflow-auto p-6">
-        {leaderboard.length === 0 ? (
-          <div className="flex items-center justify-center h-full text-slate-600 text-sm">
-            No picks recorded yet.
-          </div>
-        ) : (
-          <div className="max-w-2xl space-y-2">
-            {leaderboard.map((entry, i) => {
-              const isMe   = entry.profile.id === currentId
-              const medal  = medals[i] ?? null
-              const barPct = maxPoints > 0 ? (entry.points / maxPoints) * 100 : 0
+        <div className="max-w-4xl mx-auto space-y-2">
+          
+          {/* Column Headers */}
+          {leaderboard.length > 0 && (
+            <div className="flex items-center gap-4 px-4 py-2 text-xs font-bold text-slate-500 uppercase tracking-widest border-b border-slate-200 dark:border-slate-800 mb-4">
+              <div className="w-8 text-center flex-shrink-0">Rank</div>
+              <div className="flex-1 min-w-0">Player</div>
+              <div className="w-20 text-right flex-shrink-0">Score</div>
+              <div className="w-24 text-right flex-shrink-0 hidden sm:block">Max Pts</div>
+              {/* Spacer matching the width of the Snoop icon to ensure perfect column alignment when snooping is allowed */}
+              {canSnoop && <div className="w-6 hidden sm:block flex-shrink-0"></div>}
+            </div>
+          )}
+
+          {leaderboard.length === 0 ? (
+            <div className="flex items-center justify-center h-full text-slate-600 text-sm">
+              No picks recorded yet.
+            </div>
+          ) : (
+            leaderboard.map((entry, i) => {
+              const isMe  = entry.profile.id === currentId
+              const medal = medals[i] ?? null
 
               return (
                 <div
                   key={entry.profile.id}
-                  onClick={() => isAdmin && !isMe && onSnoop(entry.profile.id)}
+                  onClick={() => canSnoop && !isMe && onSnoop(entry.profile.id)}
                   className={`flex items-center gap-4 p-4 rounded-2xl border transition-all
                     ${isMe
                       ? `${theme.bg} ${theme.border}`
-                      : 'bg-slate-900/50 border-slate-800'
+                      : 'bg-white dark:bg-slate-900/50 border-slate-200 dark:border-slate-800'
                     }
-                    ${isAdmin && !isMe ? 'cursor-pointer hover:border-slate-600' : ''}`}
+                    ${canSnoop && !isMe ? 'cursor-pointer hover:border-slate-400 dark:hover:border-slate-600' : ''}`}
                 >
                   <div className="w-8 text-center flex-shrink-0">
                     {medal
                       ? <span className="text-xl">{medal}</span>
-                      : <span className="text-xs font-bold text-slate-500">#{i + 1}</span>
+                      : <span className="text-sm font-bold text-slate-500">#{i + 1}</span>
                     }
                   </div>
 
-                  <Avatar profile={entry.profile} size="md" />
-                  <div className="flex-1 min-w-0">
-                    <p className={`text-sm font-semibold truncate ${isMe ? theme.accentB : 'text-white'}`}>
+                  <div className="flex-1 min-w-0 flex items-center gap-3">
+                    <Avatar profile={entry.profile} size="md" />
+                    <p className={`text-sm font-semibold truncate ${isMe ? theme.accentB : 'text-slate-900 dark:text-white'}`}>
                       {entry.profile.display_name}
                       {isMe && <span className="text-xs font-normal text-slate-500 ml-1.5">(you)</span>}
                     </p>
-                    <div className="mt-1.5 h-1 rounded-full bg-slate-800 overflow-hidden w-full max-w-xs">
-                      <div
-                        className={`h-full rounded-full transition-all ${isMe ? theme.btn.split(' ')[0] : 'bg-slate-600'}`}
-                        style={{ width: `${barPct}%` }}
-                      />
-                    </div>
                   </div>
 
-                  <div className="text-right flex-shrink-0">
-                    <p className={`text-lg font-bold tabular-nums ${isMe ? theme.accentB : 'text-white'}`}>
+                  <div className="w-20 text-right flex-shrink-0">
+                    <p className={`text-lg font-bold tabular-nums ${isMe ? theme.accentB : 'text-slate-900 dark:text-white'}`}>
                       {entry.points}
-                      <span className="text-xs font-normal text-slate-500 ml-0.5">pts</span>
                     </p>
-                    <p className="text-[10px] text-slate-500 tabular-nums">
-                      {entry.correct}/{entry.total} correct
-                    </p>
-                    {entry.maxPossible > entry.points && (
-                      <p className="text-[10px] text-emerald-600 tabular-nums">
-                        +{entry.maxPossible - entry.points} possible
-                      </p>
-                    )}
                   </div>
 
-                  {isAdmin && !isMe && (
-                    <BarChart2 size={13} className="text-slate-600 flex-shrink-0" />
+                  <div className="w-24 text-right flex-shrink-0 hidden sm:block">
+                    <p className="text-sm text-emerald-600 dark:text-emerald-400 tabular-nums font-medium">
+                      {entry.maxPossible}
+                    </p>
+                  </div>
+
+                  {canSnoop && (
+                    <div className="w-6 hidden sm:flex justify-end flex-shrink-0">
+                      {!isMe && <BarChart2 size={16} className="text-slate-400" />}
+                    </div>
                   )}
                 </div>
               )
-            })}
-          </div>
-        )}
+            })
+          )}
+        </div>
       </div>
     </div>
   )

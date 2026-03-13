@@ -1,4 +1,4 @@
-// src/features/tournament/HomeView.tsx
+// src/features/tournament/ui/HomeView.tsx
 
 import { useTheme }                 from '../../../shared/lib/theme'
 import { isPicksLocked }            from '../../../shared/lib/time'
@@ -37,17 +37,20 @@ function TournamentCard({ t, isAdmin, onSelect }: CardProps) {
       className={`text-left p-5 rounded-2xl border-2 transition-all hover:scale-[1.02] active:scale-[0.99] w-full
         ${displayStatus === 'open'
           ? `${theme.border} ${theme.bg} hover:${theme.bgMd}`
-          : 'border-slate-800 bg-slate-900/40 hover:border-slate-700'
+          // UPDATED: Light/Dark mode backgrounds and borders for locked/draft cards
+          : 'border-slate-300 dark:border-slate-800 bg-slate-100 dark:bg-slate-900/40 hover:border-slate-400 dark:hover:border-slate-700'
         }`}
     >
       <div className="flex items-start justify-between gap-2 mb-3">
-        <h3 className="font-display text-xl font-bold text-white uppercase tracking-wide leading-tight">
+        {/* UPDATED: text-slate-900 dark:text-white */}
+        <h3 className="font-display text-xl font-bold text-slate-900 dark:text-white uppercase tracking-wide leading-tight">
           {t.name}
         </h3>
         <span className={`flex-shrink-0 flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-lg uppercase tracking-widest
           ${displayStatus === 'open'   ? `${theme.bg} ${theme.accent}` :
-            displayStatus === 'draft'  ? 'bg-amber-500/20 text-amber-400' :
-                                         'bg-slate-800 text-slate-500'
+            // UPDATED: Light/Dark mode pill colors
+            displayStatus === 'draft'  ? 'bg-amber-100 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400' :
+                                         'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-500'
           }`}
         >
           {statusIcon(displayStatus)} {statusLabel(displayStatus)}
@@ -59,11 +62,12 @@ function TournamentCard({ t, isAdmin, onSelect }: CardProps) {
         <div className="mt-2">
           <div className="flex items-center justify-between mb-1">
             <span className="text-[10px] text-slate-500">Your picks</span>
-            <span className={`text-[10px] font-bold ${pct === 100 ? 'text-emerald-400' : theme.accent}`}>
+            <span className={`text-[10px] font-bold ${pct === 100 ? 'text-emerald-600 dark:text-emerald-400' : theme.accent}`}>
               {myPickCount} / {games.length}
             </span>
           </div>
-          <div className="h-1 rounded-full bg-slate-800 overflow-hidden">
+          {/* UPDATED: Progress bar background */}
+          <div className="h-1 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
             <div
               className={`h-full rounded-full transition-all ${pct === 100 ? 'bg-emerald-500' : theme.btn.split(' ')[0]}`}
               style={{ width: `${pct}%` }}
@@ -128,7 +132,8 @@ export default function HomeView() {
   return (
     <div className="flex flex-col h-full">
       <div className={`px-6 py-5 border-b flex-shrink-0 ${theme.headerBg}`}>
-        <h1 className="font-display text-3xl font-extrabold text-white uppercase tracking-wide">
+        {/* UPDATED: text-slate-900 dark:text-white */}
+        <h1 className="font-display text-3xl font-extrabold text-slate-900 dark:text-white uppercase tracking-wide">
           Tournaments
         </h1>
         <p className="text-slate-500 text-sm mt-0.5">

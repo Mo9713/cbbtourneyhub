@@ -28,7 +28,6 @@ export default function SettingsView({ profile, userEmail, onProfileUpdate, push
   const [changingPass, setChangingPass] = useState(false)
 
   // ── Profile mutation ──────────────────────────────────────
-  // Replaces manual profileService calls + setSaving state.
   const updateProfile = useUpdateProfileMutation(profile.id)
 
   const save = async () => {
@@ -54,9 +53,6 @@ export default function SettingsView({ profile, userEmail, onProfileUpdate, push
   }
 
   // ── Password change ───────────────────────────────────────
-  // Current password re-verified via authService.signInWithPassword
-  // before calling authService.updatePassword — Supabase does not
-  // enforce current-password confirmation on updateUser natively.
   const changePass = async () => {
     if (!currentPass) { push('Enter your current password', 'error'); return }
     if (!newPass || newPass.length < 6) { push('New password must be at least 6 characters', 'error'); return }
@@ -84,13 +80,15 @@ export default function SettingsView({ profile, userEmail, onProfileUpdate, push
     setChangingPass(false)
   }
 
-  const inputCls = `w-full ${theme.inputBg} border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm placeholder-slate-600 focus:outline-none focus:border-slate-500 transition-colors`
+  // UPDATED: Proper responsive Tailwind text, border, and placeholder colors
+  const inputCls = `w-full ${theme.inputBg} border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2.5 text-slate-900 dark:text-white text-sm placeholder-slate-400 dark:placeholder-slate-600 focus:outline-none focus:border-slate-400 dark:focus:border-slate-500 transition-colors`
   const saving   = updateProfile.isPending
 
   return (
     <div className="flex flex-col h-full">
       <div className={`px-6 py-4 border-b flex-shrink-0 ${theme.headerBg}`}>
-        <h2 className="font-display text-3xl font-extrabold text-white uppercase tracking-wide">
+        {/* UPDATED: text-slate-900 dark:text-white */}
+        <h2 className="font-display text-3xl font-extrabold text-slate-900 dark:text-white uppercase tracking-wide">
           Settings
         </h2>
       </div>
@@ -99,8 +97,10 @@ export default function SettingsView({ profile, userEmail, onProfileUpdate, push
         <div className="max-w-lg space-y-6">
 
           {/* ── Profile ──────────────────────────────────── */}
-          <div className={`${theme.panelBg} border border-slate-800 rounded-2xl p-5`}>
-            <h3 className="font-display text-sm font-bold text-slate-300 uppercase tracking-widest mb-4 flex items-center gap-2">
+          {/* UPDATED: border-slate-200 dark:border-slate-800 */}
+          <div className={`${theme.panelBg} border border-slate-200 dark:border-slate-800 rounded-2xl p-5`}>
+            {/* UPDATED: text-slate-700 dark:text-slate-300 */}
+            <h3 className="font-display text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-widest mb-4 flex items-center gap-2">
               <UserIcon size={12} /> Profile
             </h3>
             <div className="space-y-3">
@@ -145,8 +145,8 @@ export default function SettingsView({ profile, userEmail, onProfileUpdate, push
           </div>
 
           {/* ── Theme ────────────────────────────────────── */}
-          <div className={`${theme.panelBg} border border-slate-800 rounded-2xl p-5`}>
-            <h3 className="font-display text-sm font-bold text-slate-300 uppercase tracking-widest mb-4 flex items-center gap-2">
+          <div className={`${theme.panelBg} border border-slate-200 dark:border-slate-800 rounded-2xl p-5`}>
+            <h3 className="font-display text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-widest mb-4 flex items-center gap-2">
               <Palette size={12} /> Theme
             </h3>
             <div className="grid grid-cols-2 gap-2">
@@ -155,18 +155,20 @@ export default function SettingsView({ profile, userEmail, onProfileUpdate, push
                   key={t.key}
                   onClick={() => setThemeKey(t.key)}
                   disabled={saving}
+                  // UPDATED: border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-slate-50 dark:bg-slate-800/40
                   className={`p-3 rounded-xl border-2 flex items-center gap-2.5 transition-all text-left
                     ${profile.theme === t.key
                       ? `${t.border} ${t.bg}`
-                      : 'border-slate-800 hover:border-slate-700 bg-slate-800/40'
+                      : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-slate-50 dark:bg-slate-800/40'
                     }`}
                 >
                   <span className="text-xl">{t.emoji}</span>
                   <div>
-                    <span className={`text-sm font-semibold block ${profile.theme === t.key ? t.accentB : 'text-slate-300'}`}>
+                    {/* UPDATED: text-slate-700 dark:text-slate-300 */}
+                    <span className={`text-sm font-semibold block ${profile.theme === t.key ? t.accentB : 'text-slate-700 dark:text-slate-300'}`}>
                       {t.label}
                     </span>
-                    <span className="text-[10px] text-slate-600">
+                    <span className="text-[10px] text-slate-500">
                       {t.key === 'ember'  ? 'Warm dark'    :
                        t.key === 'ice'    ? 'Cool dark'    :
                        t.key === 'plasma' ? 'Deep violet'  : 'Rich green'}
@@ -181,8 +183,8 @@ export default function SettingsView({ profile, userEmail, onProfileUpdate, push
           </div>
 
           {/* ── Change Password ───────────────────────────── */}
-          <div className={`${theme.panelBg} border border-slate-800 rounded-2xl p-5`}>
-            <h3 className="font-display text-sm font-bold text-slate-300 uppercase tracking-widest mb-4 flex items-center gap-2">
+          <div className={`${theme.panelBg} border border-slate-200 dark:border-slate-800 rounded-2xl p-5`}>
+            <h3 className="font-display text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-widest mb-4 flex items-center gap-2">
               <Key size={12} /> Change Password
             </h3>
             <div className="space-y-3">

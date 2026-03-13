@@ -1,8 +1,10 @@
 // src/features/bracket/ui/SnoopModal.tsx
 
 import { useState, useMemo }         from 'react'
-import { X, Trophy }                  from 'lucide-react'
+import { X, Trophy, Lock }           from 'lucide-react'
 import BracketView                   from './BracketView'
+import { useAuth }                   from '../../auth/model/useAuth'
+import { isPicksLocked }             from '../../../shared/lib/time'
 import { useLeaderboardRaw }         from '../../../entities/leaderboard/model/queries'
 import { useTournamentListQuery }    from '../../../entities/tournament/model/queries'
 import { useGames }                  from '../../../entities/tournament/model/queries'
@@ -14,8 +16,11 @@ interface Props {
 }
 
 export default function SnoopModal({ targetId, onClose }: Props) {
+  const { profile }                = useAuth()
   const { data: raw }              = useLeaderboardRaw()
   const { data: tournaments = [] } = useTournamentListQuery()
+
+  const [adminOverride, setAdminOverride] = useState(false)
 
   const targetProfile = useMemo(
     () => raw?.allProfiles.find((p) => p.id === targetId) ?? null,
@@ -44,9 +49,6 @@ export default function SnoopModal({ targetId, onClose }: Props) {
     [visibleTournaments, selectedTid],
   )
 
-  // Replaces gamesCache[selectedTid] — lazy on-demand load from entity layer.
-  // TanStack Query deduplicates: if BracketView already fetched these games
-  // for the same tid, this is a cache hit with no network request.
   const { data: selectedGames = [] } = useGames(selectedTid)
 
   const selectedPicks = useMemo(
@@ -55,6 +57,14 @@ export default function SnoopModal({ targetId, onClose }: Props) {
   )
 
   const isLoading = !raw || !targetProfile
+  const isAdmin   = profile?.is_admin ?? false
+
+  // ── INDIVIDUAL TOURNAMENT SNOOP LOGIC ───────────────────────
+  const isTournamentLocked = selectedTournament 
+    ? selectedTournament.status === 'locked' || isPicksLocked(selectedTournament, false)
+    : true
+
+  const showBracket = isTournamentLocked || (isAdmin && adminOverride)
 
   return (
     <div
@@ -105,19 +115,52 @@ export default function SnoopModal({ targetId, onClose }: Props) {
               ))}
             </div>
 
-            {/* Bracket content */}
-            <div className="flex-1 overflow-auto scrollbar-thin">
-              {selectedTournament ? (
+            {/* Admin Override Banner */}
+            {isAdmin && !isTournamentLocked && selectedTournament && (
+              <div className="px-6 py-2.5 bg-rose-500/10 border-b border-rose-500/20 flex items-center justify-between flex-shrink-0">
+                <div className="flex items-center gap-2 text-rose-400">
+                  <Lock size={12} />
+                  <span className="text-[11px] font-medium uppercase tracking-wide">
+                    Picks are still open.
+                  </span>
+                </div>
+                <label className="flex items-center gap-1.5 cursor-pointer">
+                  <span className="text-[10px] font-bold text-rose-400/80 uppercase tracking-widest">
+                    Admin: Snoop Anyway
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={adminOverride}
+                    onChange={(e) => setAdminOverride(e.target.checked)}
+                    className="w-3.5 h-3.5 accent-rose-500 rounded bg-slate-800 border-slate-700"
+                  />
+                </label>
+              </div>
+            )}
+
+            {/* Content Area */}
+            <div className="flex-1 overflow-auto scrollbar-thin relative bg-slate-950">
+              {!selectedTournament ? (
+                <div className="flex items-center justify-center h-full text-slate-600 text-sm">
+                  No tournament selected.
+                </div>
+              ) : showBracket ? (
                 <BracketView
                   overrideTournament={selectedTournament}
                   overrideGames={selectedGames}
                   overridePicks={selectedPicks}
                   readOnly
-                  ownerName={targetProfile.display_name}
+                  ownerName={targetProfile?.display_name}
                 />
               ) : (
-                <div className="flex items-center justify-center h-32 text-slate-600 text-sm">
-                  No tournament selected.
+                <div className="flex flex-col items-center justify-center h-full text-slate-500 space-y-3 p-6 text-center">
+                  <div className="w-16 h-16 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center mb-2">
+                    <Lock size={24} className="text-slate-600" />
+                  </div>
+                  <h3 className="text-lg font-bold text-slate-300">Picks are hidden</h3>
+                  <p className="text-sm max-w-sm">
+                    {targetProfile?.display_name}'s bracket is locked to prevent snooping until the tournament officially begins.
+                  </p>
                 </div>
               )}
             </div>
