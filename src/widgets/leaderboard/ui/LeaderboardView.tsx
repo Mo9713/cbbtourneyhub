@@ -1,27 +1,24 @@
-// src/features/leaderboard/ui/LeaderboardView/index.tsx
-
 import { useState, useMemo, useEffect }  from 'react'
 import { BarChart2, Shield }             from 'lucide-react'
-import { useTheme }                      from '../../../../shared/lib/theme'
-import { useAuth }                       from '../../../auth/model/useAuth'
-import { useTournamentListQuery }        from '../../../../entities/tournament/model/queries'
-import { useLeaderboardRaw }             from '../../../../entities/leaderboard/model/queries'
-import { computeLeaderboard }            from '../../model/selectors'
-import Avatar                            from '../../../../shared/ui/Avatar'
-import type { Game }                     from '../../../../shared/types'
+import { useTheme }                      from '../../../shared/lib/theme'
+import { useAuth }                       from '../../../features/auth/model/useAuth'
+import { useTournamentListQuery }        from '../../../entities/tournament/model/queries'
+import { useLeaderboardRaw }             from '../../../entities/leaderboard/model/queries'
+import { computeLeaderboard }            from '../../../features/leaderboard/model/selectors'
+import Avatar                            from '../../../shared/ui/Avatar'
+import type { Game }                     from '../../../shared/types'
 
-interface LeaderboardViewProps {
+export interface LeaderboardViewProps {
   onSnoop: (targetId: string) => void
 }
 
 export default function LeaderboardView({ onSnoop }: LeaderboardViewProps) {
   const theme  = useTheme()
   const medals = ['🥇', '🥈', '🥉']
-
-  const { profile }                          = useAuth()
-  const { data: tournaments = [] }           = useTournamentListQuery()
-  const { data: raw }                        = useLeaderboardRaw()
-
+  const { profile }                = useAuth()
+  const { data: tournaments = [] } = useTournamentListQuery()
+  const { data: raw }              = useLeaderboardRaw()
+  
   const [selectedTournaments, setSelectedTournaments] = useState<Set<string>>(
     () => new Set(tournaments.map((t) => t.id)),
   )
@@ -39,15 +36,12 @@ export default function LeaderboardView({ onSnoop }: LeaderboardViewProps) {
       const serverIds = new Set(tournaments.map((t) => t.id))
       const next      = new Set(prev)
       let   changed   = false
-
       tournaments.forEach((t) => {
         if (!next.has(t.id)) { next.add(t.id); changed = true }
       })
-
       next.forEach((id) => {
         if (!serverIds.has(id)) { next.delete(id); changed = true }
       })
-
       return changed ? next : prev
     })
   }, [tournaments])
@@ -72,17 +66,14 @@ export default function LeaderboardView({ onSnoop }: LeaderboardViewProps) {
   const currentId = profile?.id ?? ''
 
   // ── SNOOPING LOGIC FRAMEWORK ────────────────────────────────
-  // TODO(Groups) Phase 4: Integrate group lock status here.
-  const isGroupContext = false // Replace in Phase 4: e.g., !!selectedGroupId
-  const isGroupLocked  = false // Replace in Phase 4: e.g., isPicksLocked(groupTournament, false)
-  
+  const isGroupContext = false // Replace in Phase 4
+  const isGroupLocked  = false // Replace in Phase 4
   const canSnoop = isAdmin || (isGroupContext && isGroupLocked)
   // ────────────────────────────────────────────────────────────
 
   return (
     <div className="flex flex-col h-full">
-
-      <div className={`px-6 py-4 border-b flex-shrink-0 ${useTheme().headerBg}`}>
+      <div className={`px-6 py-4 border-b flex-shrink-0 ${theme.headerBg}`}>
         <h2 className="font-display text-4xl font-extrabold text-white uppercase tracking-wide">
           Global Leaderboard
         </h2>
@@ -124,15 +115,12 @@ export default function LeaderboardView({ onSnoop }: LeaderboardViewProps) {
 
       <div className="flex-1 overflow-auto p-6">
         <div className="max-w-4xl mx-auto space-y-2">
-          
-          {/* Column Headers */}
           {leaderboard.length > 0 && (
             <div className="flex items-center gap-4 px-4 py-2 text-xs font-bold text-slate-500 uppercase tracking-widest border-b border-slate-200 dark:border-slate-800 mb-4">
               <div className="w-8 text-center flex-shrink-0">Rank</div>
               <div className="flex-1 min-w-0">Player</div>
               <div className="w-20 text-right flex-shrink-0">Score</div>
               <div className="w-24 text-right flex-shrink-0 hidden sm:block">Max Pts</div>
-              {/* Spacer matching the width of the Snoop icon to ensure perfect column alignment when snooping is allowed */}
               {canSnoop && <div className="w-6 hidden sm:block flex-shrink-0"></div>}
             </div>
           )}
@@ -163,7 +151,6 @@ export default function LeaderboardView({ onSnoop }: LeaderboardViewProps) {
                       : <span className="text-sm font-bold text-slate-500">#{i + 1}</span>
                     }
                   </div>
-
                   <div className="flex-1 min-w-0 flex items-center gap-3">
                     <Avatar profile={entry.profile} size="md" />
                     <p className={`text-sm font-semibold truncate ${isMe ? theme.accentB : 'text-slate-900 dark:text-white'}`}>
@@ -171,19 +158,16 @@ export default function LeaderboardView({ onSnoop }: LeaderboardViewProps) {
                       {isMe && <span className="text-xs font-normal text-slate-500 ml-1.5">(you)</span>}
                     </p>
                   </div>
-
                   <div className="w-20 text-right flex-shrink-0">
                     <p className={`text-lg font-bold tabular-nums ${isMe ? theme.accentB : 'text-slate-900 dark:text-white'}`}>
                       {entry.points}
                     </p>
                   </div>
-
                   <div className="w-24 text-right flex-shrink-0 hidden sm:block">
                     <p className="text-sm text-emerald-600 dark:text-emerald-400 tabular-nums font-medium">
                       {entry.maxPossible}
                     </p>
                   </div>
-
                   {canSnoop && (
                     <div className="w-6 hidden sm:flex justify-end flex-shrink-0">
                       {!isMe && <BarChart2 size={16} className="text-slate-400" />}
