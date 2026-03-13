@@ -1,7 +1,7 @@
-// src/shared/libs/helpers.tsx
+// src/shared/lib/helpers.tsx
 import React from 'react'
 import { Globe, Edit3, Lock } from 'lucide-react'
-import type { Game, TournamentStatus } from '../types'
+import type { TournamentStatus } from '../types'
 
 export function fibonacci(n: number): number {
   if (n <= 0) return 0
@@ -41,7 +41,7 @@ export const statusDot = (s: TournamentStatus) =>
   s === 'open' ? 'bg-emerald-400' : s === 'draft' ? 'bg-amber-400' : 'bg-slate-600'
 
 export const statusLabel = (s: TournamentStatus) =>
-  s === 'open' ? 'Open' : s === 'draft' ? 'Drart' : 'Locked'
+  s === 'open' ? 'Open' : s === 'draft' ? 'Draft' : 'Locked'
 
 export function statusIcon(s: TournamentStatus): React.ReactNode {
   if (s === 'open')  return <Globe size={11} className="text-emerald-400" />
@@ -49,16 +49,4 @@ export function statusIcon(s: TournamentStatus): React.ReactNode {
   return               <Lock  size={11} className="text-slate-500" />
 }
 
-export function computeGameNumbers(games: Game[]): Record<string, number> {
-  const sorted = [...games].sort((a, b) =>
-    a.round_num !== b.round_num ? a.round_num - b.round_num : a.id.localeCompare(b.id)
-  )
-  const map: Record<string, number> = {}
-  sorted.forEach((g, i) => { map[g.id] = i + 1 })
-  return map
-}
-
 export const BD_REGIONS = ['East', 'West', 'South', 'Midwest', 'Final Four']
-
-
-

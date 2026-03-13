@@ -1,19 +1,41 @@
 // src/shared/types/index.ts
-// Pure type definitions only. No runtime functions live here.
-// resolveScore() → shared/lib/bracketMath.ts
-// SVGLine        → deleted; use ConnectorLine from shared/lib/bracketMath.ts
 
-// ── Primitives ────────────────────────────────────────────────
 export type TournamentStatus = 'draft' | 'open' | 'locked'
-export type ThemeKey         = 'ember' | 'ice' | 'plasma' | 'forest'
+export type ThemeKey         = 'ember' | 'ice' | 'plasma' | 'forest' | 'mono'
 export type ActiveView       = 'home' | 'bracket' | 'leaderboard' | 'admin' | 'settings'
 export type TemplateKey      = 'blank' | 'standard' | 'bigdance'
 export type UIMode           = 'light' | 'dark'
 
-// ── Scoring ───────────────────────────────────────────────────
 export type ScoringConfig = Record<string, number>
 
-// ── Domain Types ──────────────────────────────────────────────
+export interface ThemeConfig {
+  key: ThemeKey
+  label: string
+  emoji: string
+  btn: string
+  btnSm: string
+  accent: string
+  accentB: string
+  border: string
+  borderB: string
+  bg: string
+  bgMd: string
+  dot: string
+  ring: string
+  bar: string
+  glow: string
+  tabActive: string
+  headerBg: string
+  logo: string
+  appBg: string
+  sidebarBg: string
+  panelBg: string
+  inputBg: string
+  borderBase: string
+  textBase: string
+  textMuted: string
+}
+
 export interface Profile {
   id:            string
   display_name:  string
@@ -45,9 +67,6 @@ export interface Game {
   next_game_id:  string | null
   sort_order:    number | null
   region?:       string | null
-  // ── Display fields (broadcast aesthetic) ──────────────────
-  // Optional — only populated when the admin sets them.
-  // Stored as TEXT in the DB so values like "(1)" or "OT 88" are valid.
   team1_seed?:   number | string
   team2_seed?:   number | string
   team1_score?:  number | string
@@ -62,7 +81,6 @@ export interface Pick {
   tiebreaker_score: number | null
 }
 
-// ── UI / Utility Types ────────────────────────────────────────
 export interface ToastMsg {
   id:   number
   text: string
@@ -78,7 +96,6 @@ export interface ConfirmModalCfg {
   onCancel:      () => void
 }
 
-// ── Service Layer ─────────────────────────────────────────────
 export type ServiceResult<T> =
   | { ok: true;  data: T }
   | { ok: false; error: string }

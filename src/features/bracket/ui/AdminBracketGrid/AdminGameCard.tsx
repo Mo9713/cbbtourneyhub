@@ -1,12 +1,9 @@
 // src/features/bracket/ui/AdminBracketGrid/AdminGameCard.tsx
-//
-// Fix 4: Output dot (link button) moved back to absolute -right-8 top-1/2 -translate-y-1/2.
-// Fix 5: Score onBlur handlers auto-call onSetWinner when both scores are valid integers.
-
 import { useState, useEffect } from 'react'
 import { Unlink, Trash2, Target, GripVertical } from 'lucide-react'
 import { getScore, isTBDName } from '../../../../shared/lib/helpers'
-import type { Game }            from '../../../../shared/types'
+import { useTheme }            from '../../../../shared/lib/theme'
+import type { Game }           from '../../../../shared/types'
 
 interface Props {
   game:              Game
@@ -36,6 +33,8 @@ export default function AdminGameCard({
   onStartLink, onCompleteLink, onUnlink,
   onDragStart, onDragOver, onDragEnd, onDrop,
 }: Props) {
+  const theme = useTheme()
+
   const [team1,        setTeam1]        = useState(game.team1_name)
   const [team2,        setTeam2]        = useState(game.team2_name)
   const [seed1,        setSeed1]        = useState(String(game.team1_seed ?? ''))
@@ -72,21 +71,19 @@ export default function AdminGameCard({
     onUpdate(game.id, { [field]: trimmed || undefined })
   }
 
-  // Fix 5: Auto-advance winner when both score fields contain valid integers
   const handleScoreBlur = (field: 'team1_score' | 'team2_score', val: string) => {
     const trimmed = val.trim()
     if (trimmed !== String(game[field] ?? '')) {
       onUpdate(game.id, { [field]: trimmed || undefined })
     }
 
-    // Determine both score values after this blur
     const s1Str = field === 'team1_score' ? trimmed : score1.trim()
     const s2Str = field === 'team2_score' ? trimmed : score2.trim()
     if (!s1Str || !s2Str) return
 
     const s1 = parseInt(s1Str, 10)
     const s2 = parseInt(s2Str, 10)
-    if (isNaN(s1) || isNaN(s2) || s1 === s2) return   // no tie-breaking
+    if (isNaN(s1) || isNaN(s2) || s1 === s2) return
 
     const winner = s1 > s2 ? team1 : team2
     if (!isTBDName(winner)) {
@@ -94,11 +91,10 @@ export default function AdminGameCard({
     }
   }
 
-  // ── Dot styles ────────────────────────────────────────────────────────────
   const inDotCls = `w-2.5 h-2.5 rounded-full border-2 flex-shrink-0 transition-all
     ${isValidLinkTarget
       ? 'border-sky-400 bg-sky-400/40 hover:bg-sky-400 cursor-pointer animate-pulse'
-      : 'border-slate-600 bg-slate-800'
+      : `${theme.borderBase} ${theme.inputBg}`
     }`
 
   const pts        = getScore(game.round_num)
@@ -137,13 +133,12 @@ export default function AdminGameCard({
   ]
 
   return (
-    // `relative` is required for the absolute-positioned output dot (Fix 4)
     <div
       className={`
-        relative bg-slate-900 border rounded-xl overflow-visible transition-all
-        ${isDragOver        ? 'border-amber-400/60 shadow-lg shadow-amber-500/10' : 'border-slate-700/80'}
-        ${isValidLinkTarget ? 'border-sky-400/60 shadow-lg shadow-sky-500/10'    : ''}
-        ${isLinkingFrom     ? 'border-amber-400/80 shadow-lg shadow-amber-500/20' : ''}
+        relative ${theme.panelBg} border rounded-xl overflow-visible transition-all
+        ${isDragOver        ? `border-amber-500/60 shadow-lg shadow-amber-500/10` : theme.borderBase}
+        ${isValidLinkTarget ? `border-sky-500/60 shadow-lg shadow-sky-500/10`    : ''}
+        ${isLinkingFrom     ? `border-amber-500/80 shadow-lg shadow-amber-500/20` : ''}
       `}
       draggable
       onDragStart={() => onDragStart(game.id)}
@@ -151,7 +146,6 @@ export default function AdminGameCard({
       onDragEnd={onDragEnd}
       onDrop={e      => onDrop(e, game.id)}
     >
-      {/* Fix 4: Output dot — absolute at right center of the whole card */}
       <button
         data-out={game.id}
         title="Link output to another game's input"
@@ -160,26 +154,25 @@ export default function AdminGameCard({
           absolute -right-8 top-1/2 -translate-y-1/2
           w-2.5 h-2.5 rounded-full border-2 transition-all cursor-pointer z-10
           ${isLinkingFrom
-            ? 'border-amber-400 bg-amber-400/40 animate-pulse'
-            : 'border-slate-500 bg-slate-900 hover:border-amber-400 hover:bg-amber-400/20'
+            ? 'border-amber-500 bg-amber-500/40 animate-pulse'
+            : `${theme.borderBase} ${theme.panelBg} hover:border-amber-500 hover:bg-amber-500/20`
           }
         `}
       />
 
-      {/* ── Card header ── */}
-      <div className="flex items-center justify-between px-2 py-1.5 border-b border-slate-800">
+      <div className={`flex items-center justify-between px-2 py-1.5 border-b ${theme.borderBase}`}>
         <div className="flex items-center gap-1.5">
-          <GripVertical size={11} className="text-slate-600 cursor-grab" />
-          <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">
+          <GripVertical size={11} className={`${theme.textMuted} cursor-grab`} />
+          <span className={`text-[9px] font-black ${theme.textMuted} uppercase tracking-widest`}>
             #{String(gameNum).padStart(2, '0')}
           </span>
           {isChampionship && (
-            <span className="text-[8px] font-bold text-amber-400 uppercase tracking-widest">
+            <span className="text-[8px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-widest">
               Final
             </span>
           )}
-          <span className="text-[9px] text-slate-600">·</span>
-          <span className="text-[9px] text-slate-600">{pts}pt</span>
+          <span className={`text-[9px] ${theme.textMuted}`}>·</span>
+          <span className={`text-[9px] ${theme.textMuted}`}>{pts}pt</span>
         </div>
 
         <div className="flex items-center gap-1">
@@ -187,7 +180,7 @@ export default function AdminGameCard({
             <button
               title={`Unlink from Game #${gameNumbers[linkedGame?.id ?? ''] ?? '?'}`}
               onClick={e => { e.stopPropagation(); onUnlink(game.id) }}
-              className="text-slate-600 hover:text-rose-400 transition-colors"
+              className={`${theme.textMuted} hover:text-rose-500 transition-colors`}
             >
               <Unlink size={10} />
             </button>
@@ -195,21 +188,20 @@ export default function AdminGameCard({
           <button
             title="Set winner"
             onClick={e => { e.stopPropagation(); setShowWinner(v => !v) }}
-            className={`transition-colors ${showWinner ? 'text-amber-400' : 'text-slate-600 hover:text-amber-400'}`}
+            className={`transition-colors ${showWinner ? 'text-amber-500' : `${theme.textMuted} hover:text-amber-500`}`}
           >
             <Target size={10} />
           </button>
           <button
             title="Delete game"
             onClick={e => { e.stopPropagation(); onDelete(game) }}
-            className="text-slate-600 hover:text-rose-400 transition-colors"
+            className={`${theme.textMuted} hover:text-rose-500 transition-colors`}
           >
             <Trash2 size={10} />
           </button>
         </div>
       </div>
 
-      {/* ── Team rows ── */}
       {rows.map(({
         field, seedField, scoreField,
         val, setter, seedVal, seedSetter,
@@ -219,8 +211,8 @@ export default function AdminGameCard({
         <div
           key={field}
           className={`
-            flex items-center gap-1 px-2 py-1 border-b border-slate-800 last:border-b-0
-            ${isValidLinkTarget ? 'hover:bg-sky-500/10 cursor-pointer' : ''}
+            flex items-center gap-1 px-2 py-1 border-b ${theme.borderBase} last:border-b-0
+            ${isValidLinkTarget ? `hover:${theme.bg} cursor-pointer` : ''}
             ${isWinner ? 'bg-emerald-500/10' : ''}
           `}
           onClick={e => {
@@ -230,51 +222,46 @@ export default function AdminGameCard({
             }
           }}
         >
-          {/* Input dot */}
           <div className={inDotCls} {...dataAttr} />
 
-          {/* Seed input */}
           <input
             value={seedVal}
             onChange={e => seedSetter(e.target.value)}
             onBlur={e => handleSeedBlur(seedField, e.target.value)}
             onClick={e => e.stopPropagation()}
             placeholder="#"
-            className="w-6 bg-slate-800/80 border border-slate-700/60 rounded px-1 text-[9px] font-bold text-slate-400 text-center focus:outline-none focus:border-amber-500/50 transition-colors placeholder:text-slate-700"
+            className={`w-6 ${theme.inputBg} border ${theme.borderBase} rounded px-1 text-[9px] font-bold ${theme.textMuted} text-center focus:outline-none focus:border-amber-500/50 transition-colors placeholder:${theme.textMuted}`}
           />
 
-          {/* Team name input */}
           <input
             value={isTBD ? resolveSlotName(val) : val}
             onChange={e => setter(e.target.value)}
             onBlur={e => handleBlur(field, e.target.value)}
             onClick={e => e.stopPropagation()}
             className={`flex-1 bg-transparent text-xs font-medium focus:outline-none truncate min-w-0
-              ${isWinner ? 'text-emerald-400 font-bold'
-              : isTBD   ? 'text-slate-600 italic'
-                        : 'text-white'}`}
+              ${isWinner ? 'text-emerald-600 dark:text-emerald-400 font-bold'
+              : isTBD   ? `italic ${theme.textMuted}`
+                        : theme.textBase}`}
           />
 
-          {/* Score input — Fix 5: onBlur auto-compares and sets winner */}
           <input
             value={scoreVal}
             onChange={e => scoreSetter(e.target.value)}
             onBlur={e => handleScoreBlur(scoreField, e.target.value)}
             onClick={e => e.stopPropagation()}
             placeholder="—"
-            className="w-8 bg-slate-800/80 border border-slate-700/60 rounded px-1 text-[9px] font-bold text-slate-400 text-center focus:outline-none focus:border-amber-500/50 transition-colors placeholder:text-slate-700"
+            className={`w-8 ${theme.inputBg} border ${theme.borderBase} rounded px-1 text-[9px] font-bold ${theme.textMuted} text-center focus:outline-none focus:border-amber-500/50 transition-colors placeholder:${theme.textMuted}`}
           />
 
           {isWinner && (
-            <span className="text-[9px] text-emerald-400 font-bold flex-shrink-0">✓</span>
+            <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-bold flex-shrink-0">✓</span>
           )}
         </div>
       ))}
 
-      {/* ── Winner setter (toggle panel) ── */}
       {showWinner && (
         <div
-          className="px-2 py-2 bg-slate-800/40 border-t border-slate-800 space-y-1"
+          className={`px-2 py-2 ${theme.inputBg} border-t ${theme.borderBase} space-y-1`}
           onClick={e => e.stopPropagation()}
         >
           {[team1, team2].filter(t => !isTBDName(t)).map(team => (
@@ -283,13 +270,13 @@ export default function AdminGameCard({
               className={`w-full py-1 rounded-lg text-[10px] font-bold border transition-all
                 ${game.actual_winner === team
                   ? 'bg-emerald-600 border-emerald-500 text-white'
-                  : 'bg-slate-800 border-slate-700 text-slate-300 hover:border-slate-500'
+                  : `${theme.panelBg} ${theme.borderBase} ${theme.textBase} hover:brightness-95 dark:hover:brightness-110`
                 }`}>
               {team}{game.actual_winner === team && ' ✓'}
             </button>
           ))}
           {[team1, team2].filter(t => !isTBDName(t)).length === 0 && (
-            <p className="text-[10px] text-slate-600 italic">
+            <p className={`text-[10px] ${theme.textMuted} italic`}>
               {team1.startsWith('Winner of Game') && team2.startsWith('Winner of Game')
                 ? 'Set winners in earlier rounds first'
                 : 'Add team names first'}
@@ -297,7 +284,7 @@ export default function AdminGameCard({
           )}
           {game.actual_winner && (
             <button onClick={() => onSetWinner(game, '')}
-              className="w-full py-1 rounded-lg text-[10px] text-rose-400 border border-rose-500/20 bg-rose-500/5 hover:bg-rose-500/10 transition-colors">
+              className="w-full py-1 rounded-lg text-[10px] text-rose-600 dark:text-rose-400 border border-rose-500/20 bg-rose-500/5 hover:bg-rose-500/10 transition-colors">
               Clear Winner
             </button>
           )}

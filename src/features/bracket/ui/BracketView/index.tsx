@@ -1,5 +1,4 @@
 // src/features/bracket/ui/BracketView/index.tsx
-
 import { useState, useMemo, useCallback }      from 'react'
 import { useTheme }                            from '../../../../shared/lib/theme'
 import { isPicksLocked }                       from '../../../../shared/lib/time'
@@ -48,11 +47,8 @@ export default function BracketView({
     return tournaments.find((t) => t.id === selectedTournamentId) ?? null
   }, [tournaments, selectedTournamentId])
 
-  // Resolve the active tournament — override takes precedence (SnoopModal)
   const tournament = overrideTournament ?? selectedTournament
 
-  // Lazy on-demand game loading from entity layer.
-  // When overrideGames is provided, this query runs with null (disabled)
   const { data: queriedGames = [] } = useGames(
     overrideGames ? null : (tournament?.id ?? null),
   )
@@ -66,8 +62,6 @@ export default function BracketView({
 
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null)
 
-  // ── Derived booleans ──────────────────────────────────────
-
   const isLocked = tournament && profile
     ? isPicksLocked(tournament, profile.is_admin)
       || tournament.status === 'draft'
@@ -75,8 +69,6 @@ export default function BracketView({
     : false
 
   const isBigDance = useMemo(() => games.some((g) => g.region), [games])
-
-  // ── Selectors ─────────────────────────────────────────────
 
   const pickMap         = useMemo(() => buildPickMap(picks), [picks])
   const rounds          = useMemo(
@@ -98,8 +90,6 @@ export default function BracketView({
     () => (champGame ? (picks.find((p) => p.game_id === champGame.id) ?? null) : null),
     [champGame, picks],
   )
-
-  // ── Event handlers ────────────────────────────────────────
 
   const handlePick = useCallback(async (game: Game, team: string) => {
     if (!tournament || readOnly || isLocked) return
@@ -141,13 +131,13 @@ export default function BracketView({
         />
 
         {isBigDance && (
-          <div className="flex gap-1 px-4 pt-2 pb-0 border-b border-slate-800 flex-shrink-0 overflow-x-auto">
+          <div className={`flex gap-1 px-4 pt-2 pb-0 border-b ${theme.borderBase} flex-shrink-0 overflow-x-auto`}>
             <button
               onClick={() => setSelectedRegion(null)}
               className={`px-4 py-2 text-xs font-bold rounded-t-lg transition-all border-b-2 flex-shrink-0
                 ${!selectedRegion
                   ? `${theme.accent} border-current`
-                  : 'text-slate-500 border-transparent hover:text-slate-300'
+                  : `${theme.textMuted} border-transparent hover:${theme.textBase}`
                 }`}
             >
               All
@@ -159,7 +149,7 @@ export default function BracketView({
                 className={`px-4 py-2 text-xs font-bold rounded-t-lg transition-all border-b-2 flex-shrink-0
                   ${selectedRegion === r
                     ? `${theme.accent} border-current`
-                    : 'text-slate-500 border-transparent hover:text-slate-300'
+                    : `${theme.textMuted} border-transparent hover:${theme.textBase}`
                   }`}
               >
                 {r}

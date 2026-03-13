@@ -224,7 +224,7 @@ export default function BracketGrid({
 
         <div className="flex flex-col h-full w-52 flex-shrink-0">
           <div
-            className="flex-shrink-0 flex items-center justify-center border-b border-slate-200 dark:border-slate-800"
+            className={`flex-shrink-0 flex items-center justify-center border-b ${theme.borderBase}`}
             style={{ height: HEADER_H }}
           >
             <span className={`text-[10px] font-black uppercase tracking-widest ${theme.accent}`}>

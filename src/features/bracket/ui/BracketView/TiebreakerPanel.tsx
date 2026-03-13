@@ -36,14 +36,14 @@ export default function TiebreakerPanel({ champGame, champPick, isLocked, onSave
   const isValid = /^\d+$/.test(input.trim()) && parseInt(input, 10) >= 0
 
   return (
-    <div className={`flex-shrink-0 border-t border-slate-800 px-6 py-3 ${theme.bg}/50`}>
+    <div className={`flex-shrink-0 border-t ${theme.borderBase} px-6 py-3 ${theme.panelBg}`}>
       <div className="flex items-center gap-3 max-w-sm">
         <Hash size={13} className={theme.accent} />
         <div className="flex flex-col">
           <span className={`text-[10px] font-bold uppercase tracking-widest ${theme.accent}`}>
             Tiebreaker — Championship Total Score
           </span>
-          <span className="text-[10px] text-slate-500">
+          <span className={`text-[10px] ${theme.textMuted}`}>
             Predict the combined final score for {champPick.predicted_winner}'s game
           </span>
         </div>
@@ -57,8 +57,8 @@ export default function TiebreakerPanel({ champGame, champPick, isLocked, onSave
             disabled={isLocked}
             placeholder="e.g. 142"
             className={`w-20 text-center text-sm font-bold rounded-lg px-2 py-1.5 border transition-colors
-              bg-slate-900 text-white placeholder-slate-700
-              ${isValid ? 'border-slate-700 focus:border-slate-500' : 'border-red-500/50'}
+              ${theme.inputBg} ${theme.textBase} placeholder:${theme.textMuted}
+              ${isValid ? `${theme.borderBase} focus:border-slate-500` : 'border-red-500/50'}
               disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none`}
           />
           {!isLocked && (
@@ -68,7 +68,7 @@ export default function TiebreakerPanel({ champGame, champPick, isLocked, onSave
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all
                 ${saved
                   ? 'bg-emerald-600 border-emerald-500 text-white border'
-                  : 'bg-slate-800 border border-slate-700 text-slate-300 hover:border-slate-500 disabled:opacity-40'
+                  : `${theme.inputBg} border ${theme.borderBase} ${theme.textBase} hover:brightness-95 dark:hover:brightness-110 disabled:opacity-40`
                 }`}
             >
               {saving ? <Loader size={11} className="animate-spin" /> : <Check size={11} />}
@@ -80,4 +80,3 @@ export default function TiebreakerPanel({ champGame, champPick, isLocked, onSave
     </div>
   )
 }
-

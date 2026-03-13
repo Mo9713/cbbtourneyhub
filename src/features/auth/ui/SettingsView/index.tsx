@@ -3,8 +3,9 @@
 import { useState } from 'react'
 import { User as UserIcon, Palette, Key, Check, Image } from 'lucide-react'
 import { useTheme, THEMES } from '../../../../shared/lib/theme'
-import type { ThemeConfig }  from '../../../../shared/lib/theme'
-import type { Profile, ToastMsg, ThemeKey } from '../../../../shared/types'
+
+// FIX: We now import ThemeConfig correctly from our FSD types layer
+import type { Profile, ToastMsg, ThemeKey, ThemeConfig } from '../../../../shared/types'
 
 import * as authService            from '../../../../shared/infra/authService'
 import { useUpdateProfileMutation } from '../../../../entities/profile/model/queries'
@@ -80,15 +81,13 @@ export default function SettingsView({ profile, userEmail, onProfileUpdate, push
     setChangingPass(false)
   }
 
-  // UPDATED: Proper responsive Tailwind text, border, and placeholder colors
-  const inputCls = `w-full ${theme.inputBg} border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2.5 text-slate-900 dark:text-white text-sm placeholder-slate-400 dark:placeholder-slate-600 focus:outline-none focus:border-slate-400 dark:focus:border-slate-500 transition-colors`
+  const inputCls = `w-full ${theme.inputBg} border ${theme.borderBase} rounded-xl px-3 py-2.5 ${theme.textBase} text-sm placeholder:${theme.textMuted} focus:outline-none focus:border-slate-500 transition-colors`
   const saving   = updateProfile.isPending
 
   return (
     <div className="flex flex-col h-full">
       <div className={`px-6 py-4 border-b flex-shrink-0 ${theme.headerBg}`}>
-        {/* UPDATED: text-slate-900 dark:text-white */}
-        <h2 className="font-display text-3xl font-extrabold text-slate-900 dark:text-white uppercase tracking-wide">
+        <h2 className={`font-display text-3xl font-extrabold ${theme.textBase} uppercase tracking-wide`}>
           Settings
         </h2>
       </div>
@@ -97,15 +96,13 @@ export default function SettingsView({ profile, userEmail, onProfileUpdate, push
         <div className="max-w-lg space-y-6">
 
           {/* ── Profile ──────────────────────────────────── */}
-          {/* UPDATED: border-slate-200 dark:border-slate-800 */}
-          <div className={`${theme.panelBg} border border-slate-200 dark:border-slate-800 rounded-2xl p-5`}>
-            {/* UPDATED: text-slate-700 dark:text-slate-300 */}
-            <h3 className="font-display text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-widest mb-4 flex items-center gap-2">
+          <div className={`${theme.panelBg} border ${theme.borderBase} rounded-2xl p-5`}>
+            <h3 className={`font-display text-sm font-bold ${theme.textBase} uppercase tracking-widest mb-4 flex items-center gap-2`}>
               <UserIcon size={12} /> Profile
             </h3>
             <div className="space-y-3">
               <div>
-                <label className="block text-xs text-slate-500 mb-1">Display Name</label>
+                <label className={`block text-xs ${theme.textMuted} mb-1`}>Display Name</label>
                 <input
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
@@ -113,7 +110,7 @@ export default function SettingsView({ profile, userEmail, onProfileUpdate, push
                 />
               </div>
               <div>
-                <label className="flex text-xs text-slate-500 mb-1 items-center gap-1.5">
+                <label className={`flex text-xs ${theme.textMuted} mb-1 items-center gap-1.5`}>
                   <Image size={10} /> Avatar Image URL
                 </label>
                 <input
@@ -130,7 +127,7 @@ export default function SettingsView({ profile, userEmail, onProfileUpdate, push
                       className={`w-10 h-10 rounded-full object-cover border-2 ${theme.borderB}`}
                       onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
                     />
-                    <span className="text-[10px] text-slate-500">Preview</span>
+                    <span className={`text-[10px] ${theme.textMuted}`}>Preview</span>
                   </div>
                 )}
               </div>
@@ -145,8 +142,8 @@ export default function SettingsView({ profile, userEmail, onProfileUpdate, push
           </div>
 
           {/* ── Theme ────────────────────────────────────── */}
-          <div className={`${theme.panelBg} border border-slate-200 dark:border-slate-800 rounded-2xl p-5`}>
-            <h3 className="font-display text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-widest mb-4 flex items-center gap-2">
+          <div className={`${theme.panelBg} border ${theme.borderBase} rounded-2xl p-5`}>
+            <h3 className={`font-display text-sm font-bold ${theme.textBase} uppercase tracking-widest mb-4 flex items-center gap-2`}>
               <Palette size={12} /> Theme
             </h3>
             <div className="grid grid-cols-2 gap-2">
@@ -155,23 +152,22 @@ export default function SettingsView({ profile, userEmail, onProfileUpdate, push
                   key={t.key}
                   onClick={() => setThemeKey(t.key)}
                   disabled={saving}
-                  // UPDATED: border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-slate-50 dark:bg-slate-800/40
                   className={`p-3 rounded-xl border-2 flex items-center gap-2.5 transition-all text-left
                     ${profile.theme === t.key
                       ? `${t.border} ${t.bg}`
-                      : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-slate-50 dark:bg-slate-800/40'
+                      : `${theme.borderBase} ${theme.inputBg} hover:brightness-95 dark:hover:brightness-110`
                     }`}
                 >
                   <span className="text-xl">{t.emoji}</span>
                   <div>
-                    {/* UPDATED: text-slate-700 dark:text-slate-300 */}
-                    <span className={`text-sm font-semibold block ${profile.theme === t.key ? t.accentB : 'text-slate-700 dark:text-slate-300'}`}>
+                    <span className={`text-sm font-semibold block ${profile.theme === t.key ? t.accentB : theme.textBase}`}>
                       {t.label}
                     </span>
-                    <span className="text-[10px] text-slate-500">
+                    <span className={`text-[10px] ${theme.textMuted}`}>
                       {t.key === 'ember'  ? 'Warm dark'    :
                        t.key === 'ice'    ? 'Cool dark'    :
-                       t.key === 'plasma' ? 'Deep violet'  : 'Rich green'}
+                       t.key === 'plasma' ? 'Deep violet'  :
+                       t.key === 'forest' ? 'Earthy green' : 'Mono gray'}
                     </span>
                   </div>
                   {profile.theme === t.key && (
@@ -183,13 +179,13 @@ export default function SettingsView({ profile, userEmail, onProfileUpdate, push
           </div>
 
           {/* ── Change Password ───────────────────────────── */}
-          <div className={`${theme.panelBg} border border-slate-200 dark:border-slate-800 rounded-2xl p-5`}>
-            <h3 className="font-display text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-widest mb-4 flex items-center gap-2">
+          <div className={`${theme.panelBg} border ${theme.borderBase} rounded-2xl p-5`}>
+            <h3 className={`font-display text-sm font-bold ${theme.textBase} uppercase tracking-widest mb-4 flex items-center gap-2`}>
               <Key size={12} /> Change Password
             </h3>
             <div className="space-y-3">
               <div>
-                <label className="block text-xs text-slate-500 mb-1">Current Password</label>
+                <label className={`block text-xs ${theme.textMuted} mb-1`}>Current Password</label>
                 <input
                   type="password"
                   value={currentPass}
@@ -199,7 +195,7 @@ export default function SettingsView({ profile, userEmail, onProfileUpdate, push
                 />
               </div>
               <div>
-                <label className="block text-xs text-slate-500 mb-1">New Password</label>
+                <label className={`block text-xs ${theme.textMuted} mb-1`}>New Password</label>
                 <input
                   type="password"
                   value={newPass}
@@ -209,7 +205,7 @@ export default function SettingsView({ profile, userEmail, onProfileUpdate, push
                 />
               </div>
               <div>
-                <label className="block text-xs text-slate-500 mb-1">Confirm New Password</label>
+                <label className={`block text-xs ${theme.textMuted} mb-1`}>Confirm New Password</label>
                 <input
                   type="password"
                   value={confirmPass}
