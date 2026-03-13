@@ -1,10 +1,10 @@
 // src/app/AppShell.tsx
 
-import { useCallback }                 from 'react'
+import { useCallback }                  from 'react'
 import { PanelLeftOpen }                from 'lucide-react'
 
 import SnoopModal                       from '../features/bracket/ui/SnoopModal'
-import AddTournamentModal               from '../features/tournament/AddTournamentModal'
+import { AddTournamentModal }           from '../features/tournament'
 
 import {
   Sidebar, MobileHeader, Toaster, ConfirmModal,

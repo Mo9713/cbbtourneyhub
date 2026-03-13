@@ -1,13 +1,13 @@
 // src/features/tournament/HomeView.tsx
 
-import { useTheme }                 from '../../shared/lib/theme'
-import { isPicksLocked }            from '../../shared/lib/time'
-import { statusLabel, statusIcon }  from '../../shared/lib/helpers'
-import { useAuth }                  from '../auth/model/useAuth'
-import { useUIStore }               from '../../shared/store/uiStore'
-import { useTournamentListQuery, useGames } from '../../entities/tournament/model/queries'
-import { useMyPicks }               from '../../entities/pick/model/queries'
-import type { Tournament }          from '../../shared/types'
+import { useTheme }                 from '../../../shared/lib/theme'
+import { isPicksLocked }            from '../../../shared/lib/time'
+import { statusLabel, statusIcon }  from '../../../shared/lib/helpers'
+import { useAuth }                  from '../../auth/model/useAuth'
+import { useUIStore }               from '../../../shared/store/uiStore'
+import { useTournamentListQuery, useGames } from '../../../entities/tournament/model/queries'
+import { useMyPicks }               from '../../../entities/pick/model/queries'
+import type { Tournament }          from '../../../shared/types'
 
 // ── TournamentCard ────────────────────────────────────────────
 // Isolated component. Fetches games and picks directly from entity layers.

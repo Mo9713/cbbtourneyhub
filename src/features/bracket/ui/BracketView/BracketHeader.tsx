@@ -3,7 +3,7 @@ import { Eye, Lock, Clock } from 'lucide-react'
 import { useTheme }    from '../../../../shared/lib/theme'
 import { statusLabel, statusIcon } from '../../../../shared/lib/helpers'
 import { isPicksLocked, isBeforeUnlock } from '../../../../shared/lib/time'
-import { useAuthContext } from '../../../auth/model/AuthContext'
+import { useAuth } from '../../../auth/model/useAuth'
 import Countdown from '../../../../shared/ui/Countdown'
 import type { Tournament } from '../../../../shared/types'
 
@@ -18,7 +18,7 @@ interface Props {
 
 export default function BracketHeader({ tournament, pickedCount, totalGames, readOnly, ownerName, score }: Props) {
   const theme = useTheme()
-  const { profile } = useAuthContext()
+  const { profile } = useAuth()
   const pct   = totalGames > 0 ? Math.round((pickedCount / totalGames) * 100) : 0
 
   const lockedByTime = isPicksLocked(tournament, profile?.is_admin ?? false)
@@ -71,7 +71,6 @@ export default function BracketHeader({ tournament, pickedCount, totalGames, rea
           timezone={profile?.timezone ?? null} 
         />
 
-        {/* FIX: Removed the !readOnly wrapper so we can see Kyle's score! */}
         <div className="text-right">
           {isLocked ? (
             <div className="flex flex-col items-end">

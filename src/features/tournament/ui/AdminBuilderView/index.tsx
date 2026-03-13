@@ -12,16 +12,16 @@ import {
   useTournamentListQuery,
   usePatchGamesCache,
   tournamentKeys,
-}                                       from '../../../entities/tournament/model/queries'
-import { computeGameNumbers }           from '../../../shared/lib/bracketMath'
-import { BD_REGIONS }                   from '../../../shared/lib/helpers'
-import { useUIStore }                   from '../../../shared/store/uiStore'
-import * as gameService                 from '../../bracket/api/gameService'
+}                                       from '../../../../entities/tournament/model/queries'
+import { computeGameNumbers }           from '../../../../shared/lib/bracketMath'
+import { BD_REGIONS }                   from '../../../../shared/lib/helpers'
+import { useUIStore }                   from '../../../../shared/store/uiStore'
+import * as gameService                 from '../../../../entities/tournament/api/gameService'
 
 import AdminHeader            from './AdminHeader'
 import TournamentConfigPanel  from './TournamentConfigPanel'
-import AdminBracketGrid       from '../../bracket/ui/AdminBracketGrid'
-import type { Game, Tournament } from '../../../shared/types'
+import AdminBracketGrid       from '../../../bracket/ui/AdminBracketGrid'
+import type { Game, Tournament } from '../../../../shared/types'
 
 export default function AdminBuilderView() {
   const qc = useQueryClient()

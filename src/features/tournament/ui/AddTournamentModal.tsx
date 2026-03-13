@@ -1,8 +1,8 @@
 // src/features/tournament/AddTournamentModal.tsx
 import { useState } from 'react'
 import { X } from 'lucide-react'
-import { useTheme } from '../../shared/lib/theme'
-import type { TemplateKey } from '../../shared/types'
+import { useTheme } from '../../../shared/lib/theme'
+import type { TemplateKey } from '../../../shared/types'
 
 interface Props {
   onClose: () => void
