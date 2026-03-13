@@ -46,15 +46,33 @@ export interface Profile {
   timezone:      string | null
 }
 
+export interface Group {
+  id:          string
+  name:        string
+  owner_id:    string
+  invite_code: string
+  created_at:  string
+}
+
+export interface GroupMember {
+  group_id:  string
+  user_id:   string
+  joined_at: string
+}
+
 export interface Tournament {
-  id:                  string
-  name:                string
-  status:              TournamentStatus
-  unlocks_at:          string | null
-  locks_at:            string | null
-  round_names:         string[]
-  scoring_config:      ScoringConfig | null
-  requires_tiebreaker: boolean
+  id:                        string
+  name:                      string
+  status:                    TournamentStatus
+  unlocks_at:                string | null
+  locks_at:                  string | null
+  round_names:               string[]
+  scoring_config:            ScoringConfig | null
+  requires_tiebreaker:       boolean
+  group_id?:                 string | null
+  game_type?:                'bracket' | 'survivor'
+  round_locks?:              Record<number, string>
+  survivor_elimination_rule?: 'end_early' | 'revive_all'
 }
 
 export interface Game {
@@ -67,8 +85,8 @@ export interface Game {
   next_game_id:  string | null
   sort_order:    number | null
   region?:       string | null
-  team1_seed?:   number | string
-  team2_seed?:   number | string
+  team1_seed?:   number | null
+  team2_seed?:   number | null
   team1_score?:  number | string
   team2_score?:  number | string
 }
@@ -79,6 +97,7 @@ export interface Pick {
   game_id:          string
   predicted_winner: string
   tiebreaker_score: number | null
+  round_num?:       number
 }
 
 export interface ToastMsg {
