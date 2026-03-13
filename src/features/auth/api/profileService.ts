@@ -1,85 +1,11 @@
 // src/features/auth/api/profileService.ts
+//
+// @deprecated — Logic moved to src/entities/profile/api/index.ts
+//
+// This file is a backward-compat shim. All Supabase profile read/write
+// functions (`fetchProfile`, `updateMyProfile`, `updateTheme`, etc.)
+// now live in the entity layer. Any remaining callsites that import
+// from this path will continue to work; they will be migrated in Phase 2
+// when the auth feature layer is finalized.
 
-import { supabase, withAuth } from '../../../shared/infra/supabaseClient'
-import type { Profile, ThemeKey, UIMode, ServiceResult } from '../../../shared/types'
-
-// ── Read ──────────────────────────────────────────────────────
-
-export async function fetchProfile(userId: string): Promise<ServiceResult<Profile>> {
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', userId)
-    .single()
-
-  if (error || !data) return { ok: false, error: error?.message ?? 'Profile not found' }
-  return { ok: true, data: data as Profile }
-}
-
-export async function fetchAllProfiles(): Promise<ServiceResult<Profile[]>> {
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('*')
-    .order('display_name')
-
-  if (error) return { ok: false, error: error.message }
-  return { ok: true, data: data as Profile[] }
-}
-
-// ── Update ────────────────────────────────────────────────────
-
-/**
- * Update the authenticated user's own profile.
- *
- * Accepts any subset of the user-editable profile fields.
- * The `id` and `is_admin` fields are intentionally excluded —
- * identity and permissions are never client-writable.
- */
-export async function updateMyProfile(
-  updates: Partial<Pick<
-    Profile,
-    | 'display_name'
-    | 'theme'
-    | 'avatar_url'
-    | 'ui_mode'       // ← NEW: light.dark mode preference
-    | 'timezone'      // ← NEW: IANA display timezone (UI-only, never used in lock math)
-  >>
-): Promise<ServiceResult<Profile>> {
-  return withAuth(async (user) => {
-    const { data, error } = await supabase
-      .from('profiles')
-      .update(updates)
-      .eq('id', user.id)
-      .select()
-      .single()
-
-    if (error || !data) return { ok: false, error: error?.message ?? 'Profile update failed' }
-    return { ok: true, data: data as Profile }
-  })
-}
-
-// ── Typed Field Helpers ───────────────────────────────────────
-// One helper per field so call sites are explicit and refactor-safe.
-// All delegate to updateMyProfile so auth validation is centralised.
-
-/** Update display name for the authenticated user. */
-export async function updateDisplayName(name: string): Promise<ServiceResult<Profile>> {
-  const trimmed = name.trim()
-  if (!trimmed) return { ok: false, error: 'Display name cannot be empty.' }
-  return updateMyProfile({ display_name: trimmed })
-}
-
-/** Update color theme for the authenticated user. */
-export async function updateTheme(theme: ThemeKey): Promise<ServiceResult<Profile>> {
-  return updateMyProfile({ theme })
-}
-
-export async function updateUIMode(mode: UIMode): Promise<ServiceResult<Profile>> {
-  return updateMyProfile({ ui_mode: mode })
-}
-
-export async function updateTimezone(tz: string | null): Promise<ServiceResult<Profile>> {
-  return updateMyProfile({ timezone: tz })
-}
-
-
+export * from '../../../entities/profile/api'

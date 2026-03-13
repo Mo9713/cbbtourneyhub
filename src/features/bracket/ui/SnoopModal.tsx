@@ -1,10 +1,12 @@
-// src/features/bracket/SnoopModal.tsx
-import { useState, useMemo }       from 'react'
-import { X, Trophy }                from 'lucide-react' // Swapped ShieldAlert for Trophy
-import BracketView                 from './BracketView'
-import { useLeaderboardRaw }       from '../../leaderboard'
-import { useTournamentList,
-         useTournamentContext }    from '../../tournament'
+// src/features/bracket/ui/SnoopModal.tsx
+
+import { useState, useMemo }         from 'react'
+import { X, Trophy }                  from 'lucide-react'
+import BracketView                   from './BracketView'
+import { useLeaderboardRaw }         from '../../leaderboard'
+import { useTournamentList }         from '../../tournament'
+import { useGames }                  from '../../../entities/tournament/model/queries'
+import type { Game }                 from '../../../shared/types'
 
 interface Props {
   targetId: string
@@ -12,43 +14,44 @@ interface Props {
 }
 
 export default function SnoopModal({ targetId, onClose }: Props) {
-  const { data: raw }        = useLeaderboardRaw()
-  const { tournaments }      = useTournamentList()
-  const { gamesCache }       = useTournamentContext()
+  const { data: raw }   = useLeaderboardRaw()
+  const { tournaments } = useTournamentList()
 
   const targetProfile = useMemo(
-    () => raw?.allProfiles.find(p => p.id === targetId) ?? null,
+    () => raw?.allProfiles.find((p) => p.id === targetId) ?? null,
     [raw, targetId],
   )
 
   const targetPicks = useMemo(
-    () => raw?.allPicks.filter(p => p.user_id === targetId) ?? [],
+    () => raw?.allPicks.filter((p) => p.user_id === targetId) ?? [],
     [raw, targetId],
   )
 
   const visibleTournaments = useMemo(
-    () => tournaments.filter(t => t.status !== 'draft'),
+    () => tournaments.filter((t) => t.status !== 'draft'),
     [tournaments],
   )
 
   const [selectedTid, setSelectedTid] = useState<string | null>(
-    () => visibleTournaments.find(t => t.status !== 'draft')?.id
-       ?? visibleTournaments[0]?.id
-       ?? null,
+    () =>
+      visibleTournaments.find((t) => t.status !== 'draft')?.id ??
+      visibleTournaments[0]?.id ??
+      null,
   )
 
   const selectedTournament = useMemo(
-    () => visibleTournaments.find(t => t.id === selectedTid) ?? null,
+    () => visibleTournaments.find((t) => t.id === selectedTid) ?? null,
     [visibleTournaments, selectedTid],
   )
 
-  const selectedGames = useMemo(
-    () => selectedTid ? (gamesCache[selectedTid] ?? []) : [],
-    [selectedTid, gamesCache],
-  )
+  // Replaces gamesCache[selectedTid] — lazy on-demand load from entity layer.
+  // TanStack Query deduplicates: if BracketView already fetched these games
+  // for the same tid, this is a cache hit with no network request.
+  const { data: selectedGames = [] } = useGames(selectedTid)
 
   const selectedPicks = useMemo(
-    () => targetPicks.filter(p => selectedGames.some(g => g.id === p.game_id)),
+    // Explicit `Game` type annotation resolves TS7006 implicit-any on `g`
+    () => targetPicks.filter((p) => selectedGames.some((g: Game) => g.id === p.game_id)),
     [targetPicks, selectedGames],
   )
 
@@ -61,9 +64,9 @@ export default function SnoopModal({ targetId, onClose }: Props) {
     >
       <div
         className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden"
-        onClick={e => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
       >
-        {/* Clean Universal Header */}
+        {/* Header */}
         <div className="px-5 py-3 border-b border-slate-800 flex items-center justify-between bg-slate-900 flex-shrink-0">
           <div className="flex items-center gap-2 text-slate-400">
             <Trophy size={14} className="text-amber-500" />
@@ -86,9 +89,9 @@ export default function SnoopModal({ targetId, onClose }: Props) {
           </div>
         ) : (
           <>
-            {/* Tournament tabs - ADDED scrollbar-thin */}
+            {/* Tournament tabs */}
             <div className="flex gap-1 px-4 pt-2 pb-0 border-b border-slate-800 flex-shrink-0 overflow-x-auto scrollbar-thin bg-slate-950/30">
-              {visibleTournaments.map(t => (
+              {visibleTournaments.map((t) => (
                 <button
                   key={t.id}
                   onClick={() => setSelectedTid(t.id)}
@@ -103,7 +106,7 @@ export default function SnoopModal({ targetId, onClose }: Props) {
               ))}
             </div>
 
-            {/* Bracket content - ADDED scrollbar-thin */}
+            {/* Bracket content */}
             <div className="flex-1 overflow-auto scrollbar-thin">
               {selectedTournament ? (
                 <BracketView

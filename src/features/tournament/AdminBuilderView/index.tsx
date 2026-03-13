@@ -3,17 +3,17 @@
 import { useState, useMemo, useCallback, useEffect } from 'react'
 import { useQueryClient }   from '@tanstack/react-query'
 
-import { useTournamentContext }          from '../model/TournamentContext'
-import { useBracketContext }             from '../../bracket'
+import { useTournamentContext }         from '../model/TournamentContext'
+import { useBracketContext }            from '../../bracket'
 import {
   useGames,
   useUpdateTournamentMutation,
   usePublishTournamentMutation,
   useLockTournamentMutation,
   tournamentKeys,
-}                                        from '../../../entities/tournament/model/queries'
-import { computeGameNumbers }            from '../../../shared/lib/bracketMath'
-import { BD_REGIONS }                    from '../../../shared/lib/helpers'
+}                                       from '../../../entities/tournament/model/queries'
+import { computeGameNumbers }           from '../../../shared/lib/bracketMath'
+import { BD_REGIONS }                   from '../../../shared/lib/helpers'
 
 import AdminHeader            from './AdminHeader'
 import TournamentConfigPanel  from './TournamentConfigPanel'
@@ -30,17 +30,13 @@ export default function AdminBuilderView({ onDeleteGame, onDeleteTournament }: P
 
   // ── Tournament data ───────────────────────────────────────
   const { selectedTournament: tournament } = useTournamentContext()
+  const { data: games = [] }               = useGames(tournament?.id ?? null)
 
-  // Lazy on-demand game loading — replaces gamesCache[tournament.id]
-  const { data: games = [] } = useGames(tournament?.id ?? null)
-
-  // ── Mutation hooks from entity layer ─────────────────────
+  // ── Mutation hooks ────────────────────────────────────────
   const updateTournamentM  = useUpdateTournamentMutation()
   const publishTournamentM = usePublishTournamentMutation()
   const lockTournamentM    = useLockTournamentMutation()
 
-  // Adapters that match the (string | void) → void prop signature
-  // expected by AdminHeader and TournamentConfigPanel.
   const renameTournament = useCallback(async (newName: string): Promise<void> => {
     if (!tournament) return
     await updateTournamentM.mutateAsync({ id: tournament.id, updates: { name: newName } })
@@ -61,7 +57,7 @@ export default function AdminBuilderView({ onDeleteGame, onDeleteTournament }: P
     await lockTournamentM.mutateAsync(tournament.id)
   }, [tournament, lockTournamentM])
 
-  // ── Bracket mutations (unchanged) ────────────────────────
+  // ── Bracket mutations ─────────────────────────────────────
   const {
     updateGame,
     setWinner,
@@ -71,19 +67,18 @@ export default function AdminBuilderView({ onDeleteGame, onDeleteTournament }: P
     unlinkGame,
   } = useBracketContext()
 
-  // ── UI state ─────────────────────────────────────────────
+  // ── UI state ──────────────────────────────────────────────
   const [linkingFromId,  setLinkingFromId]  = useState<string | null>(null)
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null)
   const [draggedGameId,  setDraggedGameId]  = useState<string | null>(null)
   const [dragOverGameId, setDragOverGameId] = useState<string | null>(null)
 
-  const gameNumbers = useMemo(() => computeGameNumbers(games), [games])
-  const maxRound    = useMemo(
+  const gameNumbers  = useMemo(() => computeGameNumbers(games), [games])
+  const maxRound     = useMemo(
     () => (games.length ? Math.max(...games.map((g) => g.round_num)) : 1),
     [games],
   )
-  const isBigDance = useMemo(() => games.some((g) => g.region), [games])
-
+  const isBigDance   = useMemo(() => games.some((g) => g.region), [games])
   const publishValid = useMemo(() => {
     const nonChamp = games.filter((g) => g.round_num < maxRound)
     return nonChamp.length === 0 || nonChamp.every((g) => g.next_game_id)
@@ -102,7 +97,10 @@ export default function AdminBuilderView({ onDeleteGame, onDeleteTournament }: P
     })
     return Array.from(map.entries())
       .sort(([a], [b]) => a - b)
-      .map(([r, gs]) => [r, gs.sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))] as [number, Game[]])
+      .map(
+        ([r, gs]) =>
+          [r, gs.sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))] as [number, Game[]],
+      )
   }, [displayGames])
 
   // ── ESC cancel link ───────────────────────────────────────
@@ -115,35 +113,52 @@ export default function AdminBuilderView({ onDeleteGame, onDeleteTournament }: P
 
   // ── Link handlers ─────────────────────────────────────────
   const handleStartLink    = useCallback((id: string) => setLinkingFromId(id), [])
-  const handleCompleteLink = useCallback(async (
-    toId: string, slot: 'team1_name' | 'team2_name',
-  ) => {
-    if (!linkingFromId) return
-    await linkGames(linkingFromId, toId, slot)
-    setLinkingFromId(null)
-  }, [linkingFromId, linkGames])
+  const handleCompleteLink = useCallback(
+    async (toId: string, slot: 'team1_name' | 'team2_name') => {
+      if (!linkingFromId) return
+      await linkGames(linkingFromId, toId, slot)
+      setLinkingFromId(null)
+    },
+    [linkingFromId, linkGames],
+  )
 
   // ── Drag handlers ─────────────────────────────────────────
-  const handleDragStart = useCallback((id: string) => setDraggedGameId(id),   [])
-  const handleDragOver  = useCallback((id: string) => setDragOverGameId(id),  [])
-  const handleDragEnd   = useCallback(() => { setDraggedGameId(null); setDragOverGameId(null) }, [])
+  const handleDragStart = useCallback((id: string) => setDraggedGameId(id), [])
 
-  const handleDrop = useCallback(async (targetId: string) => {
-    if (!draggedGameId) return
-    const roundNum = games.find((g) => g.id === draggedGameId)?.round_num
-    const sorted   = games
-      .filter((g) => g.round_num === roundNum)
-      .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
-    const fromIdx  = sorted.findIndex((g) => g.id === draggedGameId)
-    const toIdx    = sorted.findIndex((g) => g.id === targetId)
-    if (fromIdx === -1 || toIdx === -1) { handleDragEnd(); return }
+  // FIX: Added `e: React.DragEvent` first parameter to match
+  // AdminBracketGrid's `onDragOver: (e: React.DragEvent, id: string) => void`
+  const handleDragOver = useCallback((e: React.DragEvent, id: string) => {
+    e.preventDefault()  // Required: signals the browser that a drop is valid here
+    setDragOverGameId(id)
+  }, [])
 
-    const reordered      = [...sorted]
-    const [removed]      = reordered.splice(fromIdx, 1)
-    reordered.splice(toIdx, 0, removed)
-    await Promise.all(reordered.map((g, i) => updateGame(g.id, { sort_order: i })))
-    handleDragEnd()
-  }, [draggedGameId, games, updateGame, handleDragEnd])
+  const handleDragEnd = useCallback(() => {
+    setDraggedGameId(null)
+    setDragOverGameId(null)
+  }, [])
+
+  // FIX: Added `e: React.DragEvent` first parameter to match
+  // AdminBracketGrid's `onDrop: (e: React.DragEvent, id: string) => void`
+  const handleDrop = useCallback(
+    async (e: React.DragEvent, targetId: string) => {
+      e.preventDefault()  // Required: prevents browser default drop behaviour
+      if (!draggedGameId) return
+      const roundNum = games.find((g) => g.id === draggedGameId)?.round_num
+      const sorted   = games
+        .filter((g) => g.round_num === roundNum)
+        .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+      const fromIdx  = sorted.findIndex((g) => g.id === draggedGameId)
+      const toIdx    = sorted.findIndex((g) => g.id === targetId)
+      if (fromIdx === -1 || toIdx === -1) { handleDragEnd(); return }
+
+      const reordered      = [...sorted]
+      const [removed]      = reordered.splice(fromIdx, 1)
+      reordered.splice(toIdx, 0, removed)
+      await Promise.all(reordered.map((g, i) => updateGame(g.id, { sort_order: i })))
+      handleDragEnd()
+    },
+    [draggedGameId, games, updateGame, handleDragEnd],
+  )
 
   // ── Reload ────────────────────────────────────────────────
   const handleReload = useCallback(() => {

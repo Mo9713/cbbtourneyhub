@@ -1,12 +1,13 @@
 // src/features/leaderboard/ui/LeaderboardView/index.tsx
+
 import { useState, useMemo, useEffect } from 'react'
-import { BarChart2, Shield }            from 'lucide-react'
-import { useTheme }                     from '../../../../shared/lib/theme'
-import { useAuthContext }               from '../../../auth/model/AuthContext'
-import { useTournamentContext }         from '../../../tournament/model/TournamentContext'
-import { useLeaderboardRaw }            from '../../model/queries'
-import { computeLeaderboard }           from '../../model/selectors'
-import Avatar                           from '../../../../shared/ui/Avatar'
+import { BarChart2, Shield }             from 'lucide-react'
+import { useTheme }                      from '../../../../shared/lib/theme'
+import { useAuthContext }                from '../../../auth/model/AuthContext'
+import { useTournamentListQuery }        from '../../../../entities/tournament/model/queries'
+import { useLeaderboardRaw }             from '../../model/queries'
+import { computeLeaderboard }            from '../../model/selectors'
+import Avatar                            from '../../../../shared/ui/Avatar'
 
 interface LeaderboardViewProps {
   onSnoop: (targetId: string) => void
@@ -16,38 +17,39 @@ export default function LeaderboardView({ onSnoop }: LeaderboardViewProps) {
   const theme  = useTheme()
   const medals = ['🥇', '🥈', '🥉']
 
-  const { profile }     = useAuthContext()
-  const { tournaments } = useTournamentContext()
-  const { data: raw }   = useLeaderboardRaw()
+  const { profile }                          = useAuthContext()
+  const { data: tournaments = [] }           = useTournamentListQuery()
+  const { data: raw }                        = useLeaderboardRaw()
 
   // Admin filter — local UI state, not server state.
   // Initialized with all current tournament IDs checked.
   const [selectedTournaments, setSelectedTournaments] = useState<Set<string>>(
-    () => new Set(tournaments.map(t => t.id)),
+    () => new Set(tournaments.map((t) => t.id)),
   )
 
   const toggleTournament = (id: string) => {
-    setSelectedTournaments(prev => {
+    setSelectedTournaments((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id); else next.add(id)
       return next
     })
   }
 
-  // FIX: Reconciliation for new/deleted tournaments
+  // Reconciliation: keep the filter set in sync as tournaments are
+  // added or removed on the server (realtime + refetch).
   useEffect(() => {
-    setSelectedTournaments(prev => {
-      const serverIds = new Set(tournaments.map(t => t.id))
+    setSelectedTournaments((prev) => {
+      const serverIds = new Set(tournaments.map((t) => t.id))
       const next      = new Set(prev)
       let   changed   = false
 
       // 1. Auto-select any brand-new tournament
-      tournaments.forEach(t => {
+      tournaments.forEach((t) => {
         if (!next.has(t.id)) { next.add(t.id); changed = true }
       })
 
       // 2. Evict any ID whose tournament no longer exists on the server
-      next.forEach(id => {
+      next.forEach((id) => {
         if (!serverIds.has(id)) { next.delete(id); changed = true }
       })
 
@@ -57,11 +59,18 @@ export default function LeaderboardView({ onSnoop }: LeaderboardViewProps) {
 
   const leaderboard = useMemo(() => {
     if (!raw || !raw.allProfiles.length) return []
-    const tournamentMap = new Map(tournaments.map(t => [t.id, t]))
-    const scopedGames   = selectedTournaments.size > 0
-      ? raw.allGames.filter(g => selectedTournaments.has(g.tournament_id))
-      : raw.allGames
-    return computeLeaderboard(raw.allPicks, scopedGames, raw.allGames, raw.allProfiles, tournamentMap)
+    const tournamentMap = new Map(tournaments.map((t) => [t.id, t]))
+    const scopedGames   =
+      selectedTournaments.size > 0
+        ? raw.allGames.filter((g) => selectedTournaments.has(g.tournament_id))
+        : raw.allGames
+    return computeLeaderboard(
+      raw.allPicks,
+      scopedGames,
+      raw.allGames,
+      raw.allProfiles,
+      tournamentMap,
+    )
   }, [raw, tournaments, selectedTournaments])
 
   const maxPoints = leaderboard[0]?.points ?? 0
@@ -72,7 +81,7 @@ export default function LeaderboardView({ onSnoop }: LeaderboardViewProps) {
     <div className="flex flex-col h-full">
 
       {/* Header */}
-      <div className={`px-6 py-4 border-b flex-shrink-0 ${theme.headerBg}`}>
+      <div className={`px-6 py-4 border-b flex-shrink-0 ${useTheme().headerBg}`}>
         <h2 className="font-display text-4xl font-extrabold text-white uppercase tracking-wide">
           Global Leaderboard
         </h2>
@@ -88,7 +97,7 @@ export default function LeaderboardView({ onSnoop }: LeaderboardViewProps) {
             <span className="text-[10px] font-bold text-amber-400 uppercase tracking-widest flex items-center gap-1 mr-1">
               <Shield size={9} /> Filter:
             </span>
-            {tournaments.map(t => (
+            {tournaments.map((t) => (
               <label
                 key={t.id}
                 className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border cursor-pointer text-xs font-medium transition-all select-none
@@ -113,87 +122,80 @@ export default function LeaderboardView({ onSnoop }: LeaderboardViewProps) {
         </div>
       )}
 
-      {/* Rows */}
+      {/* Leaderboard rows */}
       <div className="flex-1 overflow-auto p-6">
         {leaderboard.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-64 text-slate-600">
-            <BarChart2 size={40} className="mb-3 opacity-30" />
-            <p>No scored picks yet.</p>
+          <div className="flex items-center justify-center h-full text-slate-600 text-sm">
+            No picks recorded yet.
           </div>
         ) : (
-          <div className="space-y-2 max-w-3xl mx-auto">
-
-            <div className="grid grid-cols-[auto_1fr_auto] md:grid-cols-[auto_1fr_80px_100px_120px] gap-3 px-4 pb-1">
-              <div className="w-6 md:w-8" />
-              <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">Player</span>
-              <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest text-right">Score</span>
-              <span className="hidden md:block text-[10px] font-bold text-slate-600 uppercase tracking-widest text-right">Accuracy</span>
-              <span className="hidden md:block text-[10px] font-bold text-slate-600 uppercase tracking-widest text-right">Max Possible</span>
-            </div>
-
-            {leaderboard.map((entry, idx) => {
-              const isMe = entry.profile.id === currentId
-              const pct  = entry.total > 0 ? Math.round((entry.correct / entry.total) * 100) : 0
-              const barW = maxPoints > 0 ? Math.round((entry.points / maxPoints) * 100) : 0
+          <div className="max-w-2xl space-y-2">
+            {leaderboard.map((entry, i) => {
+              const isMe   = entry.profile.id === currentId
+              const medal  = medals[i] ?? null
+              const barPct = maxPoints > 0 ? (entry.points / maxPoints) * 100 : 0
 
               return (
                 <div
                   key={entry.profile.id}
-                  onClick={() => isAdmin && onSnoop(entry.profile.id)}
-                  className={`grid grid-cols-[auto_1fr_auto] md:grid-cols-[auto_1fr_80px_100px_120px] gap-3 items-center px-4 py-3 rounded-xl border transition-all
-                    ${isAdmin ? 'cursor-pointer' : ''}
+                  onClick={() => isAdmin && !isMe && onSnoop(entry.profile.id)}
+                  className={`flex items-center gap-4 p-4 rounded-2xl border transition-all
                     ${isMe
-                      ? `${theme.bg} ${theme.border} border`
-                      : 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
-                    }`}
+                      ? `${theme.bg} ${theme.border}`
+                      : 'bg-slate-900/50 border-slate-800'
+                    }
+                    ${isAdmin && !isMe ? 'cursor-pointer hover:border-slate-600' : ''}`}
                 >
-                  <div className="w-6 md:w-8 text-center">
-                    {idx < 3
-                      ? <span className="text-base">{medals[idx]}</span>
-                      : <span className="text-xs font-bold text-slate-500">{idx + 1}</span>
+                  {/* Rank */}
+                  <div className="w-8 text-center flex-shrink-0">
+                    {medal
+                      ? <span className="text-xl">{medal}</span>
+                      : <span className="text-xs font-bold text-slate-500">#{i + 1}</span>
                     }
                   </div>
 
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <Avatar profile={entry.profile} size="sm" />
-                    <div className="min-w-0">
-                      <p className={`text-sm font-semibold truncate ${isMe ? theme.accent : 'text-white'}`}>
-                        {entry.profile.display_name}
-                        {isMe && <span className="ml-1.5 text-[10px] font-bold opacity-60">(you)</span>}
-                      </p>
-                      <div className="h-1 mt-1 rounded-full bg-slate-800 overflow-hidden w-full max-w-[120px]">
-                        <div
-                          className={`h-full rounded-full transition-all ${isMe ? theme.progressBar : 'bg-slate-600'}`}
-                          style={{ width: `${barW}%` }}
-                        />
-                      </div>
+                  {/* Avatar + name */}
+                  <Avatar profile={entry.profile} size="md" />
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-sm font-semibold truncate ${isMe ? theme.accentB : 'text-white'}`}>
+                      {entry.profile.display_name}
+                      {isMe && <span className="text-xs font-normal text-slate-500 ml-1.5">(you)</span>}
+                    </p>
+                    {/* Progress bar */}
+                    <div className="mt-1.5 h-1 rounded-full bg-slate-800 overflow-hidden w-full max-w-xs">
+                      <div
+                        className={`h-full rounded-full transition-all ${isMe ? theme.btn.split(' ')[0] : 'bg-slate-600'}`}
+                        style={{ width: `${barPct}%` }}
+                      />
                     </div>
                   </div>
 
-                  <div className="text-right">
-                    <span className={`text-lg font-bold tabular-nums ${isMe ? theme.accent : 'text-white'}`}>
+                  {/* Stats */}
+                  <div className="text-right flex-shrink-0">
+                    <p className={`text-lg font-bold tabular-nums ${isMe ? theme.accentB : 'text-white'}`}>
                       {entry.points}
-                    </span>
-                    <span className="text-[10px] text-slate-500 ml-0.5">pts</span>
+                      <span className="text-xs font-normal text-slate-500 ml-0.5">pts</span>
+                    </p>
+                    <p className="text-[10px] text-slate-500 tabular-nums">
+                      {entry.correct}/{entry.total} correct
+                    </p>
+                    {entry.maxPossible > entry.points && (
+                      <p className="text-[10px] text-emerald-600 tabular-nums">
+                        +{entry.maxPossible - entry.points} possible
+                      </p>
+                    )}
                   </div>
 
-                  <div className="hidden md:block text-right">
-                    <span className="text-sm font-semibold text-slate-300 tabular-nums">{pct}%</span>
-                    <p className="text-[10px] text-slate-600">{entry.correct}/{entry.total}</p>
-                  </div>
-
-                  <div className="hidden md:block text-right">
-                    <span className="text-sm font-semibold text-slate-400 tabular-nums">{entry.maxPossible}</span>
-                    <p className="text-[10px] text-slate-600">max pts</p>
-                  </div>
-
+                  {/* Snoop hint */}
+                  {isAdmin && !isMe && (
+                    <BarChart2 size={13} className="text-slate-600 flex-shrink-0" />
+                  )}
                 </div>
               )
             })}
           </div>
         )}
       </div>
-
     </div>
   )
 }

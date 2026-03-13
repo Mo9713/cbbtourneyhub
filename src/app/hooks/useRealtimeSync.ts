@@ -1,13 +1,15 @@
-// src/shared/hooks/useRealtimeSync.ts
-import { useEffect, useRef }          from 'react'
-import { useQueryClient }             from '@tanstack/react-query'
+// src/app/hooks/useRealtimeSync.ts
+
+import { useEffect, useRef }         from 'react'
+import { useQueryClient }            from '@tanstack/react-query'
 import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js'
-import { supabase }                   from '../../shared/infra/supabaseClient'
-import { tournamentKeys }             from '../../features/tournament'
-import { leaderboardKeys }            from '../../features/leaderboard'
-import { useAuthContext }             from '../../features/auth'
-import { useUIStore }                 from '../../shared/store/uiStore'
-import { useInternalBracketLoaders }  from '../../features/bracket'
+
+import { supabase }                  from '../../shared/infra/supabaseClient'
+import { tournamentKeys }            from '../../entities/tournament/model/queries'
+import { leaderboardKeys }           from '../../features/leaderboard'
+import { useAuthContext }            from '../../features/auth'
+import { useUIStore }                from '../../shared/store/uiStore'
+import { useInternalBracketLoaders } from '../../features/bracket'
 
 // Minimal row shapes used to type the realtime payloads.
 // We only access tournament_id from these rows, so we declare only that field.
@@ -36,27 +38,14 @@ export function useRealtimeSync(): void {
     })
   }, [])
 
-  // ── FIX: Stable refs for BracketContext loader functions ──
+  // ── Stable refs for BracketContext loader functions ───────
   //
-  // Problem: `loadPicks` and `loadAllMyPicks` come from a `useMemo`
-  // inside BracketContext. That memo produces a new object reference
-  // every time BracketProvider remounts — which happens on every
-  // view navigation (HomeView ↔ BracketView). This changed the
-  // dependency array [profile?.id, qc, loadPicks, loadAllMyPicks],
-  // causing the channel effect to run its cleanup (removeChannel)
-  // and immediately re-subscribe. During that brief teardown window,
-  // any postgres_changes events on `picks` or `games` are silently
-  // dropped — pick updates during a live tournament would not trigger
-  // cache invalidation until the next reconnection.
-  //
-  // Fix: mirror the existing pattern for Zustand state — capture the
-  // latest function references in refs updated on every render.
-  // The channel effect's dependency array shrinks to [profile?.id, qc],
-  // both of which are genuinely stable for the lifetime of a session.
-  //
-  // The "no dependency array" pattern on the sync effect is intentional:
-  // it runs after every render to keep the refs current, but it does NOT
-  // subscribe/unsubscribe from anything — it has zero side-effects to clean up.
+  // `loadPicks` and `loadAllMyPicks` come from a `useMemo` inside
+  // BracketContext that produces a new object reference every time
+  // BracketProvider remounts (on every view navigation). Mirroring
+  // them into refs keeps the channel effect's dep array minimal
+  // ([profile?.id, qc]) so the Realtime channel is never needlessly
+  // torn down and rebuilt mid-session.
   const loadPicksRef      = useRef(loadPicks)
   const loadAllMyPicksRef = useRef(loadAllMyPicks)
 
@@ -74,13 +63,9 @@ export function useRealtimeSync(): void {
       .on('postgres_changes', {
         event: 'UPDATE', schema: 'public', table: 'tournaments',
       }, () => {
-        qc.invalidateQueries({ queryKey: tournamentKeys.all })
+        void qc.invalidateQueries({ queryKey: tournamentKeys.all })
       })
 
-      // FIX: Was typed as `payload: any`, which made TypeScript blind
-      // to any shape changes in the realtime payload. Typed using the
-      // Supabase generic so property accesses on .new/.old are guarded.
-      // The row generic only needs to declare the field we actually read.
       .on('postgres_changes', {
         event: '*', schema: 'public', table: 'games',
       }, (payload: RealtimePostgresChangesPayload<GameRow>) => {
@@ -89,10 +74,10 @@ export function useRealtimeSync(): void {
         const tid    = (payload.new as Partial<GameRow>).tournament_id
                     ?? (payload.old as Partial<GameRow>).tournament_id
         const target = tid ?? selectedIdRef.current
-        if (target) qc.invalidateQueries({ queryKey: tournamentKeys.games(target) })
+        if (target) void qc.invalidateQueries({ queryKey: tournamentKeys.games(target) })
 
         if (activeViewRef.current === 'leaderboard' || snoopRef.current) {
-          qc.invalidateQueries({ queryKey: leaderboardKeys.raw })
+          void qc.invalidateQueries({ queryKey: leaderboardKeys.raw })
         }
       })
 
@@ -100,16 +85,16 @@ export function useRealtimeSync(): void {
         event: '*', schema: 'public', table: 'picks',
       }, () => {
         const tid = selectedIdRef.current
-        if (tid) loadPicksRef.current(tid)    // FIX W-2: via ref, not closure
-        loadAllMyPicksRef.current()            // FIX W-2: via ref, not closure
+        if (tid) loadPicksRef.current(tid)
+        loadAllMyPicksRef.current()
 
         if (activeViewRef.current === 'leaderboard' || snoopRef.current) {
-          qc.invalidateQueries({ queryKey: leaderboardKeys.raw })
+          void qc.invalidateQueries({ queryKey: leaderboardKeys.raw })
         }
       })
 
       .subscribe()
 
     return () => { supabase.removeChannel(channel) }
-  }, [profile?.id, qc]) // FIX W-2: loadPicks/loadAllMyPicks removed — read via refs above
+  }, [profile?.id, qc])
 }

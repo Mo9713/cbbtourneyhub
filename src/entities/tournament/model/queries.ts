@@ -18,10 +18,15 @@ import {
   type QueryClient,
   type QueryKey,
 } from '@tanstack/react-query'
-import { useUIStore }     from '../../shared/store/uiStore'
-import * as api           from '../api'
-import type { Game, Tournament, TemplateKey } from '../../../shared/types'
-import type { CreateTournamentOptions }        from '../api'
+
+// FIX: path was '../../shared/store/uiStore' — correct depth from
+// src/entities/tournament/model/ is three levels up to src/
+import { useUIStore }              from '../../../shared/store/uiStore'
+import * as api                    from '../api'
+// FIX: TemplateKey removed — it is re-exported by CreateTournamentOptions
+// from ../api; importing it here caused an "unused import" tsc error.
+import type { Game, Tournament }    from '../../../shared/types'
+import type { CreateTournamentOptions } from '../api'
 
 // ── Constants ─────────────────────────────────────────────────
 
@@ -33,13 +38,13 @@ const REALTIME_DEBOUNCE_MS = 150
 
 export const tournamentKeys = {
   /** Root key — invalidating this invalidates every tournament query. */
-  all:  ['tournaments']                    as const,
+  all:  ['tournaments']                   as const,
 
   /** Alias for `all` — use when the intent is "the list of tournaments". */
-  list: ['tournaments']                    as const,
+  list: ['tournaments']                   as const,
 
   /** Per-tournament game list. */
-  games: (tid: string) => ['games', tid]   as const,
+  games: (tid: string) => ['games', tid]  as const,
 } as const
 
 // ── Debounce Utility ──────────────────────────────────────────
@@ -96,8 +101,8 @@ export function useGames(tournamentId: string | null) {
  * @deprecated — Boot-time N-query fan-out is a performance flaw.
  * Use `useGames(tid)` on demand instead.
  *
- * Kept temporarily for backward compatibility with `TournamentContext`
- * during Phase 1 migration. Will be removed in Phase 2.
+ * Kept temporarily for backward compatibility during Phase 1 migration.
+ * Will be removed in Phase 2.
  */
 export function useAllTournamentGames(tournaments: Tournament[]) {
   return useQueries({
