@@ -1,9 +1,9 @@
-// src/features/bracket/ui/AdminBracketGrid/SvgConnectors.tsx
+// src/widgets/admin-bracket-grid/ui/SvgConnectors.tsx
 
 // Pure renderer: receives pre-computed line data and draws it.
 // All DOM measurement and slot resolution live in computeConnectorLines()
 // (shared/lib/bracketMath), called by AdminBracketGrid.
-import type { ConnectorLine } from '../../../../shared/lib/bracketMath'
+import type { ConnectorLine } from '../../../shared/lib/bracketMath'
 
 interface Props {
   lines: ConnectorLine[]

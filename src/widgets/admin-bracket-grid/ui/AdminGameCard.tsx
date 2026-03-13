@@ -1,9 +1,9 @@
-// src/features/bracket/ui/AdminBracketGrid/AdminGameCard.tsx
+// src/widgets/admin-bracket-grid/ui/AdminGameCard.tsx
 import { useState, useEffect } from 'react'
 import { Unlink, Trash2, Target, GripVertical } from 'lucide-react'
-import { getScore, isTBDName } from '../../../../shared/lib/helpers'
-import { useTheme }            from '../../../../shared/lib/theme'
-import type { Game }           from '../../../../shared/types'
+import { getScore, isTBDName } from '../../../shared/lib/helpers'
+import { useTheme }            from '../../../shared/lib/theme'
+import type { Game }           from '../../../shared/types'
 
 interface Props {
   game:              Game
@@ -35,20 +35,20 @@ export default function AdminGameCard({
 }: Props) {
   const theme = useTheme()
 
-  const [team1,        setTeam1]        = useState(game.team1_name)
-  const [team2,        setTeam2]        = useState(game.team2_name)
-  const [seed1,        setSeed1]        = useState(String(game.team1_seed ?? ''))
-  const [seed2,        setSeed2]        = useState(String(game.team2_seed ?? ''))
-  const [score1,       setScore1]       = useState(String(game.team1_score ?? ''))
-  const [score2,       setScore2]       = useState(String(game.team2_score ?? ''))
-  const [showWinner,   setShowWinner]   = useState(false)
+  const [team1,      setTeam1]      = useState(game.team1_name)
+  const [team2,      setTeam2]      = useState(game.team2_name)
+  const [seed1,      setSeed1]      = useState(String(game.team1_seed  ?? ''))
+  const [seed2,      setSeed2]      = useState(String(game.team2_seed  ?? ''))
+  const [score1,     setScore1]     = useState(String(game.team1_score ?? ''))
+  const [score2,     setScore2]     = useState(String(game.team2_score ?? ''))
+  const [showWinner, setShowWinner] = useState(false)
 
-  useEffect(() => { setTeam1(game.team1_name) },              [game.team1_name])
-  useEffect(() => { setTeam2(game.team2_name) },              [game.team2_name])
-  useEffect(() => { setSeed1(String(game.team1_seed ?? '')) },  [game.team1_seed])
-  useEffect(() => { setSeed2(String(game.team2_seed ?? '')) },  [game.team2_seed])
-  useEffect(() => { setScore1(String(game.team1_score ?? '')) }, [game.team1_score])
-  useEffect(() => { setScore2(String(game.team2_score ?? '')) }, [game.team2_score])
+  useEffect(() => { setTeam1(game.team1_name)                    }, [game.team1_name])
+  useEffect(() => { setTeam2(game.team2_name)                    }, [game.team2_name])
+  useEffect(() => { setSeed1(String(game.team1_seed  ?? ''))     }, [game.team1_seed])
+  useEffect(() => { setSeed2(String(game.team2_seed  ?? ''))     }, [game.team2_seed])
+  useEffect(() => { setScore1(String(game.team1_score ?? ''))    }, [game.team1_score])
+  useEffect(() => { setScore2(String(game.team2_score ?? ''))    }, [game.team2_score])
 
   const isChampionship = game.round_num === maxRound
   const isLinkingFrom  = linkingFromId === game.id
@@ -146,6 +146,7 @@ export default function AdminGameCard({
       onDragEnd={onDragEnd}
       onDrop={e      => onDrop(e, game.id)}
     >
+      {/* ── Output dot (link source) ── */}
       <button
         data-out={game.id}
         title="Link output to another game's input"
@@ -160,6 +161,7 @@ export default function AdminGameCard({
         `}
       />
 
+      {/* ── Card header: game number + actions ── */}
       <div className={`flex items-center justify-between px-2 py-1.5 border-b ${theme.borderBase}`}>
         <div className="flex items-center gap-1.5">
           <GripVertical size={11} className={`${theme.textMuted} cursor-grab`} />
@@ -202,6 +204,7 @@ export default function AdminGameCard({
         </div>
       </div>
 
+      {/* ── Team rows ── */}
       {rows.map(({
         field, seedField, scoreField,
         val, setter, seedVal, seedSetter,
@@ -259,6 +262,7 @@ export default function AdminGameCard({
         </div>
       ))}
 
+      {/* ── Set winner panel ── */}
       {showWinner && (
         <div
           className={`px-2 py-2 ${theme.inputBg} border-t ${theme.borderBase} space-y-1`}

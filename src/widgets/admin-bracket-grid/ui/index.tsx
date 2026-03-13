@@ -1,16 +1,16 @@
-// src/features/bracket/ui/AdminBracketGrid/index.tsx
+// src/widgets/admin-bracket-grid/ui/index.tsx
 import { useRef, useState, useCallback, useLayoutEffect } from 'react'
 import { Plus, Link2, X }           from 'lucide-react'
-import { getRoundLabel, getScore }   from '../../../../shared/lib/helpers'
+import { getRoundLabel, getScore }   from '../../../shared/lib/helpers'
 import {
   computeConnectorLines,
   type ConnectorLine,
-}                                    from '../../../../shared/lib/bracketMath'
+}                                    from '../../../shared/lib/bracketMath'
 import AdminGameCard                 from './AdminGameCard'
 import SvgConnectors                 from './SvgConnectors'
-import type { Tournament, Game }     from '../../../../shared/types'
+import type { Tournament, Game }     from '../../../shared/types'
 
-interface Props {
+export interface AdminBracketGridProps {
   tournament:       Tournament
   games:            Game[]
   rounds:           [number, Game[]][]
@@ -38,7 +38,7 @@ export default function AdminBracketGrid({
   onStartLink, onCompleteLink, onCancelLink,
   onUpdateGame, onSetWinner, onDeleteGame, onAddGameToRound, onUnlinkGame,
   onDragStart, onDragOver, onDragEnd, onDrop,
-}: Props) {
+}: AdminBracketGridProps) {
   const bracketRef              = useRef<HTMLDivElement>(null)
   const [svgLines, setSvgLines] = useState<ConnectorLine[]>([])
   const [svgDims,  setSvgDims]  = useState({ w: 0, h: 0 })
