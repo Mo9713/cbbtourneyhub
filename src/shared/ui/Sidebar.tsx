@@ -1,25 +1,20 @@
 // src/shared/ui/Sidebar.tsx
 
-import { useMemo }    from 'react'
 import {
-  Trophy, Plus, AlertTriangle, Settings,
+  Trophy, Plus, Settings,
   Home, BarChart2, LogOut, PanelLeftClose, Sun, Moon,
 } from 'lucide-react'
 
 import { useTheme }                from '../lib/theme'
 import { useUIStore }              from '../store/uiStore'
-import { useAuthContext }          from '../../features/auth'
-import { useTournamentContext }    from '../../features/tournament'
-import { useBracketPickCounts }   from '../../features/bracket'
-import {
-  useAllTournamentGames,
-}                                  from '../../entities/tournament/model/queries'
+import { useAuth }                 from '../../features/auth/model/useAuth'
+import { useTournamentListQuery }  from '../../entities/tournament/model/queries'
 import {
   useUpdateUIModeMutation,
+  profileKeys
 }                                  from '../../entities/profile/model/queries'
 import * as authService            from '../infra/authService'
 import { useQueryClient }          from '@tanstack/react-query'
-import { profileKeys }             from '../../entities/profile/model/queries'
 import Avatar                      from './Avatar'
 
 interface SidebarProps {
@@ -34,15 +29,19 @@ const statusDot = (s: string) =>
 export default function Sidebar({ onClose, onOpenAddTournament, onToggleDesktop }: SidebarProps) {
   const theme      = useTheme()
   const qc         = useQueryClient()
-  const activeView = useUIStore((s) => s.activeView)
-
-  // Navigation — from Zustand directly (not through TournamentContext)
-  const navigateTo   = useUIStore((s) => s.setActiveView)
-  const navigateHome = useUIStore((s) => s.navigateHome)
+  
+  // Navigation
+  const activeView           = useUIStore((s) => s.activeView)
+  const navigateTo           = useUIStore((s) => s.setActiveView)
+  const navigateHome         = useUIStore((s) => s.navigateHome)
+  const selectedTournamentId = useUIStore((s) => s.selectedTournamentId)
+  const selectTournamentId   = useUIStore((s) => s.selectTournament)
 
   // Profile & auth
-  const { profile }    = useAuthContext()
+  const { profile }    = useAuth()
   const updateUIModeM  = useUpdateUIModeMutation(profile?.id)
+
+  const { data: tournaments = [] } = useTournamentListQuery()
 
   const handleSignOut = async () => {
     const result = await authService.signOut()
@@ -55,38 +54,6 @@ export default function Sidebar({ onClose, onOpenAddTournament, onToggleDesktop 
     if (!profile) return
     updateUIModeM.mutate(profile.ui_mode === 'dark' ? 'light' : 'dark')
   }
-
-  // Tournament data — tournaments and selectTournament still live on context
-  const { tournaments, selectedTournament, selectTournament } = useTournamentContext()
-
-  // Pick counts for missing-picks indicator
-  const myPickCounts = useBracketPickCounts()
-
-  // ── Game counts per tournament (for missing-picks badge) ──
-  // @deprecated useAllTournamentGames fan-out — We will replace
-  // this with a leaner solution once TournamentContext is fully dissolved.
-  // TanStack Query deduplicates these fetches with BracketContext's own
-  // useAllTournamentGames call — no extra network requests.
-  const gameQueries = useAllTournamentGames(tournaments)
-  const gameCounts  = useMemo(() => {
-    const counts: Record<string, number> = {}
-    tournaments.forEach((t, i) => {
-      counts[t.id] = gameQueries[i]?.data?.length ?? 0
-    })
-    return counts
-  }, [tournaments, gameQueries])
-
-  const missingPicks = useMemo(() => {
-    const s = new Set<string>()
-    tournaments
-      .filter((t) => t.status === 'open')
-      .forEach((t) => {
-        const total   = gameCounts[t.id] ?? 0
-        const myCount = myPickCounts[t.id] ?? 0
-        if (myCount < total) s.add(t.id)
-      })
-    return s
-  }, [tournaments, gameCounts, myPickCounts])
 
   if (!profile) return null
 
@@ -159,13 +126,12 @@ export default function Sidebar({ onClose, onOpenAddTournament, onToggleDesktop 
       {/* Tournaments */}
       <div className="flex-1 overflow-y-auto scrollbar-thin px-3 py-3 space-y-0.5">
         {tournaments.map((t) => {
-          const isSelected = selectedTournament?.id === t.id
-          const hasMissing = missingPicks.has(t.id)
+          const isSelected = selectedTournamentId === t.id
 
           return (
             <div
               key={t.id}
-              onClick={() => nav(() => selectTournament(t))}
+              onClick={() => nav(() => selectTournamentId(t.id))}
               className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm transition-all cursor-pointer group
                 ${isSelected
                   ? `${theme.bg} ${theme.accent} font-semibold`
@@ -174,14 +140,11 @@ export default function Sidebar({ onClose, onOpenAddTournament, onToggleDesktop 
             >
               <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${statusDot(t.status)}`} />
               <span className="truncate flex-1 text-left">{t.name}</span>
-              {hasMissing && (
-                <AlertTriangle size={11} className="text-amber-500 flex-shrink-0" />
-              )}
               {profile.is_admin && (
                 <button
                   onClick={(e) => {
                     e.stopPropagation()
-                    nav(() => { selectTournament(t); navigateTo('admin') })
+                    nav(() => { selectTournamentId(t.id); navigateTo('admin') })
                   }}
                   className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:scale-110"
                 >

@@ -1,32 +1,30 @@
 // src/features/tournament/HomeView.tsx
 
-import { useTheme }              from '../../shared/lib/theme'
-import { isPicksLocked }         from '../../shared/lib/time'
-import { statusLabel, statusIcon } from '../../shared/lib/helpers'
-import { useAuthContext }        from '../auth'
-import { useTournamentContext }  from './model/TournamentContext'
-import { useBracketPickCounts } from '../bracket'
-import { useGames }              from '../../entities/tournament/model/queries'
-import type { Tournament }       from '../../shared/types'
+import { useTheme }                 from '../../shared/lib/theme'
+import { isPicksLocked }            from '../../shared/lib/time'
+import { statusLabel, statusIcon }  from '../../shared/lib/helpers'
+import { useAuth }                  from '../auth/model/useAuth'
+import { useUIStore }               from '../../shared/store/uiStore'
+import { useTournamentListQuery, useGames } from '../../entities/tournament/model/queries'
+import { useMyPicks }               from '../../entities/pick/model/queries'
+import type { Tournament }          from '../../shared/types'
 
 // ── TournamentCard ────────────────────────────────────────────
-// Isolated component so it can call useGames(t.id) per card.
-// This replaces the gamesCache[t.id] lookup pattern.
+// Isolated component. Fetches games and picks directly from entity layers.
 
 interface CardProps {
   t:           Tournament
   isAdmin:     boolean
-  myPickCount: number
   onSelect:    (t: Tournament) => void
 }
 
-function TournamentCard({ t, isAdmin, myPickCount, onSelect }: CardProps) {
+function TournamentCard({ t, isAdmin, onSelect }: CardProps) {
   const theme = useTheme()
 
-  // Lazy on-demand load — cached by TanStack Query; no duplicate fetches
-  // if BracketView or AdminBuilderView has already loaded this tournament.
   const { data: games = [] } = useGames(t.id)
+  const { data: picks = [] } = useMyPicks(t.id, games)
 
+  const myPickCount = picks.length
   const locked = isPicksLocked(t, isAdmin)
   const pct    = games.length > 0 ? Math.round((myPickCount / games.length) * 100) : 0
 
@@ -88,9 +86,9 @@ function TournamentCard({ t, isAdmin, myPickCount, onSelect }: CardProps) {
 
 export default function HomeView() {
   const theme = useTheme()
-  const { profile }                          = useAuthContext()
-  const { tournaments, selectTournament }    = useTournamentContext()
-  const myPickCounts                         = useBracketPickCounts()
+  const { profile }                = useAuth()
+  const { data: tournaments = [] } = useTournamentListQuery()
+  const selectTournamentId         = useUIStore((s) => s.selectTournament)
 
   if (!profile) return null
 
@@ -101,6 +99,8 @@ export default function HomeView() {
   const locked = tournaments.filter(
     (t) => t.status === 'locked' || (t.status === 'open' && isPicksLocked(t, isAdmin)),
   )
+
+  const handleSelect = (t: Tournament) => selectTournamentId(t.id)
 
   const renderSection = (label: string, items: Tournament[]) => {
     if (!items.length) return null
@@ -115,8 +115,7 @@ export default function HomeView() {
               key={t.id}
               t={t}
               isAdmin={isAdmin}
-              myPickCount={myPickCounts[t.id] ?? 0}
-              onSelect={selectTournament}
+              onSelect={handleSelect}
             />
           ))}
         </div>

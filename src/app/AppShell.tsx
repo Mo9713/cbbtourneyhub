@@ -1,22 +1,22 @@
 // src/app/AppShell.tsx
 
-import { useCallback }          from 'react'
-import { PanelLeftOpen }         from 'lucide-react'
+import { useCallback }                 from 'react'
+import { PanelLeftOpen }                from 'lucide-react'
 
-import SnoopModal                from '../features/bracket/ui/SnoopModal'
-import AddTournamentModal        from '../features/tournament/AddTournamentModal'
+import SnoopModal                       from '../features/bracket/ui/SnoopModal'
+import AddTournamentModal               from '../features/tournament/AddTournamentModal'
 
 import {
   Sidebar, MobileHeader, Toaster, ConfirmModal,
 } from '../shared/ui'
-import { useTheme }              from '../shared/lib/theme'
-import { useRealtimeSync }       from './hooks/useRealtimeSync'
-import { useHashRouter }         from './hooks/useHashRouter'
-import { useUIStore }            from '../shared/store/uiStore'
-import { useCreateTournamentMutation } from '../entities/tournament/model/queries'
+import { useTheme }                     from '../shared/lib/theme'
+import { useRealtimeSync }              from './hooks/useRealtimeSync'
+import { useHashRouter }                from './hooks/useHashRouter'
+import { useUIStore }                   from '../shared/store/uiStore'
+import { useCreateTournamentMutation }  from '../entities/tournament/model/queries'
 
-import ViewRouter                from './ViewRouter'
-import type { TemplateKey }      from '../shared/types'
+import ViewRouter                       from './ViewRouter'
+import type { TemplateKey }             from '../shared/types'
 
 export default function AppShell() {
   const theme = useTheme()

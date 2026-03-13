@@ -3,8 +3,8 @@
 import { useState, useMemo }         from 'react'
 import { X, Trophy }                  from 'lucide-react'
 import BracketView                   from './BracketView'
-import { useLeaderboardRaw }         from '../../leaderboard'
-import { useTournamentList }         from '../../tournament'
+import { useLeaderboardRaw }         from '../../../entities/leaderboard/model/queries'
+import { useTournamentListQuery }    from '../../../entities/tournament/model/queries'
 import { useGames }                  from '../../../entities/tournament/model/queries'
 import type { Game }                 from '../../../shared/types'
 
@@ -14,8 +14,8 @@ interface Props {
 }
 
 export default function SnoopModal({ targetId, onClose }: Props) {
-  const { data: raw }   = useLeaderboardRaw()
-  const { tournaments } = useTournamentList()
+  const { data: raw }              = useLeaderboardRaw()
+  const { data: tournaments = [] } = useTournamentListQuery()
 
   const targetProfile = useMemo(
     () => raw?.allProfiles.find((p) => p.id === targetId) ?? null,
@@ -50,7 +50,6 @@ export default function SnoopModal({ targetId, onClose }: Props) {
   const { data: selectedGames = [] } = useGames(selectedTid)
 
   const selectedPicks = useMemo(
-    // Explicit `Game` type annotation resolves TS7006 implicit-any on `g`
     () => targetPicks.filter((p) => selectedGames.some((g: Game) => g.id === p.game_id)),
     [targetPicks, selectedGames],
   )

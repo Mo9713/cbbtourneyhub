@@ -1,6 +1,6 @@
 // src/features/bracket/ui/BracketView/index.tsx
 
-import { useState, useMemo, useCallback }     from 'react'
+import { useState, useMemo, useCallback }      from 'react'
 import { useTheme }                            from '../../../../shared/lib/theme'
 import { isPicksLocked }                       from '../../../../shared/lib/time'
 import { BD_REGIONS }                          from '../../../../shared/lib/helpers'
@@ -12,13 +12,12 @@ import {
   computeGameNumbers,
   type EffectiveNames,
 }                                              from '../../../../shared/lib/bracketMath'
-import { useAuthContext }                      from '../../../auth/model/AuthContext'
-import { useTournamentContext }                from '../../../tournament/model/TournamentContext'
-import { useBracketContext }                   from '../../model/BracketContext'
+import { useAuth }                             from '../../../auth/model/useAuth'
+import { useUIStore }                          from '../../../../shared/store/uiStore'
 import { BracketViewProvider }                 from './BracketViewContext'
-import { useMyPicks, useMakePick }             from '../../model/queries'
-import { buildPickMap, sortedRounds, getChampGame } from '../../model/selectors'
-import { useGames }                            from '../../../../entities/tournament/model/queries'
+import { useMyPicks, useMakePick, useSaveTiebreaker } from '../../../../entities/pick/model/queries'
+import { buildPickMap, sortedRounds, getChampGame }   from '../../model/selectors'
+import { useGames, useTournamentListQuery }    from '../../../../entities/tournament/model/queries'
 import BracketHeader                           from './BracketHeader'
 import BracketGrid                             from './BracketGrid'
 import TiebreakerPanel                         from './TiebreakerPanel'
@@ -41,16 +40,19 @@ export default function BracketView({
 }: BracketViewProps) {
   const theme = useTheme()
 
-  const { profile }          = useAuthContext()
-  const { selectedTournament } = useTournamentContext()
-  const { saveTiebreaker }   = useBracketContext()
+  const { profile }                = useAuth()
+  const { data: tournaments = [] } = useTournamentListQuery()
+  const selectedTournamentId       = useUIStore((s) => s.selectedTournamentId)
+  
+  const selectedTournament = useMemo(() => {
+    return tournaments.find((t) => t.id === selectedTournamentId) ?? null
+  }, [tournaments, selectedTournamentId])
 
   // Resolve the active tournament — override takes precedence (SnoopModal)
   const tournament = overrideTournament ?? selectedTournament
 
   // Lazy on-demand game loading from entity layer.
   // When overrideGames is provided, this query runs with null (disabled)
-  // and its result is discarded below.
   const { data: queriedGames = [] } = useGames(
     overrideGames ? null : (tournament?.id ?? null),
   )
@@ -59,7 +61,8 @@ export default function BracketView({
   const { data: queryPicks = [] } = useMyPicks(tournament?.id ?? null, games)
   const picks                     = overridePicks ?? queryPicks
 
-  const { mutateAsync: makePick } = useMakePick()
+  const { mutateAsync: makePick }       = useMakePick()
+  const { mutateAsync: saveTiebreaker } = useSaveTiebreaker()
 
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null)
 
@@ -107,8 +110,14 @@ export default function BracketView({
   const handleTiebreaker = useCallback(async (
     gameId: string, predictedWinner: string, score: number,
   ): Promise<string | null> => {
-    return saveTiebreaker(gameId, predictedWinner, score)
-  }, [saveTiebreaker])
+    if (!tournament) return 'No active tournament'
+    try {
+      await saveTiebreaker({ gameId, predictedWinner, score, tournamentId: tournament.id })
+      return null
+    } catch (err: any) {
+      return err.message || 'Failed to save tiebreaker'
+    }
+  }, [saveTiebreaker, tournament])
 
   const bracketViewValue = useMemo(() => ({
     isLocked: isLocked || readOnly,
