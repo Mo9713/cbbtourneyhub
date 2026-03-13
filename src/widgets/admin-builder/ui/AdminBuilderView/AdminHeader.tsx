@@ -1,4 +1,4 @@
-// src/features/tournament/AdminBuilderView/AdminHeader.tsx
+// src/widgets/admin-builder/ui/AdminBuilderView/AdminHeader.tsx
 import { useState, useEffect } from 'react'
 import {
   Plus, Lock, Globe, AlertTriangle, Edit3,

@@ -1,9 +1,9 @@
-// src/features/bracket/ui/SnoopModal.tsx
+// src/widgets/snoop-modal/ui/SnoopModal.tsx
 
 import { useState, useMemo }         from 'react'
 import { X, Trophy, Lock }           from 'lucide-react'
-import BracketView                   from './BracketView'
-import { useAuth }                   from '../../auth/model/useAuth'
+import { TournamentBracket as BracketView } from '../../tournament-bracket'
+import { useAuth }                   from '../../../features/auth/model/useAuth'
 import { isPicksLocked }             from '../../../shared/lib/time'
 import { useLeaderboardRaw }         from '../../../entities/leaderboard/model/queries'
 import { useTournamentListQuery }    from '../../../entities/tournament/model/queries'

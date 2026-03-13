@@ -1,4 +1,4 @@
-// src/features/tournament/AdminBuilderView/index.tsx
+// src/widgets/admin-builder/ui/AdminBuilderView/index.tsx
 
 import { useState, useMemo, useCallback, useEffect } from 'react'
 import { useQueryClient }   from '@tanstack/react-query'
@@ -20,7 +20,7 @@ import * as gameService                 from '../../../../entities/tournament/ap
 
 import AdminHeader            from './AdminHeader'
 import TournamentConfigPanel  from './TournamentConfigPanel'
-import AdminBracketGrid       from '../../../bracket/ui/AdminBracketGrid'
+import { AdminBracketGrid }   from '../../../admin-bracket-grid'
 import type { Game, Tournament } from '../../../../shared/types'
 
 export default function AdminBuilderView() {

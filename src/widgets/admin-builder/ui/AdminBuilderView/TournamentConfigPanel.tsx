@@ -1,4 +1,4 @@
-// src/features/tournament/ui/AdminBuilderView/TournamentConfigPanel.tsx
+// src/widgets/admin-builder/ui/AdminBuilderView/TournamentConfigPanel.tsx
 import { useState, useEffect } from 'react'
 import { Settings2, Hash, ToggleLeft, ToggleRight } from 'lucide-react'
 import { useTheme }            from '../../../../shared/lib/theme'
