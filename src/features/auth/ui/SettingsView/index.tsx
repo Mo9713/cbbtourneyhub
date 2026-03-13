@@ -113,7 +113,7 @@ export default function SettingsView({ profile, userEmail, onProfileUpdate, push
                 />
               </div>
               <div>
-                <label className="block text-xs text-slate-500 mb-1 flex items-center gap-1.5">
+                <label className="flex text-xs text-slate-500 mb-1 items-center gap-1.5">
                   <Image size={10} /> Avatar Image URL
                 </label>
                 <input

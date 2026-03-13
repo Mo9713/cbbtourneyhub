@@ -1,4 +1,5 @@
-// src/features/tournament/api/templateService.ts
+// src/entities/tournament/api/templateService.ts
+
 import { supabase }                from '../../../shared/infra/supabaseClient'
 import type { Game, ServiceResult } from '../../../shared/types'
 
