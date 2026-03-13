@@ -1,0 +1,1 @@
+export { default as LeaderboardPage } from './ui/LeaderboardPage'

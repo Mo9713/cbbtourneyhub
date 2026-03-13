@@ -1,0 +1,1 @@
+export { default as BracketPage } from './ui/BracketPage'
