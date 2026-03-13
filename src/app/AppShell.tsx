@@ -1,21 +1,22 @@
 // src/app/AppShell.tsx
-import { useCallback } from 'react'
-import { PanelLeftOpen } from 'lucide-react'
 
-import { useTournamentContext }    from '../features/tournament/model/TournamentContext'
-import SnoopModal                  from '../features/bracket/ui/SnoopModal'
-import AddTournamentModal          from '../features/tournament/AddTournamentModal'
+import { useCallback }          from 'react'
+import { PanelLeftOpen }         from 'lucide-react'
+
+import SnoopModal                from '../features/bracket/ui/SnoopModal'
+import AddTournamentModal        from '../features/tournament/AddTournamentModal'
 
 import {
   Sidebar, MobileHeader, Toaster, ConfirmModal,
 } from '../shared/ui'
-import { useTheme }        from '../shared/lib/theme'
-import { useRealtimeSync } from './hooks/useRealtimeSync'
-import { useHashRouter }   from './hooks/useHashRouter'
-import { useUIStore }      from '../shared/store/uiStore'
+import { useTheme }              from '../shared/lib/theme'
+import { useRealtimeSync }       from './hooks/useRealtimeSync'
+import { useHashRouter }         from './hooks/useHashRouter'
+import { useUIStore }            from '../shared/store/uiStore'
+import { useCreateTournamentMutation } from '../entities/tournament/model/queries'
 
-import ViewRouter from './ViewRouter'
-import type { TemplateKey } from '../shared/types'
+import ViewRouter                from './ViewRouter'
+import type { TemplateKey }      from '../shared/types'
 
 export default function AppShell() {
   const theme = useTheme()
@@ -29,7 +30,7 @@ export default function AppShell() {
     toasts,            pushToast,
   } = useUIStore()
 
-  const { createTournament } = useTournamentContext()
+  const createTournamentM = useCreateTournamentMutation()
 
   useRealtimeSync()
   useHashRouter()
@@ -38,10 +39,19 @@ export default function AppShell() {
     name: string, template: TemplateKey, teamCount?: number,
   ) => {
     pushToast('Creating tournament…', 'info')
-    const err = await createTournament(name, template, teamCount)
-    if (err) pushToast(err, 'error')
-    else     pushToast(`"${name}" created!`, 'success')
-  }, [createTournament, pushToast])
+    try {
+      const tournament = await createTournamentM.mutateAsync({ name, template, teamCount })
+      // Navigate to the new tournament's admin view
+      useUIStore.getState().selectTournament(tournament.id)
+      useUIStore.getState().setActiveView('admin')
+      pushToast(`"${name}" created!`, 'success')
+    } catch (err) {
+      pushToast(
+        err instanceof Error ? err.message : 'Create failed.',
+        'error',
+      )
+    }
+  }, [createTournamentM, pushToast])
 
   return (
     <div className={`flex h-screen overflow-hidden ${theme.appBg} text-slate-900 dark:text-white transition-colors duration-300`}>

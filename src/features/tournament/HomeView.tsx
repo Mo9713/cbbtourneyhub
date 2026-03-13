@@ -1,113 +1,160 @@
 // src/features/tournament/HomeView.tsx
-import { useTheme }                from '../../shared/lib/theme'
-import { isPicksLocked }           from '../../shared/lib/time'
+
+import { useTheme }              from '../../shared/lib/theme'
+import { isPicksLocked }         from '../../shared/lib/time'
 import { statusLabel, statusIcon } from '../../shared/lib/helpers'
-import { useAuthContext }          from '../auth'
-import { useTournamentContext }    from './model/TournamentContext'
-import { useBracketPickCounts }    from '../bracket'
-import type { Tournament }         from '../../shared/types'
+import { useAuthContext }        from '../auth'
+import { useTournamentContext }  from './model/TournamentContext'
+import { useBracketPickCounts } from '../bracket'
+import { useGames }              from '../../entities/tournament/model/queries'
+import type { Tournament }       from '../../shared/types'
+
+// ── TournamentCard ────────────────────────────────────────────
+// Isolated component so it can call useGames(t.id) per card.
+// This replaces the gamesCache[t.id] lookup pattern.
+
+interface CardProps {
+  t:           Tournament
+  isAdmin:     boolean
+  myPickCount: number
+  onSelect:    (t: Tournament) => void
+}
+
+function TournamentCard({ t, isAdmin, myPickCount, onSelect }: CardProps) {
+  const theme = useTheme()
+
+  // Lazy on-demand load — cached by TanStack Query; no duplicate fetches
+  // if BracketView or AdminBuilderView has already loaded this tournament.
+  const { data: games = [] } = useGames(t.id)
+
+  const locked = isPicksLocked(t, isAdmin)
+  const pct    = games.length > 0 ? Math.round((myPickCount / games.length) * 100) : 0
+
+  const isEffectivelyLocked = t.status === 'locked' || (t.status === 'open' && locked)
+  const displayStatus       = t.status === 'draft' ? 'draft' : isEffectivelyLocked ? 'locked' : 'open'
+
+  return (
+    <button
+      onClick={() => onSelect(t)}
+      className={`text-left p-5 rounded-2xl border-2 transition-all hover:scale-[1.02] active:scale-[0.99] w-full
+        ${displayStatus === 'open'
+          ? `${theme.border} ${theme.bg} hover:${theme.bgMd}`
+          : 'border-slate-800 bg-slate-900/40 hover:border-slate-700'
+        }`}
+    >
+      <div className="flex items-start justify-between gap-2 mb-3">
+        <h3 className="font-display text-xl font-bold text-white uppercase tracking-wide leading-tight">
+          {t.name}
+        </h3>
+        <span className={`flex-shrink-0 flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-lg uppercase tracking-widest
+          ${displayStatus === 'open'   ? `${theme.bg} ${theme.accent}` :
+            displayStatus === 'draft'  ? 'bg-amber-500/20 text-amber-400' :
+                                         'bg-slate-800 text-slate-500'
+          }`}
+        >
+          {statusIcon(displayStatus)} {statusLabel(displayStatus)}
+        </span>
+      </div>
+
+      {/* Pick progress bar — only shown for open, non-admin tournaments */}
+      {displayStatus === 'open' && !isAdmin && games.length > 0 && (
+        <div className="mt-2">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[10px] text-slate-500">Your picks</span>
+            <span className={`text-[10px] font-bold ${pct === 100 ? 'text-emerald-400' : theme.accent}`}>
+              {myPickCount} / {games.length}
+            </span>
+          </div>
+          <div className="h-1 rounded-full bg-slate-800 overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all ${pct === 100 ? 'bg-emerald-500' : theme.btn.split(' ')[0]}`}
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Draft: show game count for admin */}
+      {displayStatus === 'draft' && isAdmin && (
+        <p className="text-[11px] text-slate-500 mt-1">
+          {games.length} game{games.length !== 1 ? 's' : ''} · Draft
+        </p>
+      )}
+    </button>
+  )
+}
+
+// ── HomeView ──────────────────────────────────────────────────
 
 export default function HomeView() {
   const theme = useTheme()
-  const { profile }                                       = useAuthContext()
-  const { tournaments, gamesCache, selectTournament }     = useTournamentContext()
-  const myPickCounts                                      = useBracketPickCounts()
+  const { profile }                          = useAuthContext()
+  const { tournaments, selectTournament }    = useTournamentContext()
+  const myPickCounts                         = useBracketPickCounts()
 
   if (!profile) return null
 
-  // FIX: Properly sort tournaments into lists by checking BOTH status and actual time locks
-  const open   = tournaments.filter(t => t.status === 'open' && !isPicksLocked(t, profile.is_admin))
-  const draft  = profile.is_admin ? tournaments.filter(t => t.status === 'draft') : []
-  const locked = tournaments.filter(t => t.status === 'locked' || (t.status === 'open' && isPicksLocked(t, profile.is_admin)))
+  const isAdmin = profile.is_admin
 
-  const Card = ({ t }: { t: Tournament }) => {
-    const games   = gamesCache[t.id] ?? []
-    const myPicks = myPickCounts[t.id] ?? 0
-    const locked  = isPicksLocked(t, profile.is_admin)
-    const pct     = games.length > 0 ? Math.round((myPicks / games.length) * 100) : 0
+  const open   = tournaments.filter((t) => t.status === 'open'   && !isPicksLocked(t, isAdmin))
+  const draft  = isAdmin ? tournaments.filter((t) => t.status === 'draft') : []
+  const locked = tournaments.filter(
+    (t) => t.status === 'locked' || (t.status === 'open' && isPicksLocked(t, isAdmin)),
+  )
 
-    // FIX: Derive the real display status for the badge
-    const isEffectivelyLocked = t.status === 'locked' || (t.status === 'open' && locked)
-    const displayStatus       = t.status === 'draft' ? 'draft' : isEffectivelyLocked ? 'locked' : 'open'
-
+  const renderSection = (label: string, items: Tournament[]) => {
+    if (!items.length) return null
     return (
-      <button
-        onClick={() => selectTournament(t)}
-        className={`text-left p-5 rounded-2xl border-2 transition-all hover:scale-[1.02] active:scale-[0.99] w-full
-          ${displayStatus === 'open'
-            ? `${theme.border} ${theme.bg} hover:${theme.bgMd}`
-            : 'border-slate-800 bg-slate-900/40 hover:border-slate-700'
-          }`}
-      >
-        <div className="flex items-start justify-between gap-2 mb-3">
-          <h3 className="font-display text-xl font-bold text-white uppercase tracking-wide leading-tight">
-            {t.name}
-          </h3>
-          <span className={`flex-shrink-0 flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-lg uppercase tracking-widest
-            ${displayStatus === 'open'  ? `${theme.bg} ${theme.accent}` :
-              displayStatus === 'draft' ? 'bg-amber-500/10 text-amber-400' :
-                                          'bg-slate-800 text-slate-500'}`}>
-            {statusIcon(displayStatus)}
-            {statusLabel(displayStatus)}
-          </span>
-        </div>
-
-        <div className="space-y-2">
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-slate-500">{games.length} games</span>
-            <span className={`font-semibold ${myPicks === games.length && games.length > 0
-              ? 'text-emerald-400' : 'text-slate-400'}`}>
-              {myPicks}/{games.length} picked
-            </span>
-          </div>
-
-          {displayStatus === 'open' && games.length > 0 && (
-            <div className="w-full bg-slate-800 rounded-full h-1.5">
-              <div
-                className={`h-1.5 rounded-full transition-all ${theme.bgMd}`}
-                style={{ width: `${pct}%` }}
-              />
-            </div>
-          )}
-
-          {locked && (
-            <p className="text-[10px] text-slate-600 font-medium uppercase tracking-widest">
-              Picks locked
-            </p>
-          )}
-        </div>
-      </button>
-    )
-  }
-
-  const Section = ({ title, items }: { title: string; items: Tournament[] }) => {
-    if (items.length === 0) return null
-    return (
-      <div className="space-y-3">
-        <h2 className={`text-xs font-bold uppercase tracking-widest ${theme.accent}`}>{title}</h2>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {items.map(t => <Card key={t.id} t={t} />)}
+      <div className="mb-8">
+        <h2 className="font-display text-xs font-bold text-slate-500 uppercase tracking-widest mb-3 px-1">
+          {label}
+        </h2>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {items.map((t) => (
+            <TournamentCard
+              key={t.id}
+              t={t}
+              isAdmin={isAdmin}
+              myPickCount={myPickCounts[t.id] ?? 0}
+              onSelect={selectTournament}
+            />
+          ))}
         </div>
       </div>
     )
   }
 
-  if (tournaments.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full text-slate-600 gap-3">
-        <p className="text-sm">No tournaments yet.</p>
-        {profile.is_admin && (
-          <p className="text-xs">Use the sidebar to create one.</p>
-        )}
-      </div>
-    )
-  }
+  const noTournaments = !open.length && !draft.length && !locked.length
 
   return (
-    <div className="p-6 space-y-8 overflow-auto h-full">
-      <Section title="Open" items={open} />
-      <Section title="Draft" items={draft} />
-      <Section title="Locked" items={locked} />
+    <div className="flex flex-col h-full">
+      <div className={`px-6 py-5 border-b flex-shrink-0 ${theme.headerBg}`}>
+        <h1 className="font-display text-3xl font-extrabold text-white uppercase tracking-wide">
+          Tournaments
+        </h1>
+        <p className="text-slate-500 text-sm mt-0.5">
+          Select a bracket to make your picks
+        </p>
+      </div>
+
+      <div className="flex-1 overflow-auto p-6">
+        {noTournaments ? (
+          <div className="flex flex-col items-center justify-center h-full text-center">
+            <p className="text-slate-500 text-sm">No tournaments yet.</p>
+            {isAdmin && (
+              <p className="text-slate-600 text-xs mt-1">
+                Use the sidebar to create your first tournament.
+              </p>
+            )}
+          </div>
+        ) : (
+          <>
+            {renderSection('Open', open)}
+            {renderSection('Draft', draft)}
+            {renderSection('Locked / Completed', locked)}
+          </>
+        )}
+      </div>
     </div>
   )
 }

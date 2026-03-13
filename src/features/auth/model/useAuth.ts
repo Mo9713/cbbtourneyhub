@@ -1,18 +1,22 @@
 // src/features/auth/model/useAuth.ts
+//
+// Session lifecycle + profile state hook.
+
 import { useState, useEffect, useCallback } from 'react'
-import { useQuery, useQueryClient }          from '@tanstack/react-query'
+import { useQueryClient }                    from '@tanstack/react-query'
 import type { User }                         from '@supabase/supabase-js'
 
-import { supabase }        from '../../../shared/infra/supabaseClient'
-import * as profileService from '../api/profileService'
+import * as authService from '../../../shared/infra/authService'
+import { fetchProfile } from '../../../entities/profile/api'
+import {
+  profileKeys,
+  useUpdateUIModeMutation,
+  useUpdateTimezoneMutation,
+} from '../../../entities/profile/model/queries'
 import type { Profile, UIMode } from '../../../shared/types'
 
-const profileKeys = {
-  me: (userId: string | null | undefined) => 
-    ['profile', 'me', userId ?? 'guest'] as const,
-}
+// ── unwrap helper ─────────────────────────────────────────────
 
-// Helper to handle service results in useQuery
 async function unwrap<T>(
   p: Promise<{ ok: true; data: T } | { ok: false; error: string }>,
 ): Promise<T> {
@@ -21,98 +25,123 @@ async function unwrap<T>(
   return r.data
 }
 
+// ── Types ─────────────────────────────────────────────────────
+
 export interface AuthState {
-  user: User | null
-  profile: Profile | null
-  appLoading: boolean
-  setProfile: (p: Profile | null) => void
-  updateUIMode: (mode: UIMode) => Promise<string | null>
-  updateTimezone: (tz: string | null) => Promise<string | null>
-  signOut: () => Promise<string | null>
+  user:            User | null
+  profile:         Profile | null
+  appLoading:      boolean
+  setProfile:      (p: Profile | null) => void
+  updateUIMode:    (mode: UIMode)      => Promise<string | null>
+  updateTimezone:  (tz: string | null) => Promise<string | null>
+  signOut:         ()                  => Promise<string | null>
 }
+
+// ── Hook ──────────────────────────────────────────────────────
 
 export function useAuth(): AuthState {
   const qc = useQueryClient()
-  const [user, setUser] = useState<User | null>(null)
+
+  const [user,           setUser]           = useState<User | null>(null)
   const [sessionChecked, setSessionChecked] = useState(false)
 
-  // Session lifecycle: validates JWT on mount and listens for changes
+  // ── Session lifecycle ─────────────────────────────────────
+  // Validates the JWT on mount; listens for auth state changes.
+  // Both operations are now routed through authService — no raw
+  // supabase.auth.* access in this file.
   useEffect(() => {
     let cancelled = false
 
-    supabase.auth.getUser().then(({ data }) => {
+    authService.getAuthUser().then((u) => {
       if (!cancelled) {
-        setUser(data.user ?? null)
+        setUser(u)
         setSessionChecked(true)
       }
     })
 
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!cancelled) setUser(session?.user ?? null)
+    const unsubscribe = authService.subscribeToAuthChanges((u) => {
+      if (!cancelled) setUser(u)
     })
 
     return () => {
       cancelled = true
-      sub.subscription.unsubscribe()
+      unsubscribe()
     }
   }, [])
 
-  // Profile query with automatic retry and caching
-  const { data: queryProfile, isLoading: profileLoading } = useQuery({
-    queryKey: profileKeys.me(user?.id),
-    queryFn:  () => unwrap(profileService.fetchProfile(user!.id)),
-    enabled:  !!user,
-    retry:    2,
-    staleTime: Infinity,
-  })
+  // ── Profile query ─────────────────────────────────────────
+  // Uses the entity-layer profileKeys for cache key consistency.
+  // staleTime: Infinity — profile is managed exclusively via
+  // optimistic mutation writes; never re-fetched in background.
+  const profileKey     = profileKeys.me(user?.id)
+  const profile        = qc.getQueryData<Profile>(profileKey) ?? null
+  const [profileLoading, setProfileLoading] = useState(false)
 
-  const profile = queryProfile ?? null
-  const appLoading = !sessionChecked || (!!user && profileLoading)
+  useEffect(() => {
+    if (!user) return
 
-  const setProfile = useCallback((p: Profile | null) => {
-    qc.setQueryData(profileKeys.me(user?.id), p)
+    const cached = qc.getQueryData<Profile>(profileKey)
+    if (cached) return
+
+    setProfileLoading(true)
+    unwrap(fetchProfile(user.id))
+      .then((data) => qc.setQueryData(profileKey, data))
+      .catch(() => {/* handled by appLoading gate */})
+      .finally(() => setProfileLoading(false))
+    // profileKey is derived from user.id — stable for the session lifetime
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, qc])
 
-  // Optimistic update for UI mode
-  const updateUIMode = useCallback(async (mode: UIMode): Promise<string | null> => {
-    if (!profile) return 'Not authenticated'
-    const key = profileKeys.me(user?.id)
-    const prev = profile
-    qc.setQueryData(key, { ...profile, ui_mode: mode }) 
+  const appLoading = !sessionChecked || (!!user && profileLoading && !profile)
 
-    const result = await profileService.updateUIMode(mode)
-    if (result.ok) {
-      qc.setQueryData(key, result.data)
-      return null
-    } else {
-      qc.setQueryData(key, prev)
-      return result.error
-    }
-  }, [profile, user?.id, qc])
+  // ── setProfile ────────────────────────────────────────────
+  // Direct cache write — used by AuthContext and SettingsView
+  // when the parent already has the new Profile shape in hand.
+  const setProfile = useCallback(
+    (p: Profile | null) => qc.setQueryData(profileKey, p),
+    // profileKey changes only when user.id changes (i.e. sign-out/in)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [user?.id, qc],
+  )
 
-  // Optimistic update for Timezone
-  const updateTimezone = useCallback(async (tz: string | null): Promise<string | null> => {
-    if (!profile) return 'Not authenticated'
-    const key = profileKeys.me(user?.id)
-    const prev = profile
-    qc.setQueryData(key, { ...profile, timezone: tz })
+  // ── Mutation hooks ────────────────────────────────────────
+  // Structured optimistic mutations from the entity layer replace
+  // the previous manual useCallback + setQueryData + rollback pattern.
+  const updateUIModeM   = useUpdateUIModeMutation(user?.id)
+  const updateTimezoneM = useUpdateTimezoneMutation(user?.id)
 
-    const result = await profileService.updateTimezone(tz)
-    if (result.ok) {
-      qc.setQueryData(key, result.data)
-      return null
-    } else {
-      qc.setQueryData(key, prev)
-      return result.error
-    }
-  }, [profile, user?.id, qc])
+  const updateUIMode = useCallback(
+    async (mode: UIMode): Promise<string | null> => {
+      try {
+        await updateUIModeM.mutateAsync(mode)
+        return null
+      } catch (err) {
+        return err instanceof Error ? err.message : 'Failed to update UI mode.'
+      }
+    },
+    [updateUIModeM],
+  )
 
+  const updateTimezone = useCallback(
+    async (tz: string | null): Promise<string | null> => {
+      try {
+        await updateTimezoneM.mutateAsync(tz)
+        return null
+      } catch (err) {
+        return err instanceof Error ? err.message : 'Failed to update timezone.'
+      }
+    },
+    [updateTimezoneM],
+  )
+
+  // ── Sign Out ──────────────────────────────────────────────
   const signOut = useCallback(async (): Promise<string | null> => {
-    const { error } = await supabase.auth.signOut()
-    if (!error) {
-      qc.removeQueries({ queryKey: profileKeys.me(user?.id) })
+    const result = await authService.signOut()
+    if (result.ok) {
+      qc.removeQueries({ queryKey: profileKey })
     }
-    return error ? error.message : null
+    return result.ok ? null : result.error
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, qc])
 
   return {

@@ -1,9 +1,9 @@
 // src/features/bracket/ui/BracketView/index.tsx
 
-import { useState, useMemo, useCallback } from 'react'
-import { useTheme }                         from '../../../../shared/lib/theme'
-import { isPicksLocked }                    from '../../../../shared/lib/time'
-import { BD_REGIONS }                       from '../../../../shared/lib/helpers'
+import { useState, useMemo, useCallback }     from 'react'
+import { useTheme }                            from '../../../../shared/lib/theme'
+import { isPicksLocked }                       from '../../../../shared/lib/time'
+import { BD_REGIONS }                          from '../../../../shared/lib/helpers'
 import {
   deriveEffectiveNames,
   deriveChampion,
@@ -11,17 +11,18 @@ import {
   calculateLocalScore,
   computeGameNumbers,
   type EffectiveNames,
-} from '../../../../shared/lib/bracketMath'
-import { useAuthContext }                   from '../../../auth/model/AuthContext'
-import { useTournamentContext }             from '../../../tournament/model/TournamentContext'
-import { useBracketContext }               from '../../model/BracketContext'
-import { BracketViewProvider }             from './BracketViewContext'
-import { useMyPicks, useMakePick }         from '../../model/queries'
+}                                              from '../../../../shared/lib/bracketMath'
+import { useAuthContext }                      from '../../../auth/model/AuthContext'
+import { useTournamentContext }                from '../../../tournament/model/TournamentContext'
+import { useBracketContext }                   from '../../model/BracketContext'
+import { BracketViewProvider }                 from './BracketViewContext'
+import { useMyPicks, useMakePick }             from '../../model/queries'
 import { buildPickMap, sortedRounds, getChampGame } from '../../model/selectors'
-import BracketHeader                       from './BracketHeader'
-import BracketGrid                         from './BracketGrid'
-import TiebreakerPanel                     from './TiebreakerPanel'
-import type { Game, Pick, Tournament }     from '../../../../shared/types'
+import { useGames }                            from '../../../../entities/tournament/model/queries'
+import BracketHeader                           from './BracketHeader'
+import BracketGrid                             from './BracketGrid'
+import TiebreakerPanel                         from './TiebreakerPanel'
+import type { Game, Pick, Tournament }         from '../../../../shared/types'
 
 interface BracketViewProps {
   readOnly?:           boolean
@@ -40,12 +41,20 @@ export default function BracketView({
 }: BracketViewProps) {
   const theme = useTheme()
 
-  const { profile }                        = useAuthContext()
-  const { selectedTournament, gamesCache } = useTournamentContext()
-  const { saveTiebreaker }                 = useBracketContext()
+  const { profile }          = useAuthContext()
+  const { selectedTournament } = useTournamentContext()
+  const { saveTiebreaker }   = useBracketContext()
 
+  // Resolve the active tournament — override takes precedence (SnoopModal)
   const tournament = overrideTournament ?? selectedTournament
-  const games      = overrideGames ?? (tournament ? (gamesCache[tournament.id] ?? []) : [])
+
+  // Lazy on-demand game loading from entity layer.
+  // When overrideGames is provided, this query runs with null (disabled)
+  // and its result is discarded below.
+  const { data: queriedGames = [] } = useGames(
+    overrideGames ? null : (tournament?.id ?? null),
+  )
+  const games = overrideGames ?? queriedGames
 
   const { data: queryPicks = [] } = useMyPicks(tournament?.id ?? null, games)
   const picks                     = overridePicks ?? queryPicks
@@ -54,15 +63,17 @@ export default function BracketView({
 
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null)
 
-  // ── Derived booleans ──────────────────────────────────────────────────────
+  // ── Derived booleans ──────────────────────────────────────
 
   const isLocked = tournament && profile
-    ? isPicksLocked(tournament, profile.is_admin) || tournament.status === 'draft' || tournament.status === 'locked'
+    ? isPicksLocked(tournament, profile.is_admin)
+      || tournament.status === 'draft'
+      || tournament.status === 'locked'
     : false
 
-  const isBigDance = useMemo(() => games.some(g => g.region), [games])
+  const isBigDance = useMemo(() => games.some((g) => g.region), [games])
 
-  // ── Selectors computed once at the view boundary ──────────────────────────
+  // ── Selectors ─────────────────────────────────────────────
 
   const pickMap         = useMemo(() => buildPickMap(picks), [picks])
   const rounds          = useMemo(
@@ -81,11 +92,11 @@ export default function BracketView({
   }, [games, picks, effectiveNames, tournament])
 
   const champPick = useMemo(
-    () => champGame ? (picks.find(p => p.game_id === champGame.id) ?? null) : null,
+    () => (champGame ? (picks.find((p) => p.game_id === champGame.id) ?? null) : null),
     [champGame, picks],
   )
 
-  // ── Event handlers ────────────────────────────────────────────────────────
+  // ── Event handlers ────────────────────────────────────────
 
   const handlePick = useCallback(async (game: Game, team: string) => {
     if (!tournament || readOnly || isLocked) return
@@ -132,7 +143,7 @@ export default function BracketView({
             >
               All
             </button>
-            {BD_REGIONS.map(r => (
+            {BD_REGIONS.map((r) => (
               <button
                 key={r}
                 onClick={() => setSelectedRegion(r)}
@@ -148,7 +159,6 @@ export default function BracketView({
           </div>
         )}
 
-        {/* BracketGrid signature unchanged — no new props required */}
         <BracketGrid
           rounds={rounds}
           pickMap={pickMap}

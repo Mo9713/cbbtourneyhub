@@ -1,19 +1,26 @@
 // src/features/bracket/model/BracketContext.tsx
+
 import { createContext, useContext, useMemo, useCallback, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 
-import { useTournamentContext }        from '../../tournament/model/TournamentContext'
-import { tournamentKeys }              from '../../tournament/model/queries'
-import { pickKeys }                    from './queries'
+import { useTournamentContext } from '../../tournament/model/TournamentContext'
+import {
+  tournamentKeys,
+  useGames,
+  useAllTournamentGames,
+  usePatchGamesCache,
+}                              from '../../../entities/tournament/model/queries'
+import {
+  pickKeys,
+  useMyPickCounts as useMyPickCountsQuery,
+}                              from './queries'
 
-import { useMyPickCounts as useMyPickCountsQuery } from './queries'
+import * as gameService          from '../api/gameService'
+import { computeGameNumbers }    from '../../../shared/lib/bracketMath'
+import * as bracketApi           from '../api/picksApi'
+import type { Game }             from '../../../shared/types'
 
-import * as gameService                from '../api/gameService'
-import { computeGameNumbers }          from '../../../shared/lib/bracketMath'
-import * as bracketApi                 from '../api/picksApi'
-import type { Game }                   from '../../../shared/types'
-
-// ── Context shape ─────────────────────────────────────────────
+// ── Context shapes ────────────────────────────────────────────
 
 interface BracketContextValue {
   activeGames:    Game[]
@@ -29,8 +36,6 @@ interface BracketContextValue {
 
 const BracketContext = createContext<BracketContextValue | null>(null)
 
-// ── Sync context — for useRealtimeSync compat ─────────────────
-
 interface BracketSyncValue {
   loadPicks:      (tid: string) => Promise<void>
   loadAllMyPicks: () => Promise<void>
@@ -41,22 +46,23 @@ const BracketSyncContext = createContext<BracketSyncValue | null>(null)
 // ── Provider ──────────────────────────────────────────────────
 
 export function BracketProvider({ children }: { children: ReactNode }) {
-  const qc                                                  = useQueryClient()
-  const { selectedTournament, gamesCache, patchGamesCache } = useTournamentContext()
+  const qc                   = useQueryClient()
+  const { selectedTournament } = useTournamentContext()
 
-  const activeGames = useMemo(
-    () => selectedTournament ? (gamesCache[selectedTournament.id] ?? []) : [],
-    [selectedTournament?.id, gamesCache],
-  )
+  // On-demand game loading — replaces gamesCache[selectedTournament.id]
+  const { data: activeGames = [] } = useGames(selectedTournament?.id ?? null)
+
+  // Entity-layer cache patcher — decouples from TournamentContext internals
+  const patchGamesCache = usePatchGamesCache()
 
   // ── Game mutations ────────────────────────────────────────
 
   const saveTiebreaker = useCallback(async (
-  gameId: string, predictedWinner: string, score: number,
-): Promise<string | null> => {
-  const result = await bracketApi.saveTiebreakerScore(gameId, predictedWinner, score)
-  return result.ok ? null : result.error
-}, [])
+    gameId: string, predictedWinner: string, score: number,
+  ): Promise<string | null> => {
+    const result = await bracketApi.saveTiebreakerScore(gameId, predictedWinner, score)
+    return result.ok ? null : result.error
+  }, [])
 
   const updateGame = useCallback(async (
     id: string, updates: Partial<Game>,
@@ -65,38 +71,38 @@ export function BracketProvider({ children }: { children: ReactNode }) {
     if (!tid) return 'No tournament selected'
     const result = await gameService.updateGame(id, updates)
     if (!result.ok) return result.error
-    patchGamesCache(tid, prev => prev.map(g => g.id === id ? { ...g, ...updates } : g))
+    patchGamesCache(tid, (prev) => prev.map((g) => g.id === id ? { ...g, ...updates } : g))
     return null
   }, [selectedTournament?.id, patchGamesCache])
 
   const setWinner = useCallback(async (
-  game: Game, winner: string,
-): Promise<string | null> => {
-  const tid = selectedTournament?.id
-  if (!tid) return 'No tournament selected'
-  const gameNums = computeGameNumbers(activeGames)
-  const result   = await gameService.setWinner(game, winner, activeGames, gameNums)
-  if (!result.ok) return result.error
-  qc.invalidateQueries({ queryKey: tournamentKeys.games(tid) })
-  return null
-}, [selectedTournament?.id, activeGames, qc])
+    game: Game, winner: string,
+  ): Promise<string | null> => {
+    const tid = selectedTournament?.id
+    if (!tid) return 'No tournament selected'
+    const gameNums = computeGameNumbers(activeGames)
+    const result   = await gameService.setWinner(game, winner, activeGames, gameNums)
+    if (!result.ok) return result.error
+    void qc.invalidateQueries({ queryKey: tournamentKeys.games(tid) })
+    return null
+  }, [selectedTournament?.id, activeGames, qc])
 
   const addGameToRound = useCallback(async (round: number): Promise<string | null> => {
     const tid = selectedTournament?.id
     if (!tid) return 'No tournament selected'
     const result = await gameService.addGameToRound(tid, round, 0)
     if (!result.ok) return result.error
-    qc.invalidateQueries({ queryKey: tournamentKeys.games(tid) })
+    void qc.invalidateQueries({ queryKey: tournamentKeys.games(tid) })
     return null
   }, [selectedTournament?.id, qc])
 
   const addNextRound = useCallback(async (): Promise<string | null> => {
     const tid = selectedTournament?.id
     if (!tid) return 'No tournament selected'
-    const maxRound = activeGames.length ? Math.max(...activeGames.map(g => g.round_num)) : 0
+    const maxRound = activeGames.length ? Math.max(...activeGames.map((g) => g.round_num)) : 0
     const result   = await gameService.addGameToRound(tid, maxRound + 1, 0)
     if (!result.ok) return result.error
-    qc.invalidateQueries({ queryKey: tournamentKeys.games(tid) })
+    void qc.invalidateQueries({ queryKey: tournamentKeys.games(tid) })
     return null
   }, [selectedTournament?.id, activeGames, qc])
 
@@ -106,7 +112,7 @@ export function BracketProvider({ children }: { children: ReactNode }) {
     const gameNums = computeGameNumbers(activeGames)
     const result   = await gameService.deleteGame(game, activeGames, gameNums)
     if (!result.ok) return result.error
-    qc.invalidateQueries({ queryKey: tournamentKeys.games(tid) })
+    void qc.invalidateQueries({ queryKey: tournamentKeys.games(tid) })
     return null
   }, [selectedTournament?.id, activeGames, qc])
 
@@ -116,19 +122,19 @@ export function BracketProvider({ children }: { children: ReactNode }) {
     const tid = selectedTournament?.id
     if (!tid) return 'No tournament selected'
     const gameNums = computeGameNumbers(activeGames)
-    const fromGame = activeGames.find(g => g.id === fromId)
+    const fromGame = activeGames.find((g) => g.id === fromId)
     if (!fromGame) return 'Game not found'
-    patchGamesCache(tid, prev => prev.map(g => {
+    patchGamesCache(tid, (prev) => prev.map((g) => {
       if (g.id === fromId) return { ...g, next_game_id: toId }
       if (g.id === toId)   return { ...g, [slot]: `Winner of Game #${gameNums[fromId]}` }
       return g
     }))
     const result = await gameService.linkGames(fromGame, toId, slot, gameNums[fromId], activeGames, gameNums)
     if (!result.ok) {
-      qc.invalidateQueries({ queryKey: tournamentKeys.games(tid) })
+      void qc.invalidateQueries({ queryKey: tournamentKeys.games(tid) })
       return result.error
     }
-    qc.invalidateQueries({ queryKey: tournamentKeys.games(tid) })
+    void qc.invalidateQueries({ queryKey: tournamentKeys.games(tid) })
     return null
   }, [selectedTournament?.id, activeGames, patchGamesCache, qc])
 
@@ -136,19 +142,19 @@ export function BracketProvider({ children }: { children: ReactNode }) {
     const tid = selectedTournament?.id
     if (!tid) return 'No tournament selected'
     const gameNums = computeGameNumbers(activeGames)
-    const fromGame = activeGames.find(g => g.id === fromId)
+    const fromGame = activeGames.find((g) => g.id === fromId)
     if (!fromGame) return 'Game not found'
-    patchGamesCache(tid, prev => prev.map(g => g.id === fromId ? { ...g, next_game_id: null } : g))
+    patchGamesCache(tid, (prev) => prev.map((g) => g.id === fromId ? { ...g, next_game_id: null } : g))
     const result = await gameService.unlinkGame(fromGame, activeGames, gameNums)
     if (!result.ok) {
-      qc.invalidateQueries({ queryKey: tournamentKeys.games(tid) })
+      void qc.invalidateQueries({ queryKey: tournamentKeys.games(tid) })
       return result.error
     }
-    qc.invalidateQueries({ queryKey: tournamentKeys.games(tid) })
+    void qc.invalidateQueries({ queryKey: tournamentKeys.games(tid) })
     return null
   }, [selectedTournament?.id, activeGames, patchGamesCache, qc])
 
-  // ── Sync context — invalidates instead of manual fetches ──
+  // ── Sync context ──────────────────────────────────────────
   const syncValue = useMemo<BracketSyncValue>(() => ({
     loadPicks:      (tid) => qc.invalidateQueries({ queryKey: pickKeys.mine(tid) }),
     loadAllMyPicks: ()    => qc.invalidateQueries({ queryKey: pickKeys.allMine() }),
@@ -191,15 +197,41 @@ export function useInternalBracketLoaders(): BracketSyncValue {
 }
 
 export function useGameMutations() {
-  const { activeGames, updateGame, setWinner, addGameToRound, addNextRound, deleteGame, linkGames, unlinkGame } =
-    useBracketContext()
-  return { activeGames, updateGame, setWinner, addGameToRound, addNextRound, deleteGame, linkGames, unlinkGame }
+  const {
+    activeGames, updateGame, setWinner,
+    addGameToRound, addNextRound,
+    deleteGame, linkGames, unlinkGame,
+  } = useBracketContext()
+  return {
+    activeGames, updateGame, setWinner,
+    addGameToRound, addNextRound,
+    deleteGame, linkGames, unlinkGame,
+  }
 }
 
-export function useBracketPickCounts() {
-  const { gamesCache } = useTournamentContext()
-  return useMyPickCountsQuery(gamesCache) 
+/**
+ * Returns per-tournament pick counts for the sidebar missing-picks indicator.
+ *
+ * @deprecated-pattern — uses useAllTournamentGames internally to build the
+ * game→tournament map. This fan-out will be eliminated in Phase 2 when
+ * TournamentContext is fully dissolved and a leaner selector replaces it.
+ * TanStack Query deduplicates these fetches — no additional network requests
+ * if the same tournament's games are already in cache.
+ */
+export function useBracketPickCounts(): Record<string, number> {
+  const { tournaments } = useTournamentContext()
+
+  // Build a local games-cache only for the purposes of deriving pick counts.
+  // Shares the TanStack cache with BracketProvider's useGames calls.
+  const gameQueries = useAllTournamentGames(tournaments)
+  const gamesCache  = useMemo(() => {
+    const cache: Record<string, Game[]> = {}
+    tournaments.forEach((t, i) => {
+      const data = gameQueries[i]?.data
+      if (data) cache[t.id] = data
+    })
+    return cache
+  }, [tournaments, gameQueries])
+
+  return useMyPickCountsQuery(gamesCache)
 }
-
-
-
