@@ -5,6 +5,7 @@ import { HomePage as HomeView }                   from '../pages/home'
 import { AdminBuilderPage as AdminBuilderView }   from '../pages/admin'
 import { BracketPage as BracketView }             from '../pages/bracket'
 import { LeaderboardPage as LeaderboardView }     from '../pages/leaderboard'
+import { GroupPage }                              from '../pages/group'
 
 import { useTournamentListQuery }                 from '../entities/tournament/model/queries'
 import { useUIStore }                             from '../shared/store/uiStore'
@@ -40,6 +41,9 @@ export default function ViewRouter() {
 
     case 'bracket':
       return <BracketView />
+
+    case 'group':
+      return <GroupPage />
 
     case 'home':
     default:

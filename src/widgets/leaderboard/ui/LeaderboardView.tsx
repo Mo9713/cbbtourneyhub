@@ -1,5 +1,7 @@
+// src/widgets/leaderboard/ui/LeaderboardView.tsx
+
 import { useState, useMemo, useEffect }  from 'react'
-import { BarChart2, Shield }             from 'lucide-react'
+import { BarChart2, Shield, Skull }      from 'lucide-react'
 import { useTheme }                      from '../../../shared/lib/theme'
 import { useAuth }                       from '../../../features/auth/model/useAuth'
 import { useTournamentListQuery }        from '../../../entities/tournament/model/queries'
@@ -66,10 +68,18 @@ export default function LeaderboardView({ onSnoop }: LeaderboardViewProps) {
   const currentId = profile?.id ?? ''
 
   // ── SNOOPING LOGIC FRAMEWORK ────────────────────────────────
-  const isGroupContext = false // Replace in Phase 4
-  const isGroupLocked  = false // Replace in Phase 4
+  const isGroupContext = false 
+  const isGroupLocked  = false 
   const canSnoop = isAdmin || (isGroupContext && isGroupLocked)
   // ────────────────────────────────────────────────────────────
+
+  // Dynamically determine if the leaderboard needs to display Survivor-specific columns
+  const isSurvivorMode = useMemo(() => {
+    return Array.from(selectedTournaments).some(id => {
+      const t = tournaments.find(t => t.id === id)
+      return t?.game_type === 'survivor'
+    })
+  }, [selectedTournaments, tournaments])
 
   return (
     <div className="flex flex-col h-full">
@@ -107,6 +117,9 @@ export default function LeaderboardView({ onSnoop }: LeaderboardViewProps) {
                 {t.scoring_config && (
                   <span className="text-[9px] text-amber-500/60 font-bold ml-0.5">CUSTOM</span>
                 )}
+                {t.game_type === 'survivor' && (
+                  <span className="text-[9px] text-rose-500/80 font-bold ml-0.5">SURVIVOR</span>
+                )}
               </label>
             ))}
           </div>
@@ -119,8 +132,13 @@ export default function LeaderboardView({ onSnoop }: LeaderboardViewProps) {
             <div className="flex items-center gap-4 px-4 py-2 text-xs font-bold text-slate-500 uppercase tracking-widest border-b border-slate-200 dark:border-slate-800 mb-4">
               <div className="w-8 text-center flex-shrink-0">Rank</div>
               <div className="flex-1 min-w-0">Player</div>
+              {isSurvivorMode && (
+                <div className="w-20 text-right flex-shrink-0 hidden sm:block">Tiebreaker</div>
+              )}
               <div className="w-20 text-right flex-shrink-0">Score</div>
-              <div className="w-24 text-right flex-shrink-0 hidden sm:block">Max Pts</div>
+              {!isSurvivorMode && (
+                <div className="w-24 text-right flex-shrink-0 hidden sm:block">Max Pts</div>
+              )}
               {canSnoop && <div className="w-6 hidden sm:block flex-shrink-0"></div>}
             </div>
           )}
@@ -134,11 +152,16 @@ export default function LeaderboardView({ onSnoop }: LeaderboardViewProps) {
               const isMe  = entry.profile.id === currentId
               const medal = medals[i] ?? null
 
+              // Strikethrough style for survivor elimination
+              const eliminatedCls = entry.isEliminated 
+                ? 'opacity-60 grayscale' 
+                : ''
+
               return (
                 <div
                   key={entry.profile.id}
                   onClick={() => canSnoop && !isMe && onSnoop(entry.profile.id)}
-                  className={`flex items-center gap-4 p-4 rounded-2xl border transition-all
+                  className={`flex items-center gap-4 p-4 rounded-2xl border transition-all ${eliminatedCls}
                     ${isMe
                       ? `${theme.bg} ${theme.border}`
                       : 'bg-white dark:bg-slate-900/50 border-slate-200 dark:border-slate-800'
@@ -146,28 +169,58 @@ export default function LeaderboardView({ onSnoop }: LeaderboardViewProps) {
                     ${canSnoop && !isMe ? 'cursor-pointer hover:border-slate-400 dark:hover:border-slate-600' : ''}`}
                 >
                   <div className="w-8 text-center flex-shrink-0">
-                    {medal
-                      ? <span className="text-xl">{medal}</span>
-                      : <span className="text-sm font-bold text-slate-500">#{i + 1}</span>
-                    }
+                    {entry.isEliminated ? (
+                      <span className="flex items-center justify-center text-red-500">
+                        <Skull size={18} />
+                      </span>
+                    ) : medal ? (
+                      <span className="text-xl">{medal}</span>
+                    ) : (
+                      <span className="text-sm font-bold text-slate-500">#{i + 1}</span>
+                    )}
                   </div>
                   <div className="flex-1 min-w-0 flex items-center gap-3">
-                    <Avatar profile={entry.profile} size="md" />
-                    <p className={`text-sm font-semibold truncate ${isMe ? theme.accentB : 'text-slate-900 dark:text-white'}`}>
-                      {entry.profile.display_name}
-                      {isMe && <span className="text-xs font-normal text-slate-500 ml-1.5">(you)</span>}
-                    </p>
+                    <div className="relative">
+                      <Avatar profile={entry.profile} size="md" />
+                      {entry.isEliminated && (
+                        <div className="absolute inset-0 bg-red-500/20 rounded-full" />
+                      )}
+                    </div>
+                    <div className="flex flex-col min-w-0">
+                      <p className={`text-sm font-semibold truncate ${entry.isEliminated ? 'line-through text-slate-500' : isMe ? theme.accentB : 'text-slate-900 dark:text-white'}`}>
+                        {entry.profile.display_name}
+                        {isMe && <span className="text-xs font-normal text-slate-500 ml-1.5 no-underline">(you)</span>}
+                      </p>
+                      {entry.isEliminated && (
+                        <span className="text-[10px] font-bold text-red-500 uppercase tracking-widest mt-0.5">
+                          Eliminated
+                        </span>
+                      )}
+                    </div>
                   </div>
+                  
+                  {isSurvivorMode && (
+                    <div className="w-20 text-right flex-shrink-0 hidden sm:block">
+                      <p className="text-sm font-bold text-slate-500 tabular-nums">
+                        {entry.seedScore}
+                      </p>
+                    </div>
+                  )}
+
                   <div className="w-20 text-right flex-shrink-0">
-                    <p className={`text-lg font-bold tabular-nums ${isMe ? theme.accentB : 'text-slate-900 dark:text-white'}`}>
+                    <p className={`text-lg font-bold tabular-nums ${entry.isEliminated ? 'text-slate-500' : isMe ? theme.accentB : 'text-slate-900 dark:text-white'}`}>
                       {entry.points}
                     </p>
                   </div>
-                  <div className="w-24 text-right flex-shrink-0 hidden sm:block">
-                    <p className="text-sm text-emerald-600 dark:text-emerald-400 tabular-nums font-medium">
-                      {entry.maxPossible}
-                    </p>
-                  </div>
+                  
+                  {!isSurvivorMode && (
+                    <div className="w-24 text-right flex-shrink-0 hidden sm:block">
+                      <p className="text-sm text-emerald-600 dark:text-emerald-400 tabular-nums font-medium">
+                        {entry.maxPossible}
+                      </p>
+                    </div>
+                  )}
+                  
                   {canSnoop && (
                     <div className="w-6 hidden sm:flex justify-end flex-shrink-0">
                       {!isMe && <BarChart2 size={16} className="text-slate-400" />}

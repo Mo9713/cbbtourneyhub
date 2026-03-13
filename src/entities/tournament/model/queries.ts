@@ -12,19 +12,13 @@ import * as api                    from '../api'
 import type { Game, Tournament }    from '../../../shared/types'
 import type { CreateTournamentOptions } from '../api'
 
-// ── Constants ─────────────────────────────────────────────────
-
 const REALTIME_DEBOUNCE_MS = 150
-
-// ── Query Keys ────────────────────────────────────────────────
 
 export const tournamentKeys = {
   all:  ['tournaments']                   as const,
   list: ['tournaments']                   as const,
   games: (tid: string) => ['games', tid]  as const,
 } as const
-
-// ── Debounce Utility ──────────────────────────────────────────
 
 function safeInvalidate(qc: QueryClient, queryKey: QueryKey): void {
   if (qc.isMutating() > 0) {
@@ -36,8 +30,6 @@ function safeInvalidate(qc: QueryClient, queryKey: QueryKey): void {
   }
 }
 
-// ── unwrap helper ─────────────────────────────────────────────
-
 async function unwrap<T>(
   p: Promise<{ ok: true; data: T } | { ok: false; error: string }>,
 ): Promise<T> {
@@ -45,8 +37,6 @@ async function unwrap<T>(
   if (!result.ok) throw new Error(result.error)
   return result.data
 }
-
-// ── Queries ───────────────────────────────────────────────────
 
 export function useTournamentListQuery() {
   return useQuery({
@@ -65,16 +55,12 @@ export function useGames(tournamentId: string | null) {
   })
 }
 
-// ── Cache Utilities ───────────────────────────────────────────
-
 export function usePatchGamesCache() {
   const qc = useQueryClient()
   return (tid: string, updater: (prev: Game[]) => Game[]) => {
     qc.setQueryData<Game[]>(tournamentKeys.games(tid), (prev) => updater(prev ?? []))
   }
 }
-
-// ── Mutations ─────────────────────────────────────────────────
 
 export function useCreateTournamentMutation() {
   const qc = useQueryClient()
@@ -99,6 +85,8 @@ export function useUpdateTournamentMutation() {
         | 'round_names'
         | 'scoring_config'
         | 'requires_tiebreaker'
+        | 'survivor_elimination_rule'
+        | 'round_locks'
       >>
     }) => unwrap(api.updateTournament(id, updates)),
     onSuccess: () => {
@@ -139,4 +127,21 @@ export function useDeleteTournamentMutation() {
       safeInvalidate(qc, tournamentKeys.all)
     },
   })
+}
+
+export function useTournamentDetailsQuery(tournamentId: string) {
+  return useQuery({
+    queryKey: ['tournamentDetails', tournamentId],
+    queryFn: async () => {
+      const tournaments = await unwrap(api.fetchTournaments())
+      const found = tournaments.find(t => t.id === tournamentId)
+      if (!found) throw new Error('Tournament not found')
+      return found
+    },
+    enabled: !!tournamentId,
+  })
+}
+
+export function useTournamentGamesQuery(tournamentId: string) {
+  return useGames(tournamentId)
 }

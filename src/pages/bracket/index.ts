@@ -1,1 +1,3 @@
-export { default as BracketPage } from './ui/BracketPage'
+// src/pages/bracket/index.ts
+
+export { BracketPage } from './ui/BracketPage'

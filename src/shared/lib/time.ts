@@ -1,4 +1,4 @@
-// src/shared/libs/time.ts
+// src/shared/lib/time.ts
 // ─────────────────────────────────────────────────────────────
 // All timestamp utilities for the bracket app.
 //
@@ -41,6 +41,30 @@ export function parseTournamentTimestamp(iso: string): number {
 // ─────────────────────────────────────────────────────────────
 
 /**
+ * Evaluates the active picking round for a Survivor tournament based on discrete lock times.
+ * Returns the lowest round number (1-6) that is currently open.
+ * Returns 0 if all rounds are locked or the tournament is not open.
+ */
+export function getActiveSurvivorRound(tournament: Tournament | null): number {
+  if (!tournament || tournament.status !== 'open') return 0
+  if (!tournament.round_locks) return 1 // Fallback if no locks configured
+
+  const now = Date.now()
+  
+  // Find the first round that locks AFTER the current time
+  for (let r = 1; r <= 6; r++) {
+    const lockIso = tournament.round_locks[r]
+    if (!lockIso) continue
+    
+    if (now < parseTournamentTimestamp(lockIso)) {
+      return r
+    }
+  }
+  
+  return 0 // All configured rounds are in the past
+}
+
+/**
  * Returns true if picks should currently be locked for the tournament.
  *
  * Comparison: Date.now() vs Date.parse(locks_at) — both are epoch ms.
@@ -57,6 +81,11 @@ export function isPicksLocked(tournament: Tournament, _isAdmin = false): boolean
   
   if (tournament.status === 'draft' || tournament.status === 'locked') return true
   
+  // Diverge logic for Survivor mode
+  if (tournament.game_type === 'survivor') {
+    return getActiveSurvivorRound(tournament) === 0
+  }
+
   const now = Date.now()
 
   // 1. Lock the bracket if we haven't reached the unlock time yet

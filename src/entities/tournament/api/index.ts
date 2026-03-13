@@ -5,8 +5,6 @@
 // All admin-write operations are guarded via `withAdminAuth`.
 //
 // Co-located dependency: ./templateService.ts
-// (Copy src/features/tournament/api/templateService.ts here and update
-//  its supabase import to '../../../shared/infra/supabaseClient'.)
 
 import { supabase, withAdminAuth } from '../../../shared/infra/supabaseClient'
 import {
@@ -47,6 +45,8 @@ export interface CreateTournamentOptions {
   name:       string
   template:   TemplateKey
   teamCount?: number
+  group_id?:  string | null
+  game_type?: 'bracket' | 'survivor'
 }
 
 export async function createTournament(
@@ -61,6 +61,9 @@ export async function createTournament(
         round_names:         [],
         scoring_config:      null,
         requires_tiebreaker: false,
+        group_id:            opts.group_id ?? null,
+        game_type:           opts.game_type ?? 'bracket',
+        survivor_elimination_rule: 'end_early',
       })
       .select()
       .single()
@@ -86,13 +89,6 @@ export async function createTournament(
 
 /**
  * updateTournament — accepts any editable subset of Tournament fields.
- * Widened from the legacy version to accept `Partial<Tournament>` so the
- * `updateTournamentConfig` alias can forward arbitrary config shapes.
- *
- * NOTE: `id`, `status`, and `created_at` are intentionally excluded from
- * the type to prevent accidental overwrites. Use `publishTournament` and
- * `lockTournament` for status transitions — they are explicit and
- * auditable.
  */
 export async function updateTournament(
   id:      string,
@@ -103,6 +99,8 @@ export async function updateTournament(
     | 'round_names'
     | 'scoring_config'
     | 'requires_tiebreaker'
+    | 'survivor_elimination_rule'
+    | 'round_locks'
   >>,
 ): Promise<ServiceResult<Tournament>> {
   return withAdminAuth(async () => {
@@ -148,7 +146,6 @@ export async function deleteTournament(
   gameIds:      string[],
 ): Promise<ServiceResult<true>> {
   return withAdminAuth(async () => {
-    // Delete picks first (FK constraint)
     if (gameIds.length > 0) {
       const { error } = await supabase.from('picks').delete().in('game_id', gameIds)
       if (error) return { ok: false, error: error.message }

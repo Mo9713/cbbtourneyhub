@@ -1,117 +1,85 @@
-// src/store/uiStore.ts
+// src/shared/store/uiStore.ts
 import { create } from 'zustand'
-import type { ActiveView, ConfirmModalCfg, ToastMsg } from '../types'
+import type { ActiveView, ToastMsg, ConfirmModalCfg } from '../types'
 
-// ── Future Feature Placeholders ───────────────────────────────
-// Feature 3: Visual Bracket Layout Engine
-export type BracketLayoutMode = 'columns' | 'traditional' | 'compact'
+export interface UIStore {
+  // Mobile / layout state
+  sidebarOpen:    boolean
+  mobileMenuOpen: boolean
+  setSidebarOpen:    (open: boolean) => void
+  setMobileMenuOpen: (open: boolean) => void
 
-// ── Helpers ───────────────────────────────────────────────────
+  // Navigation
+  activeView:           ActiveView
+  setActiveView:        (v: ActiveView) => void
+  selectedTournamentId: string | null
+  selectTournament:     (id: string | null) => void
 
-function readNavSession(): { activeView: ActiveView; selectedTournamentId: string | null } {
-  try {
-    const raw = sessionStorage.getItem('app_nav_state')
-    if (raw) return JSON.parse(raw)
-  } catch {}
-  return { activeView: 'home', selectedTournamentId: null }
-}
+  // Creation modal (Tournament)
+  showAddTournament:  boolean
+  openAddTournament:  () => void
+  closeAddTournament: () => void
 
-function writeNavSession(activeView: ActiveView, selectedTournamentId: string | null) {
-  try {
-    sessionStorage.setItem('app_nav_state', JSON.stringify({ activeView, selectedTournamentId }))
-  } catch {}
-}
+  // Group Management modals
+  isCreateGroupOpen: boolean
+  isJoinGroupOpen:   boolean
+  openCreateGroup:   () => void
+  closeCreateGroup:  () => void
+  openJoinGroup:     () => void
+  closeJoinGroup:    () => void
 
-// ── Store Shape ───────────────────────────────────────────────
+  // Snoop
+  snoopTargetId: string | null
+  openSnoop:     (id: string) => void
+  closeSnoop:    () => void
 
-interface UIStore {
-  // Navigation (persisted to sessionStorage)
-  activeView:            ActiveView
-  selectedTournamentId:  string | null
-  setActiveView:         (v: ActiveView) => void
-  selectTournament:      (id: string) => void
-  navigateHome:          () => void
-
-  // Layout
-  sidebarOpen:           boolean
-  mobileMenuOpen:        boolean
-  setSidebarOpen:        (v: boolean) => void
-  setMobileMenuOpen:     (v: boolean) => void
-
-  // Feature 3 placeholder — bracket display mode
-  bracketLayoutMode:     BracketLayoutMode
-  setBracketLayoutMode:  (mode: BracketLayoutMode) => void
-
-  // Modals
-  showAddTournament:     boolean
-  snoopTargetId:         string | null
-  confirmModal:          ConfirmModalCfg | null
-  openAddTournament:     () => void
-  closeAddTournament:    () => void
-  openSnoop:             (id: string) => void
-  closeSnoop:            () => void
-  setConfirmModal:       (cfg: ConfirmModalCfg | null) => void
+  // Confirm
+  confirmModal:      ConfirmModalCfg | null
+  setConfirmModal:   (cfg: ConfirmModalCfg | null) => void
 
   // Toasts
-  toasts:                ToastMsg[]
-  pushToast:             (text: string, type?: ToastMsg['type']) => void
-  dismissToast:          (id: number) => void
+  toasts:      ToastMsg[]
+  pushToast:   (text: string, type?: ToastMsg['type']) => void
+  removeToast: (id: number) => void
 }
-
-// ── Store ─────────────────────────────────────────────────────
-
-const savedNav = readNavSession()
 
 export const useUIStore = create<UIStore>((set) => ({
-  // Navigation — rehydrated from sessionStorage on boot
-  activeView:           savedNav.activeView,
-  selectedTournamentId: savedNav.selectedTournamentId,
+  sidebarOpen:    true,
+  mobileMenuOpen: false,
+  setSidebarOpen:    (open) => set({ sidebarOpen: open }),
+  setMobileMenuOpen: (open) => set({ mobileMenuOpen: open }),
 
-  setActiveView: (v) => {
-    set((s) => {
-      writeNavSession(v, s.selectedTournamentId)
-      return { activeView: v }
-    })
-  },
-  selectTournament: (id) => {
-    writeNavSession('bracket', id)
-    set({ selectedTournamentId: id, activeView: 'bracket' })
-  },
-  navigateHome: () => {
-    writeNavSession('home', null)
-    set({ selectedTournamentId: null, activeView: 'home' })
-  },
+  activeView:           'home',
+  setActiveView:        (v) => set({ activeView: v }),
+  selectedTournamentId: null,
+  selectTournament:     (id) => set({ selectedTournamentId: id, mobileMenuOpen: false }),
 
-  // Layout
-  sidebarOpen:      true,
-  mobileMenuOpen:   false,
-  setSidebarOpen:   (v) => set({ sidebarOpen: v }),
-  setMobileMenuOpen:(v) => set({ mobileMenuOpen: v }),
-
-  // Feature 3 placeholder
-  bracketLayoutMode:    'columns',
-  setBracketLayoutMode: (mode) => set({ bracketLayoutMode: mode }),
-
-  // Modals
-  showAddTournament: false,
-  snoopTargetId:     null,
-  confirmModal:      null,
+  showAddTournament:  false,
   openAddTournament:  () => set({ showAddTournament: true }),
   closeAddTournament: () => set({ showAddTournament: false }),
-  openSnoop:          (id) => set({ snoopTargetId: id }),
-  closeSnoop:         () => set({ snoopTargetId: null }),
-  setConfirmModal:    (cfg) => set({ confirmModal: cfg }),
 
-  // Toasts
-  toasts:      [],
-  pushToast:   (text, type = 'success') => {
-    const id = Date.now() + Math.random()
-    set((s) => ({ toasts: [...s.toasts, { id, text, type }] }))
-    setTimeout(() => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })), 3200)
-  },
-  dismissToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
+  isCreateGroupOpen: false,
+  isJoinGroupOpen:   false,
+  openCreateGroup:   () => set({ isCreateGroupOpen: true }),
+  closeCreateGroup:  () => set({ isCreateGroupOpen: false }),
+  openJoinGroup:     () => set({ isJoinGroupOpen: true }),
+  closeJoinGroup:    () => set({ isJoinGroupOpen: false }),
+
+  snoopTargetId: null,
+  openSnoop:     (id) => set({ snoopTargetId: id }),
+  closeSnoop:    () => set({ snoopTargetId: null }),
+
+  confirmModal:    null,
+  setConfirmModal: (cfg) => set({ confirmModal: cfg }),
+
+  toasts: [],
+  pushToast: (text, type = 'info') =>
+    set((state) => {
+      const id = Date.now()
+      return { toasts: [...state.toasts, { id, text, type }] }
+    }),
+  removeToast: (id) =>
+    set((state) => ({
+      toasts: state.toasts.filter((t) => t.id !== id),
+    })),
 }))
-
-
-
-

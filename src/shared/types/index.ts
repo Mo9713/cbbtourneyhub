@@ -2,7 +2,7 @@
 
 export type TournamentStatus = 'draft' | 'open' | 'locked'
 export type ThemeKey         = 'ember' | 'ice' | 'plasma' | 'forest' | 'mono'
-export type ActiveView       = 'home' | 'bracket' | 'leaderboard' | 'admin' | 'settings'
+export type ActiveView       = 'home' | 'bracket' | 'leaderboard' | 'admin' | 'settings' | 'group'
 export type TemplateKey      = 'blank' | 'standard' | 'bigdance'
 export type UIMode           = 'light' | 'dark'
 

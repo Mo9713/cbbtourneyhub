@@ -5,6 +5,7 @@ import { PanelLeftOpen }                from 'lucide-react'
 
 import { SnoopModal }                   from '../widgets/snoop-modal'
 import { AddTournamentModal }           from '../features/tournament'
+import { CreateGroupModal, JoinGroupModal } from '../features/group-management'
 
 import {
   Sidebar, MobileHeader, Toaster, ConfirmModal,
@@ -25,6 +26,8 @@ export default function AppShell() {
     sidebarOpen,       setSidebarOpen,
     mobileMenuOpen,    setMobileMenuOpen,
     showAddTournament, closeAddTournament,
+    isCreateGroupOpen, closeCreateGroup,
+    isJoinGroupOpen,   closeJoinGroup,
     snoopTargetId,     closeSnoop,
     confirmModal,
     toasts,            pushToast,
@@ -36,12 +39,17 @@ export default function AppShell() {
   useHashRouter()
 
   const handleCreateTournament = useCallback(async (
-    name: string, template: TemplateKey, teamCount?: number,
+    name: string, template: TemplateKey, teamCount?: number, gameType?: 'bracket' | 'survivor', groupId?: string | null
   ) => {
     pushToast('Creating tournament…', 'info')
     try {
-      const tournament = await createTournamentM.mutateAsync({ name, template, teamCount })
-      // Navigate to the new tournament's admin view
+      const tournament = await createTournamentM.mutateAsync({ 
+        name, 
+        template, 
+        teamCount,
+        game_type: gameType,
+        group_id: groupId
+      })
       useUIStore.getState().selectTournament(tournament.id)
       useUIStore.getState().setActiveView('admin')
       pushToast(`"${name}" created!`, 'success')
@@ -120,6 +128,12 @@ export default function AppShell() {
           onClose={closeAddTournament}
           onCreate={handleCreateTournament}
         />
+      )}
+      {isCreateGroupOpen && (
+        <CreateGroupModal onClose={closeCreateGroup} />
+      )}
+      {isJoinGroupOpen && (
+        <JoinGroupModal onClose={closeJoinGroup} />
       )}
       {confirmModal && <ConfirmModal {...confirmModal} />}
       <Toaster toasts={toasts} />
