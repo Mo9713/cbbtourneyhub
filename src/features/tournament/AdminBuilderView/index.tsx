@@ -3,39 +3,47 @@
 import { useState, useMemo, useCallback, useEffect } from 'react'
 import { useQueryClient }   from '@tanstack/react-query'
 
-import { useTournamentContext }         from '../model/TournamentContext'
-import { useBracketContext }            from '../../bracket'
 import {
   useGames,
   useUpdateTournamentMutation,
   usePublishTournamentMutation,
   useLockTournamentMutation,
+  useDeleteTournamentMutation,
+  useTournamentListQuery,
+  usePatchGamesCache,
   tournamentKeys,
 }                                       from '../../../entities/tournament/model/queries'
 import { computeGameNumbers }           from '../../../shared/lib/bracketMath'
 import { BD_REGIONS }                   from '../../../shared/lib/helpers'
+import { useUIStore }                   from '../../../shared/store/uiStore'
+import * as gameService                 from '../../bracket/api/gameService'
 
 import AdminHeader            from './AdminHeader'
 import TournamentConfigPanel  from './TournamentConfigPanel'
 import AdminBracketGrid       from '../../bracket/ui/AdminBracketGrid'
 import type { Game, Tournament } from '../../../shared/types'
 
-interface Props {
-  onDeleteGame:       (game: Game) => void
-  onDeleteTournament: ()           => void
-}
-
-export default function AdminBuilderView({ onDeleteGame, onDeleteTournament }: Props) {
-  const queryClient = useQueryClient()
+export default function AdminBuilderView() {
+  const qc = useQueryClient()
+  const { setConfirmModal, pushToast } = useUIStore()
 
   // ── Tournament data ───────────────────────────────────────
-  const { selectedTournament: tournament } = useTournamentContext()
-  const { data: games = [] }               = useGames(tournament?.id ?? null)
+  const { data: tournaments = [] } = useTournamentListQuery()
+  const selectedTournamentId       = useUIStore((s) => s.selectedTournamentId)
+  
+  const tournament = useMemo(
+    () => tournaments.find((t) => t.id === selectedTournamentId) ?? null, 
+    [tournaments, selectedTournamentId]
+  )
+
+  const { data: games = [] } = useGames(tournament?.id ?? null)
+  const patchGamesCache      = usePatchGamesCache()
 
   // ── Mutation hooks ────────────────────────────────────────
   const updateTournamentM  = useUpdateTournamentMutation()
   const publishTournamentM = usePublishTournamentMutation()
   const lockTournamentM    = useLockTournamentMutation()
+  const deleteTournamentM  = useDeleteTournamentMutation()
 
   const renameTournament = useCallback(async (newName: string): Promise<void> => {
     if (!tournament) return
@@ -57,15 +65,125 @@ export default function AdminBuilderView({ onDeleteGame, onDeleteTournament }: P
     await lockTournamentM.mutateAsync(tournament.id)
   }, [tournament, lockTournamentM])
 
+  const handleDeleteTournament = useCallback(() => {
+    if (!tournament) return
+    const gameIds = games.map((g) => g.id)
+    setConfirmModal({
+      title:        'Delete Tournament',
+      message:      `Permanently delete "${tournament.name}" and all its games?`,
+      dangerous:    true,
+      confirmLabel: 'Delete',
+      onCancel:  () => setConfirmModal(null),
+      onConfirm: async () => {
+        setConfirmModal(null)
+        try {
+          await deleteTournamentM.mutateAsync({ id: tournament.id, gameIds })
+        } catch (err) {
+          pushToast(err instanceof Error ? err.message : 'Delete failed.', 'error')
+        }
+      },
+    })
+  }, [tournament, games, deleteTournamentM, setConfirmModal, pushToast])
+
   // ── Bracket mutations ─────────────────────────────────────
-  const {
-    updateGame,
-    setWinner,
-    addGameToRound,
-    addNextRound,
-    linkGames,
-    unlinkGame,
-  } = useBracketContext()
+  const updateGame = useCallback(async (id: string, updates: Partial<Game>): Promise<string | null> => {
+    const tid = tournament?.id
+    if (!tid) return 'No tournament selected'
+    const result = await gameService.updateGame(id, updates)
+    if (!result.ok) return result.error
+    patchGamesCache(tid, (prev) => prev.map((g) => g.id === id ? { ...g, ...updates } : g))
+    return null
+  }, [tournament?.id, patchGamesCache])
+
+  const setWinner = useCallback(async (game: Game, winner: string): Promise<string | null> => {
+    const tid = tournament?.id
+    if (!tid) return 'No tournament selected'
+    const gameNums = computeGameNumbers(games)
+    const result   = await gameService.setWinner(game, winner, games, gameNums)
+    if (!result.ok) return result.error
+    void qc.invalidateQueries({ queryKey: tournamentKeys.games(tid) })
+    return null
+  }, [tournament?.id, games, qc])
+
+  const addGameToRound = useCallback(async (round: number): Promise<string | null> => {
+    const tid = tournament?.id
+    if (!tid) return 'No tournament selected'
+    const result = await gameService.addGameToRound(tid, round, 0)
+    if (!result.ok) return result.error
+    void qc.invalidateQueries({ queryKey: tournamentKeys.games(tid) })
+    return null
+  }, [tournament?.id, qc])
+
+  const addNextRound = useCallback(async (): Promise<string | null> => {
+    const tid = tournament?.id
+    if (!tid) return 'No tournament selected'
+    const maxRound = games.length ? Math.max(...games.map((g) => g.round_num)) : 0
+    const result   = await gameService.addGameToRound(tid, maxRound + 1, 0)
+    if (!result.ok) return result.error
+    void qc.invalidateQueries({ queryKey: tournamentKeys.games(tid) })
+    return null
+  }, [tournament?.id, games, qc])
+
+  const deleteGame = useCallback(async (game: Game): Promise<string | null> => {
+    const tid = tournament?.id
+    if (!tid) return 'No tournament selected'
+    const gameNums = computeGameNumbers(games)
+    const result   = await gameService.deleteGame(game, games, gameNums)
+    if (!result.ok) return result.error
+    void qc.invalidateQueries({ queryKey: tournamentKeys.games(tid) })
+    return null
+  }, [tournament?.id, games, qc])
+
+  const linkGames = useCallback(async (fromId: string, toId: string, slot: 'team1_name' | 'team2_name'): Promise<string | null> => {
+    const tid = tournament?.id
+    if (!tid) return 'No tournament selected'
+    const gameNums = computeGameNumbers(games)
+    const fromGame = games.find((g) => g.id === fromId)
+    if (!fromGame) return 'Game not found'
+    patchGamesCache(tid, (prev) => prev.map((g) => {
+      if (g.id === fromId) return { ...g, next_game_id: toId }
+      if (g.id === toId)   return { ...g, [slot]: `Winner of Game #${gameNums[fromId]}` }
+      return g
+    }))
+    const result = await gameService.linkGames(fromGame, toId, slot, gameNums[fromId], games, gameNums)
+    if (!result.ok) {
+      void qc.invalidateQueries({ queryKey: tournamentKeys.games(tid) })
+      return result.error
+    }
+    void qc.invalidateQueries({ queryKey: tournamentKeys.games(tid) })
+    return null
+  }, [tournament?.id, games, patchGamesCache, qc])
+
+  const unlinkGame = useCallback(async (fromId: string): Promise<string | null> => {
+    const tid = tournament?.id
+    if (!tid) return 'No tournament selected'
+    const gameNums = computeGameNumbers(games)
+    const fromGame = games.find((g) => g.id === fromId)
+    if (!fromGame) return 'Game not found'
+    patchGamesCache(tid, (prev) => prev.map((g) => g.id === fromId ? { ...g, next_game_id: null } : g))
+    const result = await gameService.unlinkGame(fromGame, games, gameNums)
+    if (!result.ok) {
+      void qc.invalidateQueries({ queryKey: tournamentKeys.games(tid) })
+      return result.error
+    }
+    void qc.invalidateQueries({ queryKey: tournamentKeys.games(tid) })
+    return null
+  }, [tournament?.id, games, patchGamesCache, qc])
+
+  const handleDeleteGame = useCallback((game: Game) => {
+    setConfirmModal({
+      title:        'Delete Game',
+      message:      `Delete Round ${game.round_num} game (${game.team1_name} vs ${game.team2_name})?`,
+      dangerous:    true,
+      confirmLabel: 'Delete',
+      onCancel:  () => setConfirmModal(null),
+      onConfirm: async () => {
+        setConfirmModal(null)
+        const err = await deleteGame(game)
+        if (err) pushToast(err, 'error')
+      },
+    })
+  }, [deleteGame, setConfirmModal, pushToast])
 
   // ── UI state ──────────────────────────────────────────────
   const [linkingFromId,  setLinkingFromId]  = useState<string | null>(null)
@@ -124,24 +242,17 @@ export default function AdminBuilderView({ onDeleteGame, onDeleteTournament }: P
 
   // ── Drag handlers ─────────────────────────────────────────
   const handleDragStart = useCallback((id: string) => setDraggedGameId(id), [])
-
-  // FIX: Added `e: React.DragEvent` first parameter to match
-  // AdminBracketGrid's `onDragOver: (e: React.DragEvent, id: string) => void`
   const handleDragOver = useCallback((e: React.DragEvent, id: string) => {
-    e.preventDefault()  // Required: signals the browser that a drop is valid here
+    e.preventDefault()
     setDragOverGameId(id)
   }, [])
-
   const handleDragEnd = useCallback(() => {
     setDraggedGameId(null)
     setDragOverGameId(null)
   }, [])
-
-  // FIX: Added `e: React.DragEvent` first parameter to match
-  // AdminBracketGrid's `onDrop: (e: React.DragEvent, id: string) => void`
   const handleDrop = useCallback(
     async (e: React.DragEvent, targetId: string) => {
-      e.preventDefault()  // Required: prevents browser default drop behaviour
+      e.preventDefault()
       if (!draggedGameId) return
       const roundNum = games.find((g) => g.id === draggedGameId)?.round_num
       const sorted   = games
@@ -163,9 +274,9 @@ export default function AdminBuilderView({ onDeleteGame, onDeleteTournament }: P
   // ── Reload ────────────────────────────────────────────────
   const handleReload = useCallback(() => {
     if (!tournament) return
-    void queryClient.invalidateQueries({ queryKey: tournamentKeys.games(tournament.id) })
-    void queryClient.invalidateQueries({ queryKey: tournamentKeys.all })
-  }, [queryClient, tournament])
+    void qc.invalidateQueries({ queryKey: tournamentKeys.games(tournament.id) })
+    void qc.invalidateQueries({ queryKey: tournamentKeys.all })
+  }, [qc, tournament])
 
   if (!tournament) return null
 
@@ -181,7 +292,7 @@ export default function AdminBuilderView({ onDeleteGame, onDeleteTournament }: P
         onLock={lockTournament}
         onAddNextRound={addNextRound}
         onReload={handleReload}
-        onDeleteTournament={onDeleteTournament}
+        onDeleteTournament={handleDeleteTournament}
       />
 
       <TournamentConfigPanel
@@ -190,7 +301,6 @@ export default function AdminBuilderView({ onDeleteGame, onDeleteTournament }: P
         onUpdate={(upd) => updateTournament(upd as Partial<Tournament>)}
       />
 
-      {/* Big Dance region tabs */}
       {isBigDance && (
         <div className="flex gap-1 px-4 pt-2 pb-0 border-b border-amber-500/10 flex-shrink-0 overflow-x-auto bg-slate-900/30">
           <button
@@ -232,7 +342,7 @@ export default function AdminBuilderView({ onDeleteGame, onDeleteTournament }: P
         onCancelLink={() => setLinkingFromId(null)}
         onUpdateGame={updateGame}
         onSetWinner={setWinner}
-        onDeleteGame={onDeleteGame}
+        onDeleteGame={handleDeleteGame}
         onAddGameToRound={addGameToRound}
         onUnlinkGame={unlinkGame}
         onDragStart={handleDragStart}

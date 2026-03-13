@@ -1,92 +1,31 @@
 // src/app/ViewRouter.tsx
 
-import { useCallback } from 'react'
+import { useAuth, SettingsView }          from '../features/auth'
+import { HomeView, AdminBuilderView }     from '../features/tournament'
+import { BracketView }                    from '../features/bracket'
+import { LeaderboardView }                from '../features/leaderboard'
 
-import { useAuthContext, SettingsView }  from '../features/auth'
-import { useTournamentContext, HomeView,
-         AdminBuilderView }              from '../features/tournament'
-import { BracketView, useGameMutations } from '../features/bracket'
-import { LeaderboardView }               from '../features/leaderboard'
-
-import {
-  useGames,
-  useDeleteTournamentMutation,
-} from '../entities/tournament/model/queries'
-import { useUIStore } from '../shared/store/uiStore'
-import type { Game }  from '../shared/types'
+import { useTournamentListQuery }         from '../entities/tournament/model/queries'
+import { useUIStore }                     from '../shared/store/uiStore'
 
 export default function ViewRouter() {
-  const { profile, user, setProfile }            = useAuthContext()
-  const { selectedTournament }                   = useTournamentContext()
-  const { deleteGame }                           = useGameMutations()
-  const { openSnoop, setConfirmModal, pushToast } = useUIStore()
-  const activeView                               = useUIStore((s) => s.activeView)
+  const { profile, user, setProfile } = useAuth()
+  const { openSnoop, pushToast }      = useUIStore()
+  
+  const activeView           = useUIStore((s) => s.activeView)
+  const selectedTournamentId = useUIStore((s) => s.selectedTournamentId)
 
-  // Lazy-load games only for the selected tournament.
-  // Used exclusively to collect gameIds for the delete confirmation.
-  const { data: selectedGames = [] } = useGames(selectedTournament?.id ?? null)
-
-  const deleteTournamentM = useDeleteTournamentMutation()
+  const { data: tournaments = [] } = useTournamentListQuery()
+  const selectedTournament = tournaments.find((t) => t.id === selectedTournamentId) ?? null
 
   if (!profile) return null
 
-  const handleSnoop = openSnoop
-
-  const handleDeleteGame = useCallback(
-    (game: Game) => {
-      setConfirmModal({
-        title:        'Delete Game',
-        message:      `Delete Round ${game.round_num} game (${game.team1_name} vs ${game.team2_name})?`,
-        dangerous:    true,
-        confirmLabel: 'Delete',
-        onCancel:  () => setConfirmModal(null),
-        onConfirm: async () => {
-          setConfirmModal(null)
-          const err = await deleteGame(game)
-          if (err) pushToast(err, 'error')
-        },
-      })
-    },
-    [deleteGame, setConfirmModal, pushToast],
-  )
-
-  const handleDeleteTournament = useCallback(() => {
-    if (!selectedTournament) return
-    const gameIds = selectedGames.map((g) => g.id)
-    setConfirmModal({
-      title:        'Delete Tournament',
-      message:      `Permanently delete "${selectedTournament.name}" and all its games?`,
-      dangerous:    true,
-      confirmLabel: 'Delete',
-      onCancel:  () => setConfirmModal(null),
-      onConfirm: async () => {
-        setConfirmModal(null)
-        try {
-          await deleteTournamentM.mutateAsync({
-            id:      selectedTournament.id,
-            gameIds,
-          })
-        } catch (err) {
-          pushToast(
-            err instanceof Error ? err.message : 'Delete failed.',
-            'error',
-          )
-        }
-      },
-    })
-  }, [selectedTournament, selectedGames, deleteTournamentM, setConfirmModal, pushToast])
-
   switch (activeView) {
     case 'admin':
-      return profile.is_admin
-        ? <AdminBuilderView
-            onDeleteGame={handleDeleteGame}
-            onDeleteTournament={handleDeleteTournament}
-          />
-        : <BracketView />
+      return profile.is_admin ? <AdminBuilderView /> : <BracketView />
 
     case 'leaderboard':
-      return <LeaderboardView onSnoop={handleSnoop} />
+      return <LeaderboardView onSnoop={openSnoop} />
 
     case 'settings':
       return (

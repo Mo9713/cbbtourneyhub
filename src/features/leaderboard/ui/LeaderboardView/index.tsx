@@ -3,11 +3,12 @@
 import { useState, useMemo, useEffect } from 'react'
 import { BarChart2, Shield }             from 'lucide-react'
 import { useTheme }                      from '../../../../shared/lib/theme'
-import { useAuthContext }                from '../../../auth/model/AuthContext'
+import { useAuth }                       from '../../../auth/model/useAuth'
 import { useTournamentListQuery }        from '../../../../entities/tournament/model/queries'
-import { useLeaderboardRaw }             from '../../model/queries'
+import { useLeaderboardRaw }             from '../../../../entities/leaderboard/model/queries'
 import { computeLeaderboard }            from '../../model/selectors'
 import Avatar                            from '../../../../shared/ui/Avatar'
+import type { Game }                     from '../../../../shared/types'
 
 interface LeaderboardViewProps {
   onSnoop: (targetId: string) => void
@@ -17,12 +18,10 @@ export default function LeaderboardView({ onSnoop }: LeaderboardViewProps) {
   const theme  = useTheme()
   const medals = ['🥇', '🥈', '🥉']
 
-  const { profile }                          = useAuthContext()
+  const { profile }                          = useAuth()
   const { data: tournaments = [] }           = useTournamentListQuery()
   const { data: raw }                        = useLeaderboardRaw()
 
-  // Admin filter — local UI state, not server state.
-  // Initialized with all current tournament IDs checked.
   const [selectedTournaments, setSelectedTournaments] = useState<Set<string>>(
     () => new Set(tournaments.map((t) => t.id)),
   )
@@ -35,20 +34,16 @@ export default function LeaderboardView({ onSnoop }: LeaderboardViewProps) {
     })
   }
 
-  // Reconciliation: keep the filter set in sync as tournaments are
-  // added or removed on the server (realtime + refetch).
   useEffect(() => {
     setSelectedTournaments((prev) => {
       const serverIds = new Set(tournaments.map((t) => t.id))
       const next      = new Set(prev)
       let   changed   = false
 
-      // 1. Auto-select any brand-new tournament
       tournaments.forEach((t) => {
         if (!next.has(t.id)) { next.add(t.id); changed = true }
       })
 
-      // 2. Evict any ID whose tournament no longer exists on the server
       next.forEach((id) => {
         if (!serverIds.has(id)) { next.delete(id); changed = true }
       })
@@ -62,7 +57,7 @@ export default function LeaderboardView({ onSnoop }: LeaderboardViewProps) {
     const tournamentMap = new Map(tournaments.map((t) => [t.id, t]))
     const scopedGames   =
       selectedTournaments.size > 0
-        ? raw.allGames.filter((g) => selectedTournaments.has(g.tournament_id))
+        ? raw.allGames.filter((g: Game) => selectedTournaments.has(g.tournament_id))
         : raw.allGames
     return computeLeaderboard(
       raw.allPicks,
@@ -80,7 +75,6 @@ export default function LeaderboardView({ onSnoop }: LeaderboardViewProps) {
   return (
     <div className="flex flex-col h-full">
 
-      {/* Header */}
       <div className={`px-6 py-4 border-b flex-shrink-0 ${useTheme().headerBg}`}>
         <h2 className="font-display text-4xl font-extrabold text-white uppercase tracking-wide">
           Global Leaderboard
@@ -90,7 +84,6 @@ export default function LeaderboardView({ onSnoop }: LeaderboardViewProps) {
         </p>
       </div>
 
-      {/* Admin tournament filter */}
       {isAdmin && tournaments.length > 0 && (
         <div className="px-6 py-3 border-b border-slate-800 bg-amber-500/5 flex-shrink-0">
           <div className="flex items-center gap-2 flex-wrap">
@@ -122,7 +115,6 @@ export default function LeaderboardView({ onSnoop }: LeaderboardViewProps) {
         </div>
       )}
 
-      {/* Leaderboard rows */}
       <div className="flex-1 overflow-auto p-6">
         {leaderboard.length === 0 ? (
           <div className="flex items-center justify-center h-full text-slate-600 text-sm">
@@ -146,7 +138,6 @@ export default function LeaderboardView({ onSnoop }: LeaderboardViewProps) {
                     }
                     ${isAdmin && !isMe ? 'cursor-pointer hover:border-slate-600' : ''}`}
                 >
-                  {/* Rank */}
                   <div className="w-8 text-center flex-shrink-0">
                     {medal
                       ? <span className="text-xl">{medal}</span>
@@ -154,14 +145,12 @@ export default function LeaderboardView({ onSnoop }: LeaderboardViewProps) {
                     }
                   </div>
 
-                  {/* Avatar + name */}
                   <Avatar profile={entry.profile} size="md" />
                   <div className="flex-1 min-w-0">
                     <p className={`text-sm font-semibold truncate ${isMe ? theme.accentB : 'text-white'}`}>
                       {entry.profile.display_name}
                       {isMe && <span className="text-xs font-normal text-slate-500 ml-1.5">(you)</span>}
                     </p>
-                    {/* Progress bar */}
                     <div className="mt-1.5 h-1 rounded-full bg-slate-800 overflow-hidden w-full max-w-xs">
                       <div
                         className={`h-full rounded-full transition-all ${isMe ? theme.btn.split(' ')[0] : 'bg-slate-600'}`}
@@ -170,7 +159,6 @@ export default function LeaderboardView({ onSnoop }: LeaderboardViewProps) {
                     </div>
                   </div>
 
-                  {/* Stats */}
                   <div className="text-right flex-shrink-0">
                     <p className={`text-lg font-bold tabular-nums ${isMe ? theme.accentB : 'text-white'}`}>
                       {entry.points}
@@ -186,7 +174,6 @@ export default function LeaderboardView({ onSnoop }: LeaderboardViewProps) {
                     )}
                   </div>
 
-                  {/* Snoop hint */}
                   {isAdmin && !isMe && (
                     <BarChart2 size={13} className="text-slate-600 flex-shrink-0" />
                   )}
