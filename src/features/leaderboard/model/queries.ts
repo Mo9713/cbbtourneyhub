@@ -1,23 +1,7 @@
 // src/features/leaderboard/model/queries.ts
-import { useQuery } from '@tanstack/react-query'
-import { fetchLeaderboardData } from '../api/api'
 
-export const leaderboardKeys = {
-  raw: ['leaderboard', 'raw'] as const,
-}
-
-async function unwrap<T>(
-  p: Promise<{ ok: true; data: T } | { ok: false; error: string }>,
-): Promise<T> {
-  const r = await p
-  if (!r.ok) throw new Error(r.error)
-  return r.data
-}
-
-/** Fetches all picks, games, and profiles in one parallel shot. */
-export function useLeaderboardRaw() {
-  return useQuery({
-    queryKey: leaderboardKeys.raw,
-    queryFn:  () => unwrap(fetchLeaderboardData()),
-  })
-}
+// The leaderboard feature relies strictly on the entity for data hydration.
+export {
+  useLeaderboardRaw,
+  leaderboardKeys
+} from '../../../entities/leaderboard/model/queries'
