@@ -1,12 +1,13 @@
 // src/app/ViewRouter.tsx
 
-import { useAuth, SettingsView }          from '../features/auth'
-import { HomeView, AdminBuilderView }     from '../features/tournament'
-import { BracketView }                    from '../features/bracket'
-import { LeaderboardView }                from '../features/leaderboard'
+import { useAuth, SettingsView }                  from '../features/auth'
+import { HomePage as HomeView }                   from '../pages/home'
+import { AdminBuilderPage as AdminBuilderView }   from '../pages/admin'
+import { BracketPage as BracketView }             from '../pages/bracket'
+import { LeaderboardPage as LeaderboardView }     from '../pages/leaderboard'
 
-import { useTournamentListQuery }         from '../entities/tournament/model/queries'
-import { useUIStore }                     from '../shared/store/uiStore'
+import { useTournamentListQuery }                 from '../entities/tournament/model/queries'
+import { useUIStore }                             from '../shared/store/uiStore'
 
 export default function ViewRouter() {
   const { profile, user, setProfile } = useAuth()
