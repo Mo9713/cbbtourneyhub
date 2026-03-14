@@ -1,10 +1,12 @@
 // src/widgets/group-dashboard/ui/GroupDashboard.tsx
 
-import { Trash2 }               from 'lucide-react'
-import { useGroupDetailsQuery, useDeleteGroupMutation } from '../../../entities/group'
+import { Trash2, LogOut }       from 'lucide-react'
+import { useGroupDetailsQuery, useDeleteGroupMutation, useLeaveGroupMutation } from '../../../entities/group'
+import { useTournamentListQuery } from '../../../entities/tournament/model/queries'
 import { useTheme }             from '../../../shared/lib/theme'
 import { useUIStore }           from '../../../shared/store/uiStore'
 import { useAuth }              from '../../../features/auth'
+import type { Tournament }      from '../../../shared/types'
 
 interface GroupDashboardProps {
   groupId: string
@@ -13,15 +15,21 @@ interface GroupDashboardProps {
 export function GroupDashboard({ groupId }: GroupDashboardProps) {
   const theme = useTheme()
   const { profile } = useAuth()
+  
   const { data: group, isLoading, error } = useGroupDetailsQuery(groupId)
+  const { data: allTournaments = [] }     = useTournamentListQuery()
+  
   const deleteGroupM = useDeleteGroupMutation()
+  const leaveGroupM  = useLeaveGroupMutation()
   
   const openAddTournament = useUIStore(s => s.openAddTournament)
   const setConfirmModal   = useUIStore(s => s.setConfirmModal)
   const setActiveView     = useUIStore(s => s.setActiveView)
   const setActiveGroup    = useUIStore(s => s.setActiveGroup)
+  const selectTournament  = useUIStore(s => s.selectTournament)
 
-  const isOwner = profile?.id === group?.owner_id
+  const isOwner          = profile?.id === group?.owner_id
+  const groupTournaments = allTournaments.filter((t: Tournament) => t.group_id === groupId)
 
   const handleDelete = () => {
     if (!group) return
@@ -34,7 +42,26 @@ export function GroupDashboard({ groupId }: GroupDashboardProps) {
         deleteGroupM.mutate(group.id, {
           onSuccess: () => {
             setActiveGroup(null)
-            // N-11 FIX: Direct hash write removed. setActiveView is the single source of truth.
+            setActiveView('home')
+            setConfirmModal(null)
+          }
+        })
+      },
+      onCancel: () => setConfirmModal(null)
+    })
+  }
+
+  const handleLeave = () => {
+    if (!group) return
+    setConfirmModal({
+      title: 'Leave Group',
+      message: `Are you sure you want to leave "${group.name}"?`,
+      dangerous: true,
+      confirmLabel: 'Leave',
+      onConfirm: () => {
+        leaveGroupM.mutate(group.id, {
+          onSuccess: () => {
+            setActiveGroup(null)
             setActiveView('home')
             setConfirmModal(null)
           }
@@ -68,7 +95,7 @@ export function GroupDashboard({ groupId }: GroupDashboardProps) {
 
   return (
     <div className="flex flex-col w-full max-w-6xl mx-auto p-4 md:p-8 gap-8">
-      {/* Group Header */}
+      {/* ── Group Header ── */}
       <header className={`relative overflow-hidden rounded-2xl border p-8 shadow-sm ${theme.panelBg} ${theme.borderBase}`}>
         <div className={`absolute top-0 left-0 w-2 h-full ${theme.bgMd}`}></div>
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -84,13 +111,21 @@ export function GroupDashboard({ groupId }: GroupDashboardProps) {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            {isOwner && (
+            {isOwner ? (
               <button 
                 onClick={handleDelete}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-bold text-rose-500 hover:bg-rose-500/10 border border-rose-500/20 transition-all"
               >
                 <Trash2 size={16} />
                 Delete
+              </button>
+            ) : (
+              <button 
+                onClick={handleLeave}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-bold text-amber-500 hover:bg-amber-500/10 border border-amber-500/20 transition-all"
+              >
+                <LogOut size={16} />
+                Leave
               </button>
             )}
             <span className={`px-3 py-1.5 rounded-full text-sm font-semibold border ${theme.borderBase} ${theme.textBase}`}>
@@ -100,7 +135,7 @@ export function GroupDashboard({ groupId }: GroupDashboardProps) {
         </div>
       </header>
 
-      {/* Tournaments Section */}
+      {/* ── Tournaments Section ── */}
       <section className="flex flex-col gap-4">
         <div className="flex items-center justify-between">
           <h2 className={`text-2xl font-bold ${theme.textBase}`}>Tournaments</h2>
@@ -114,15 +149,38 @@ export function GroupDashboard({ groupId }: GroupDashboardProps) {
           )}
         </div>
         
-        {/* Placeholder for Tournament List Widget */}
-        <div className={`w-full p-12 rounded-xl border-2 border-dashed flex flex-col items-center justify-center text-center gap-3 ${theme.borderBase} ${theme.panelBg}`}>
-          <div className={`text-4xl opacity-50`}>🏆</div>
-          <h3 className={`text-lg font-semibold ${theme.textBase}`}>No Tournaments Yet</h3>
-          <p className={`max-w-md text-sm ${theme.textMuted}`}>
-            This group doesn't have any active tournaments. 
-            {profile?.is_admin ? " Click '+ New Tournament' to create one." : " Wait for an admin to create one."}
-          </p>
-        </div>
+        {groupTournaments.length === 0 ? (
+          <div className={`w-full p-12 rounded-xl border-2 border-dashed flex flex-col items-center justify-center text-center gap-3 ${theme.borderBase} ${theme.panelBg}`}>
+            <div className={`text-4xl opacity-50`}>🏆</div>
+            <h3 className={`text-lg font-semibold ${theme.textBase}`}>No Tournaments Yet</h3>
+            <p className={`max-w-md text-sm ${theme.textMuted}`}>
+              This group doesn't have any active tournaments. 
+              {profile?.is_admin ? " Click '+ New Tournament' to create one." : " Wait for an admin to create one."}
+            </p>
+          </div>
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {groupTournaments.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => {
+                  selectTournament(t.id)
+                  setActiveView('bracket')
+                }}
+                className={`text-left p-5 rounded-2xl border-2 transition-all hover:scale-[1.02] active:scale-[0.99] w-full border-slate-300 dark:border-slate-800 bg-slate-100 dark:bg-slate-900/40 hover:border-slate-400 dark:hover:border-slate-700`}
+              >
+                 <div className="flex items-start justify-between gap-2">
+                    <h3 className="font-display text-xl font-bold text-slate-900 dark:text-white uppercase tracking-wide leading-tight">
+                      {t.name}
+                    </h3>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-2 uppercase tracking-widest font-bold">
+                    {t.status}
+                  </p>
+              </button>
+            ))}
+          </div>
+        )}
       </section>
     </div>
   )

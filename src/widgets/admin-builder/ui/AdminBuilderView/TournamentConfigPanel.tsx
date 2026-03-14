@@ -2,19 +2,10 @@
 import { useState, useEffect } from 'react'
 import { Settings2, Hash, ToggleLeft, ToggleRight, CalendarClock, ShieldAlert } from 'lucide-react'
 import { useTheme }            from '../../../../shared/lib/theme'
-import { getRoundLabel }       from '../../../../shared/lib/helpers'
+import { getRoundLabel, getScore } from '../../../../shared/lib/helpers'
 import { isoToInputInTz, inputInTzToISO } from '../../../../shared/lib/time'
 import { useUIStore }          from '../../../../shared/store/uiStore'
 import type { Tournament, Game, ScoringConfig } from '../../../../shared/types'
-
-function fibonacci(r: number): number {
-  if (r <= 0) return 0;
-  if (r === 1) return 1;
-  if (r === 2) return 2;
-  let a = 1, b = 2;
-  for (let i = 3; i <= r; i++) { const c = a + b; a = b; b = c; }
-  return b;
-}
 
 function buildScoringInput(
   config: ScoringConfig | null | undefined,
@@ -25,7 +16,8 @@ function buildScoringInput(
   for (let r = 1; r <= Math.max(maxRound, 6); r++) {
     result[String(r)] = cfg[String(r)] !== undefined
       ? String(cfg[String(r)])
-      : String(fibonacci(r + 1))
+      // FIX: Use the actual game score helper, not an offset local function
+      : String(getScore(r))
   }
   return result
 }
@@ -77,7 +69,6 @@ export default function TournamentConfigPanel({ tournament, games, onUpdate }: P
     setSaving(true)
     
     try {
-      // FIX: Prevent trim() crash on empty array slots
       const payload: Partial<Tournament> = {
         round_names: Array.from({ length: maxRound }, (_, i) => {
           const n = roundNamesInput[i]
@@ -98,7 +89,7 @@ export default function TournamentConfigPanel({ tournament, games, onUpdate }: P
         let isCustom = false
         Object.entries(scoringInput).forEach(([r, val]) => {
           const parsed     = parseInt(val, 10)
-          const defaultVal = fibonacci(parseInt(r, 10) + 1)
+          const defaultVal = getScore(parseInt(r, 10))
           if (!isNaN(parsed)) {
             config[r] = parsed
             if (parsed !== defaultVal) isCustom = true
@@ -120,7 +111,7 @@ export default function TournamentConfigPanel({ tournament, games, onUpdate }: P
   const resetToFibonacci = () => {
     const reset: Record<string, string> = {}
     for (let r = 1; r <= Math.max(maxRound, 6); r++) {
-      reset[String(r)] = String(fibonacci(r + 1))
+      reset[String(r)] = String(getScore(r))
     }
     setScoringInput(reset)
   }
@@ -187,7 +178,7 @@ export default function TournamentConfigPanel({ tournament, games, onUpdate }: P
                           onChange={e => setScoringInput(prev => ({ ...prev, [r]: e.target.value }))}
                           className={`w-14 text-center ${inputCls}`}
                         />
-                        <span className={`text-[10px] ${theme.textMuted}`}>(fib: {fibonacci(i + 2)})</span>
+                        <span className={`text-[10px] ${theme.textMuted}`}>(fib: {getScore(i + 1)})</span>
                       </div>
                     )
                   })}
@@ -239,7 +230,6 @@ export default function TournamentConfigPanel({ tournament, games, onUpdate }: P
                         <label className={`text-[9px] font-bold text-slate-400 uppercase tracking-widest`}>
                           Lock Round {r} At (CT)
                         </label>
-                        {/* FIX: min-w-[180px] ensures the browser does not clip the time picker segment */}
                         <input
                           type="datetime-local"
                           value={roundLocksInput[r] ?? ''}

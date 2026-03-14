@@ -1,13 +1,6 @@
 // src/entities/group/model/queries.ts
 
-import {
-  useQuery,
-  useMutation,
-  useQueryClient,
-  type QueryClient,
-  type QueryKey,
-} from '@tanstack/react-query'
-
+import { useQuery, useMutation, useQueryClient, type QueryClient, type QueryKey } from '@tanstack/react-query'
 import { unwrap }  from '../../../shared/lib/unwrap'
 import * as api    from '../api'
 import type { Group, GroupMember, Profile } from '../../../shared/types'
@@ -15,16 +8,12 @@ import type { Group, GroupMember, Profile } from '../../../shared/types'
 const REALTIME_DEBOUNCE_MS = 150
 const invalidateTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
-// ── Query Keys ────────────────────────────────────────────────
-
 export const groupKeys = {
   all:        ['groups']                               as const,
   userGroups: ()           => ['groups', 'user']       as const,
   details:    (id: string) => ['groups', 'detail', id] as const,
   members:    (id: string) => ['groups', 'members', id] as const,
 }
-
-// ── safeInvalidate ────────────────────────────────────────────
 
 function safeInvalidate(qc: QueryClient, queryKey: QueryKey): void {
   const keyStr = JSON.stringify(queryKey)
@@ -41,8 +30,6 @@ function safeInvalidate(qc: QueryClient, queryKey: QueryKey): void {
     void qc.invalidateQueries({ queryKey })
   }
 }
-
-// ── Queries ───────────────────────────────────────────────────
 
 export function useUserGroupsQuery() {
   return useQuery<Group[], Error, Group[]>({
@@ -70,8 +57,6 @@ export function useGroupMembersQuery(groupId: string) {
   })
 }
 
-// ── Mutations ─────────────────────────────────────────────────
-
 export function useJoinGroupMutation() {
   const qc = useQueryClient()
   return useMutation<string, Error, string>({
@@ -83,15 +68,11 @@ export function useJoinGroupMutation() {
   })
 }
 
-type CreateGroupVars = { name: string; invite_code: string }
-
 export function useCreateGroupMutation() {
   const qc = useQueryClient()
-  return useMutation<Group, Error, CreateGroupVars>({
+  return useMutation<Group, Error, { name: string; invite_code: string }>({
     mutationFn: (params) => unwrap(api.createGroup(params)),
-    onSuccess: () => {
-      safeInvalidate(qc, groupKeys.userGroups())
-    },
+    onSuccess: () => { safeInvalidate(qc, groupKeys.userGroups()) },
   })
 }
 
@@ -99,8 +80,18 @@ export function useDeleteGroupMutation() {
   const qc = useQueryClient()
   return useMutation<string, Error, string>({
     mutationFn: (groupId) => unwrap(api.deleteGroup(groupId)),
-    onSuccess: () => {
-      safeInvalidate(qc, groupKeys.all)
+    onSuccess: () => { safeInvalidate(qc, groupKeys.all) },
+  })
+}
+
+// FIX: Mutation for non-owners to safely remove themselves
+export function useLeaveGroupMutation() {
+  const qc = useQueryClient()
+  return useMutation<string, Error, string>({
+    mutationFn: (groupId) => unwrap(api.leaveGroup(groupId)),
+    onSuccess: (groupId) => {
+      safeInvalidate(qc, groupKeys.userGroups())
+      safeInvalidate(qc, groupKeys.members(groupId))
     },
   })
 }

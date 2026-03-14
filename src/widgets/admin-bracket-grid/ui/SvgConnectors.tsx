@@ -1,8 +1,5 @@
 // src/widgets/admin-bracket-grid/ui/SvgConnectors.tsx
 
-// Pure renderer: receives pre-computed line data and draws it.
-// All DOM measurement and slot resolution live in computeConnectorLines()
-// (shared/lib/bracketMath), called by AdminBracketGrid.
 import type { ConnectorLine } from '../../../shared/lib/bracketMath'
 
 interface Props {
@@ -13,40 +10,23 @@ interface Props {
 export default function SvgConnectors({ lines, dims }: Props) {
   return (
     <svg
-      style={{
-        position:      'absolute',
-        top: 0, left:  0,
-        width:         dims.w || '100%',
-        height:        dims.h || '100%',
-        pointerEvents: 'none',
-        zIndex:        0,
-      }}
-      className="overflow-visible"
+      className="absolute inset-0 pointer-events-none z-0"
+      style={{ width: dims.w ? `${dims.w}px` : '100%', height: dims.h ? `${dims.h}px` : '100%' }}
     >
-      <defs>
-        <filter id="connector-glow">
-          <feGaussianBlur stdDeviation="2" result="coloredBlur" />
-          <feMerge>
-            <feMergeNode in="coloredBlur" />
-            <feMergeNode in="SourceGraphic" />
-          </feMerge>
-        </filter>
-      </defs>
+      {lines.map((l, i) => {
+        // Option A Fix: Convert straight lines to Smooth Bezier Curves
+        const curveOffset = Math.max(Math.abs(l.x2 - l.x1) * 0.5, 40)
+        const pathData = `M ${l.x1} ${l.y1} C ${l.x1 + curveOffset} ${l.y1}, ${l.x2 - curveOffset} ${l.y2}, ${l.x2} ${l.y2}`
 
-      {lines.map((line, i) => {
-        // Cubic bezier: exits horizontally from out-dot, arrives horizontally at in-dot
-        const cx = (line.x1 + line.x2) / 2
         return (
           <path
-            key={`${line.gameId}-${i}`}
-            d={`M ${line.x1} ${line.y1} C ${cx} ${line.y1}, ${cx} ${line.y2}, ${line.x2} ${line.y2}`}
-            // amber = team1 slot (in1), sky = team2 slot (in2)
-            stroke={line.fromSlot === 'in1' ? '#f59e0b' : '#38bdf8'}
-            strokeWidth="1.5"
+            key={i}
+            d={pathData}
             fill="none"
-            strokeOpacity="0.55"
-            strokeDasharray="5 3"
-            filter="url(#connector-glow)"
+            stroke="currentColor"
+            strokeWidth="2"
+            className="text-amber-500/30 dark:text-amber-500/40"
+            strokeLinecap="round"
           />
         )
       })}

@@ -260,6 +260,44 @@ export function computeConnectorLines(
   return lines
 }
 
+export function computeAdminConnectorLines(
+  games:         Game[],
+  getOutRect:    (gameId: string)                       => DOMRect | null,
+  getInRect:     (gameId: string, slot: 'in1' | 'in2') => DOMRect | null,
+  containerRect: DOMRect,
+  scrollLeft:    number,
+  scrollTop:     number,
+) {
+  const lines: any[] = []
+
+  for (const game of games) {
+    if (!game.next_game_id) continue
+
+    const outR = getOutRect(game.id)
+    if (!outR) continue
+
+    const outX = outR.left + outR.width  / 2 - containerRect.left + scrollLeft
+    const outY = outR.top  + outR.height / 2 - containerRect.top  + scrollTop
+
+    // Determine if this game feeds into the top (in1) or bottom (in2) slot of the next game
+    const feeders = games
+      .filter(g => g.next_game_id === game.next_game_id)
+      .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.id.localeCompare(b.id))
+      
+    const slot = feeders.findIndex(f => f.id === game.id) === 0 ? 'in1' : 'in2'
+
+    const inR  = getInRect(game.next_game_id, slot)
+    if (!inR) continue
+
+    const inX = inR.left + inR.width  / 2 - containerRect.left + scrollLeft
+    const inY = inR.top  + inR.height / 2 - containerRect.top  + scrollTop
+
+    lines.push({ x1: outX, y1: outY, x2: inX, y2: inY })
+  }
+
+  return lines
+}
+
 // ─────────────────────────────────────────────────────────────
 // § 7. Leaderboard Scoring Resolution
 // ─────────────────────────────────────────────────────────────

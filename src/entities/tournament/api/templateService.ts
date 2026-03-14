@@ -34,9 +34,14 @@ export async function generateStandardTemplate(
       next_game_id:  prevIds[Math.floor(i / 2)] ?? null,
       sort_order:    i,
     }))
-    const { data, error } = await supabase.from('games').insert(rows).select('id')
+    
+    // FIX: select sort_order and sort the return data. Postgres does not guarantee insert order!
+    const { data, error } = await supabase.from('games').insert(rows).select('id, sort_order')
     if (error || !data) return { ok: false, error: error?.message ?? 'Game insert failed' }
-    prevIds = (data as { id: string }[]).map(g => g.id)
+    
+    prevIds = (data as { id: string; sort_order: number }[])
+      .sort((a, b) => a.sort_order - b.sort_order)
+      .map(g => g.id)
   }
 
   return { ok: true, data: true }
@@ -57,10 +62,9 @@ export async function generateBigDanceTemplate(
       team1_name: 'TBD', team2_name: 'TBD',
       region: 'Final Four', sort_order: 0,
     }])
-    .select('id')
+    .select('id, sort_order')
   if (champErr || !champData) return { ok: false, error: champErr?.message ?? 'Championship insert failed' }
-  // FIX N-2: Cast narrowed from `any` to the exact shape returned by select('id').
-  const champId = (champData as { id: string }[])[0].id
+  const champId = (champData as { id: string; sort_order: number }[])[0].id
 
   // ── Round 5: Final Four (2 games → championship) ─────────────
   const { data: ff, error: ffErr } = await supabase
@@ -69,9 +73,9 @@ export async function generateBigDanceTemplate(
       { tournament_id: tournamentId, round_num: 5, team1_name: 'TBD', team2_name: 'TBD', next_game_id: champId, region: 'Final Four', sort_order: 0 },
       { tournament_id: tournamentId, round_num: 5, team1_name: 'TBD', team2_name: 'TBD', next_game_id: champId, region: 'Final Four', sort_order: 1 },
     ])
-    .select('id')
+    .select('id, sort_order')
   if (ffErr || !ff) return { ok: false, error: ffErr?.message ?? 'Final Four insert failed' }
-  const ffIds = (ff as { id: string }[]).map(g => g.id)
+  const ffIds = (ff as { id: string; sort_order: number }[]).sort((a, b) => a.sort_order - b.sort_order).map(g => g.id)
 
   // ── Round 4: Elite 8 (4 games → Final Four) ──────────────────
   const { data: e8, error: e8Err } = await supabase
@@ -84,9 +88,9 @@ export async function generateBigDanceTemplate(
         region, sort_order: ri,
       }))
     )
-    .select('id')
+    .select('id, sort_order')
   if (e8Err || !e8) return { ok: false, error: e8Err?.message ?? 'Elite 8 insert failed' }
-  const e8Ids = (e8 as { id: string }[]).map(g => g.id)
+  const e8Ids = (e8 as { id: string; sort_order: number }[]).sort((a, b) => a.sort_order - b.sort_order).map(g => g.id)
 
   // ── Round 3: Sweet 16 (8 games → Elite 8) ────────────────────
   const { data: s16, error: s16Err } = await supabase
@@ -100,9 +104,9 @@ export async function generateBigDanceTemplate(
         }))
       )
     )
-    .select('id')
+    .select('id, sort_order')
   if (s16Err || !s16) return { ok: false, error: s16Err?.message ?? 'Sweet 16 insert failed' }
-  const s16Ids = (s16 as { id: string }[]).map(g => g.id)
+  const s16Ids = (s16 as { id: string; sort_order: number }[]).sort((a, b) => a.sort_order - b.sort_order).map(g => g.id)
 
   // ── Round 2: Round of 32 (16 games → Sweet 16) ───────────────
   const { data: r32, error: r32Err } = await supabase
@@ -117,9 +121,9 @@ export async function generateBigDanceTemplate(
         }))
       )
     )
-    .select('id')
+    .select('id, sort_order')
   if (r32Err || !r32) return { ok: false, error: r32Err?.message ?? 'Round of 32 insert failed' }
-  const r32Ids = (r32 as { id: string }[]).map(g => g.id)
+  const r32Ids = (r32 as { id: string; sort_order: number }[]).sort((a, b) => a.sort_order - b.sort_order).map(g => g.id)
 
   // ── Round 1: Round of 64 (32 games → Round of 32) ────────────
   const { error: r64Err } = await supabase
@@ -154,10 +158,14 @@ export async function linkTemplateSlots(
   if (error || !games) return { ok: false, error: error?.message ?? 'Could not load games for slot linking' }
   const typedGames = games as Game[]
 
-  // Build game number map (ordered by round then id for determinism)
+  // FIX: Sort identically to how the UI sorts (by round, then sort_order).
+  // The old code used a.id.localeCompare(b.id) which scrambled the internal Game Numbers.
   const sorted = [...typedGames].sort((a, b) =>
-    a.round_num !== b.round_num ? a.round_num - b.round_num : a.id.localeCompare(b.id)
+    a.round_num !== b.round_num 
+      ? a.round_num - b.round_num 
+      : (a.sort_order ?? 0) - (b.sort_order ?? 0)
   )
+  
   const nums: Record<string, number> = {}
   sorted.forEach((g, i) => { nums[g.id] = i + 1 })
 

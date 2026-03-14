@@ -9,7 +9,6 @@ import { useTheme }               from '../../../shared/lib/theme'
 import { useUIStore }             from '../../../shared/store/uiStore'
 import { useAuth }                from '../../../features/auth'
 import { useTournamentListQuery } from '../../../entities/tournament/model/queries'
-// C-03 cascade FIX: hooks come from the model public API, not the api sublayer.
 import { useUserGroupsQuery }     from '../../../entities/group/model'
 import type { ActiveView, Tournament, Group } from '../../../shared/types'
 
@@ -38,8 +37,6 @@ export default function Sidebar({ onClose, onOpenAddTournament, onToggleDesktop 
 
   const isAdmin = profile?.is_admin
 
-  // Explicit types on filter callbacks — parameter inference was broken
-  // when unwrap.ts failed as a module (cascades to Tournament[] being `any[]`).
   const tournaments = activeGroupId
     ? allTournaments.filter((t: Tournament) => t.group_id === activeGroupId)
     : allTournaments.filter((t: Tournament) => !t.group_id)
@@ -48,14 +45,14 @@ export default function Sidebar({ onClose, onOpenAddTournament, onToggleDesktop 
     await signOut()
   }
 
-  // N-05 FIX: navigateTo no longer writes window.location.hash.
-  // setActiveView → useHashRouter effect → history.pushState (single write path).
   const navigateTo = (view: ActiveView) => {
     setActiveView(view)
     onClose()
   }
 
   const navItemCls = `w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-bold text-sm transition-all duration-200`
+  // FIX: Provide explicit high-contrast backgrounds for hover state instead of theme.bg
+  const hoverCls   = `hover:bg-slate-200/50 dark:hover:bg-white/5 hover:${theme.textBase}`
 
   return (
     <aside className={`w-64 h-full flex flex-col border-r shadow-2xl overflow-hidden relative ${theme.sidebarBg} border-slate-200 dark:border-slate-800 transition-colors duration-300`}>
@@ -90,7 +87,7 @@ export default function Sidebar({ onClose, onOpenAddTournament, onToggleDesktop 
             onClick={() => { setActiveGroup(null); selectTournament(null); navigateTo('home') }}
             className={`${navItemCls} ${activeView === 'home' && !selectedTournamentId
               ? `${theme.bgMd} ${theme.textBase} shadow-sm ring-1 ring-slate-200 dark:ring-white/10`
-              : `${theme.textMuted} hover:${theme.bg} hover:${theme.textBase}`}`}
+              : `${theme.textMuted} ${hoverCls}`}`}
           >
             <Home size={18} className={activeView === 'home' && !selectedTournamentId ? theme.accent : 'opacity-70'} />
             Home
@@ -100,7 +97,7 @@ export default function Sidebar({ onClose, onOpenAddTournament, onToggleDesktop 
             onClick={() => { selectTournament(null); navigateTo('leaderboard') }}
             className={`${navItemCls} ${activeView === 'leaderboard' && !selectedTournamentId
               ? `${theme.bgMd} ${theme.textBase} shadow-sm ring-1 ring-slate-200 dark:ring-white/10`
-              : `${theme.textMuted} hover:${theme.bg} hover:${theme.textBase}`}`}
+              : `${theme.textMuted} ${hoverCls}`}`}
           >
             <LayoutList size={18} className={activeView === 'leaderboard' && !selectedTournamentId ? theme.accent : 'opacity-70'} />
             Leaderboard
@@ -127,7 +124,7 @@ export default function Sidebar({ onClose, onOpenAddTournament, onToggleDesktop 
                     }}
                     className={`flex-1 flex items-center gap-3 px-3 py-2.5 rounded-xl font-bold text-sm transition-all duration-200 min-w-0 ${isActive
                       ? `${theme.bgMd} ${theme.textBase} shadow-sm ring-1 ring-slate-200 dark:ring-white/10`
-                      : `${theme.textMuted} hover:${theme.bg} hover:${theme.textBase}`
+                      : `${theme.textMuted} ${hoverCls}`
                     }`}
                   >
                     <Users size={16} className={isActive ? theme.accent : 'opacity-70'} />
@@ -190,7 +187,7 @@ export default function Sidebar({ onClose, onOpenAddTournament, onToggleDesktop 
                       onClick={() => { selectTournament(t.id); navigateTo('bracket') }}
                       className={`flex-1 flex items-center gap-3 px-3 py-2.5 rounded-xl font-bold text-sm transition-all duration-200 min-w-0 ${isSelected
                         ? `${theme.bgMd} ${theme.textBase} shadow-sm ring-1 ring-slate-200 dark:ring-white/10`
-                        : `${theme.textMuted} hover:${theme.bg} hover:${theme.textBase}`
+                        : `${theme.textMuted} ${hoverCls}`
                       }`}
                     >
                       <Trophy size={16} className={isSelected ? 'text-amber-500' : 'opacity-70'} />
@@ -238,7 +235,7 @@ export default function Sidebar({ onClose, onOpenAddTournament, onToggleDesktop 
             onClick={() => { selectTournament(null); navigateTo('settings') }}
             className={`flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-bold transition-colors ${activeView === 'settings'
               ? `${theme.textBase} ${theme.bgMd} shadow-sm ring-1 ring-slate-200 dark:ring-white/10`
-              : `${theme.textMuted} hover:${theme.bg} hover:${theme.textBase}`}`}
+              : `${theme.textMuted} ${hoverCls}`}`}
           >
             <Settings size={16} className={activeView === 'settings' ? theme.accent : 'opacity-70'} />
             Settings
