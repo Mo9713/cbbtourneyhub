@@ -1,4 +1,4 @@
-// src/features/bracket/api/gameService.ts
+// src/entities/tournament/api/gameService.ts
 
 // Game-graph mutation service — admin-only writes to the games table.
 // Read operations (fetchGames, fetchAllGames) live exclusively in
@@ -42,9 +42,6 @@ export async function addGameToRound(
 
 export async function updateGame(
   id:      string,
-  // ── Widened to include seed/score display fields ──────────────────────
-  // The four new optional fields (team1_seed, team2_seed, team1_score,
-  // team2_score) must be listed here or Supabase will silently drop them.
   updates: Partial<Pick<Game,
     | 'team1_name'  | 'team2_name'
     | 'sort_order'  | 'next_game_id'
@@ -72,26 +69,44 @@ export async function setWinner(
   gameNumbers: Record<string, number>,
 ): Promise<ServiceResult<true>> {
   return withAdminAuth(async () => {
+    
+    // 1. If we are CLEARING the winner, reset the next game's slot and seed
     if (!winner && game.actual_winner && game.next_game_id) {
-      const slot = advancingSlotToDbColumn(game, allGames, gameNumbers)
+      const slot     = advancingSlotToDbColumn(game, allGames, gameNumbers)
+      const seedSlot = slot === 'team1_name' ? 'team1_seed' : 'team2_seed'
+
       const { error } = await supabase
         .from('games')
-        .update({ [slot]: `Winner of Game #${gameNumbers[game.id]}` })
+        .update({ 
+          [slot]: `Winner of Game #${gameNumbers[game.id]}`,
+          [seedSlot]: null
+        })
         .eq('id', game.next_game_id)
       if (error) return { ok: false, error: error.message }
     }
 
+    // 2. Set the actual winner on the CURRENT game
     const { error: winErr } = await supabase
       .from('games')
       .update({ actual_winner: winner || null })
       .eq('id', game.id)
     if (winErr) return { ok: false, error: winErr.message }
 
+    // 3. If a winner was chosen, push their name AND SEED to the NEXT game
     if (winner && game.next_game_id) {
-      const slot = advancingSlotToDbColumn(game, allGames, gameNumbers)
+      const slot     = advancingSlotToDbColumn(game, allGames, gameNumbers)
+      const seedSlot = slot === 'team1_name' ? 'team1_seed' : 'team2_seed'
+      
+      let winnerSeed: number | null = null
+      if (winner === game.team1_name) winnerSeed = game.team1_seed ?? null
+      else if (winner === game.team2_name) winnerSeed = game.team2_seed ?? null
+
       const { error } = await supabase
         .from('games')
-        .update({ [slot]: winner })
+        .update({ 
+          [slot]: winner,
+          [seedSlot]: winnerSeed
+        })
         .eq('id', game.next_game_id)
       if (error) return { ok: false, error: error.message }
     }
@@ -150,13 +165,24 @@ async function _unlink(
 
   if (nextGame) {
     let slotToClear: 'team1_name' | 'team2_name' | null = null
-    if (nextGame.team1_name === winnerText) slotToClear = 'team1_name'
-    else if (nextGame.team2_name === winnerText) slotToClear = 'team2_name'
+    let seedToClear: 'team1_seed' | 'team2_seed' | null = null
 
-    if (slotToClear) {
+    if (nextGame.team1_name === winnerText || nextGame.team1_name === fromGame.actual_winner) {
+      slotToClear = 'team1_name'
+      seedToClear = 'team1_seed'
+    }
+    else if (nextGame.team2_name === winnerText || nextGame.team2_name === fromGame.actual_winner) {
+      slotToClear = 'team2_name'
+      seedToClear = 'team2_seed'
+    }
+
+    if (slotToClear && seedToClear) {
       const { error } = await supabase
         .from('games')
-        .update({ [slotToClear]: 'TBD' })
+        .update({ 
+          [slotToClear]: 'TBD',
+          [seedToClear]: null 
+        })
         .eq('id', fromGame.next_game_id)
       if (error) return { ok: false, error: error.message }
     }

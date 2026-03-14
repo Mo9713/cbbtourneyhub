@@ -22,6 +22,7 @@ import { useMakeSurvivorPickMutation }         from '../../../../features/surviv
 import BracketHeader                           from './BracketHeader'
 import BracketGrid                             from './BracketGrid'
 import TiebreakerPanel                         from './TiebreakerPanel'
+import LeaderboardView                         from '../../../leaderboard/ui/LeaderboardView'
 import type { Game, Pick, Tournament }         from '../../../../shared/types'
 
 export interface BracketViewProps {
@@ -45,8 +46,11 @@ export default function BracketView({
   const { data: tournaments = [] } = useTournamentListQuery()
   const selectedTournamentId       = useUIStore((s) => s.selectedTournamentId)
 
+  // Contextual Tabs State
+  const [viewMode, setViewMode] = useState<'bracket' | 'standings'>('bracket')
+
   const selectedTournament = useMemo(
-    () => tournaments.find((t) => t.id === selectedTournamentId) ?? null,
+    () => tournaments.find((t: Tournament) => t.id === selectedTournamentId) ?? null,
     [tournaments, selectedTournamentId],
   )
 
@@ -62,13 +66,7 @@ export default function BracketView({
 
   const { mutateAsync: makePick }       = useMakePick()
   const { mutateAsync: saveTiebreaker } = useSaveTiebreaker()
-
-  // N-04 FIX: Hook is initialised once at this level, not inside every
-  // MatchupColumn render. Rules of Hooks requires it to be called
-  // unconditionally — the handler is passed into context only when the
-  // tournament is Survivor mode, so Standard bracket columns receive
-  // undefined and never invoke it.
-  const { mutate: makeSurvivorPick } = useMakeSurvivorPickMutation()
+  const { mutate: makeSurvivorPick }    = useMakeSurvivorPickMutation()
 
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null)
 
@@ -79,15 +77,15 @@ export default function BracketView({
     : false
 
   const isSurvivor = tournament?.game_type === 'survivor'
-  const isBigDance = useMemo(() => games.some((g) => g.region), [games])
+  const isBigDance = useMemo(() => games.some((g: Game) => g.region), [games])
 
-  const pickMap         = useMemo(() => buildPickMap(picks),                                            [picks])
-  const rounds          = useMemo(() => sortedRounds(games, isBigDance ? selectedRegion : null),        [games, isBigDance, selectedRegion])
-  const effectiveNames  = useMemo<EffectiveNames>(() => deriveEffectiveNames(games, picks),             [games, picks])
-  const champion        = useMemo(() => deriveChampion(games, picks, effectiveNames),                   [games, picks, effectiveNames])
-  const champGame       = useMemo(() => getChampGame(games),                                            [games])
-  const gameNumbers     = useMemo(() => computeGameNumbers(games),                                      [games])
-  const eliminatedTeams = useMemo(() => deriveEliminatedTeams(games, effectiveNames),                   [games, effectiveNames])
+  const pickMap         = useMemo(() => buildPickMap(picks),                                         [picks])
+  const rounds          = useMemo(() => sortedRounds(games, isBigDance ? selectedRegion : null),     [games, isBigDance, selectedRegion])
+  const effectiveNames  = useMemo<EffectiveNames>(() => deriveEffectiveNames(games, picks),          [games, picks])
+  const champion        = useMemo(() => deriveChampion(games, picks, effectiveNames),                [games, picks, effectiveNames])
+  const champGame       = useMemo(() => getChampGame(games),                                         [games])
+  const gameNumbers     = useMemo(() => computeGameNumbers(games),                                   [games])
+  const eliminatedTeams = useMemo(() => deriveEliminatedTeams(games, effectiveNames),                [games, effectiveNames])
 
   const score = useMemo(() => {
     if (!tournament) return { current: 0, max: 0 }
@@ -95,13 +93,11 @@ export default function BracketView({
   }, [games, picks, effectiveNames, tournament])
 
   const champPick = useMemo(
-    () => (champGame ? (picks.find((p) => p.game_id === champGame.id) ?? null) : null),
+    () => (champGame ? (picks.find((p: Pick) => p.game_id === champGame.id) ?? null) : null),
     [champGame, picks],
   )
 
-  // Stable game ID array for the survivor handler — derived from the
-  // already-cached games list, eliminating the C-06 N+1 DB fetch.
-  const gameIds = useMemo(() => games.map((g) => g.id), [games])
+  const gameIds = useMemo(() => games.map((g: Game) => g.id), [games])
 
   const handlePick = useCallback(async (game: Game, team: string) => {
     if (!tournament || readOnly || isLocked) return
@@ -109,22 +105,11 @@ export default function BracketView({
     await makePick({ game, team, tournamentId: tournament.id, games, existingPick })
   }, [tournament, readOnly, isLocked, pickMap, makePick, games])
 
-  // Only wired into the context value when isSurvivor is true.
-  // Standard bracket columns receive undefined from context and skip
-  // the SurvivorGameCard render path entirely.
   const handleSurvivorPick = useCallback((
-    gameId:          string,
-    teamName:        string | null,
-    roundNum:        number,
+    gameId: string, teamName: string | null, roundNum: number,
   ) => {
     if (!tournament || readOnly || isLocked) return
-    makeSurvivorPick({
-      tournamentId:    tournament.id,
-      gameId,
-      predictedWinner: teamName,
-      roundNum,
-      gameIds,
-    })
+    makeSurvivorPick({ tournamentId: tournament.id, gameId, predictedWinner: teamName, roundNum, gameIds })
   }, [tournament, readOnly, isLocked, makeSurvivorPick, gameIds])
 
   const handleTiebreaker = useCallback(async (
@@ -144,9 +129,6 @@ export default function BracketView({
     readOnly,
     ownerName,
     onPick:         handlePick,
-    // Populate onSurvivorPick only for Survivor tournaments so that
-    // MatchupColumn can guard on its presence without an explicit
-    // isSurvivor prop.
     onSurvivorPick: isSurvivor ? handleSurvivorPick : undefined,
   }), [isLocked, readOnly, ownerName, handlePick, isSurvivor, handleSurvivorPick])
 
@@ -164,53 +146,83 @@ export default function BracketView({
           score={score}
         />
 
-        {isBigDance && (
-          <div className={`flex gap-1 px-4 pt-2 pb-0 border-b ${theme.borderBase} flex-shrink-0 overflow-x-auto`}>
-            <button
-              onClick={() => setSelectedRegion(null)}
-              className={`px-4 py-2 text-xs font-bold rounded-t-lg transition-all border-b-2 flex-shrink-0
-                ${!selectedRegion
-                  ? `${theme.accent} border-current`
-                  : `${theme.textMuted} border-transparent hover:${theme.textBase}`
-                }`}
-            >
-              All
-            </button>
-            {BD_REGIONS.map((r) => (
+        {/* Tabs - Only show if not in ReadOnly (Snoop) mode */}
+        {!readOnly && (
+          <div className={`flex justify-center border-b ${theme.borderBase} bg-black/10 flex-shrink-0 pt-2`}>
+            <div className="flex gap-2 px-4 mb-2">
               <button
-                key={r}
-                onClick={() => setSelectedRegion(r)}
-                className={`px-4 py-2 text-xs font-bold rounded-t-lg transition-all border-b-2 flex-shrink-0
-                  ${selectedRegion === r
-                    ? `${theme.accent} border-current`
-                    : `${theme.textMuted} border-transparent hover:${theme.textBase}`
-                  }`}
+                onClick={() => setViewMode('bracket')}
+                className={`px-6 py-1.5 rounded-lg font-bold text-sm transition-all ${
+                  viewMode === 'bracket' ? `${theme.bg} ${theme.border} ${theme.accentB} shadow-sm` : 'text-slate-500 hover:text-slate-300'
+                }`}
               >
-                {r}
+                My Bracket
               </button>
-            ))}
+              <button
+                onClick={() => setViewMode('standings')}
+                className={`px-6 py-1.5 rounded-lg font-bold text-sm transition-all ${
+                  viewMode === 'standings' ? `${theme.bg} ${theme.border} ${theme.accentB} shadow-sm` : 'text-slate-500 hover:text-slate-300'
+                }`}
+              >
+                Standings
+              </button>
+            </div>
           </div>
         )}
 
-        <BracketGrid
-          rounds={rounds}
-          pickMap={pickMap}
-          effectiveNames={effectiveNames}
-          tournament={tournament}
-          gameNumbers={gameNumbers}
-          eliminatedTeams={eliminatedTeams}
-          champion={champion}
-          readOnly={readOnly}
-          ownerName={ownerName}
-        />
+        {viewMode === 'bracket' ? (
+          <>
+            {isBigDance && (
+              <div className={`flex gap-1 px-4 pt-2 pb-0 border-b ${theme.borderBase} flex-shrink-0 overflow-x-auto`}>
+                <button
+                  onClick={() => setSelectedRegion(null)}
+                  className={`px-4 py-2 text-xs font-bold rounded-t-lg transition-all border-b-2 flex-shrink-0
+                    ${!selectedRegion
+                      ? `${theme.accent} border-current`
+                      : `${theme.textMuted} border-transparent hover:${theme.textBase}`
+                    }`}
+                >
+                  All
+                </button>
+                {BD_REGIONS.map((r) => (
+                  <button
+                    key={r}
+                    onClick={() => setSelectedRegion(r)}
+                    className={`px-4 py-2 text-xs font-bold rounded-t-lg transition-all border-b-2 flex-shrink-0
+                      ${selectedRegion === r
+                        ? `${theme.accent} border-current`
+                        : `${theme.textMuted} border-transparent hover:${theme.textBase}`
+                      }`}
+                  >
+                    {r}
+                  </button>
+                ))}
+              </div>
+            )}
 
-        {!readOnly && tournament.requires_tiebreaker && champGame && champPick && (
-          <TiebreakerPanel
-            champGame={champGame}
-            champPick={champPick}
-            isLocked={isLocked}
-            onSave={handleTiebreaker}
-          />
+            <BracketGrid
+              rounds={rounds}
+              pickMap={pickMap}
+              effectiveNames={effectiveNames}
+              tournament={tournament}
+              gameNumbers={gameNumbers}
+              eliminatedTeams={eliminatedTeams}
+              champion={champion}
+              readOnly={readOnly}
+              ownerName={ownerName}
+            />
+
+            {!readOnly && tournament.requires_tiebreaker && champGame && champPick && (
+              <TiebreakerPanel
+                champGame={champGame}
+                champPick={champPick}
+                isLocked={isLocked}
+                onSave={handleTiebreaker}
+              />
+            )}
+          </>
+        ) : (
+          <LeaderboardView tournament={tournament} />
         )}
       </div>
     </BracketViewProvider>

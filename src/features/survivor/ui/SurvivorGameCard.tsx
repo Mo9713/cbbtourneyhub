@@ -36,7 +36,8 @@ export function SurvivorGameCard({ game, currentPick, usedTeams, activeRound, is
     let bgClass = ''
     if (isPicked) bgClass = `${theme.bgMd} font-bold text-amber-500`
     else if (isBurned) bgClass = `opacity-40 grayscale line-through ${theme.textMuted} bg-black/5 dark:bg-white/5`
-    else bgClass = `hover:${theme.bgMd} cursor-pointer`
+    // FIX: Apply the exact same emerald hover used on standard cards
+    else bgClass = `hover:bg-emerald-50 dark:hover:bg-[#022c22] cursor-pointer`
 
     if (isLocked && !isPicked) {
       bgClass = `opacity-60 cursor-not-allowed ${theme.textMuted}`

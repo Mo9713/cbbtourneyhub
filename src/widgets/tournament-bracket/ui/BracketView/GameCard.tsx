@@ -124,7 +124,7 @@ export default function GameCard({
                 relative flex items-center justify-between min-h-[32px] py-1 px-2
                 border-b border-slate-200 dark:border-[#2a303c] last:border-b-0
                 ${rowBg} ${rowRingCls}
-                ${canPick ? 'cursor-pointer hover:bg-slate-50 dark:hover:brightness-110' : 'cursor-default'}
+                ${canPick ? 'cursor-pointer hover:bg-emerald-50 dark:hover:bg-[#022c22]' : 'cursor-default'}
                 transition-all duration-75
               `}
               onClick={() => canPick && onPick(game, predicted)}

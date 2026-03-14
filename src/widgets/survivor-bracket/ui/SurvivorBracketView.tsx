@@ -1,13 +1,13 @@
 // src/widgets/survivor-bracket/ui/SurvivorBracketView.tsx
 
-import { useMemo }        from 'react'
-import { Ban }            from 'lucide-react'
-import { useTheme }       from '../../../shared/lib/theme'
+import { useMemo, useState } from 'react'
+import { Ban }               from 'lucide-react'
+import { useTheme }          from '../../../shared/lib/theme'
 import {
   useTournamentListQuery,
   useGames,
-}                         from '../../../entities/tournament/model/queries'
-import { useMyPicks }     from '../../../entities/pick/model/queries'
+}                            from '../../../entities/tournament/model/queries'
+import { useMyPicks }        from '../../../entities/pick/model/queries'
 import { getActiveSurvivorRound } from '../../../shared/lib/time'
 import {
   getUsedTeams,
@@ -15,7 +15,10 @@ import {
   getAggregateSeedScore,
   useMakeSurvivorPickMutation,
   SurvivorGameCard,
-}                         from '../../../features/survivor'
+}                            from '../../../features/survivor'
+import LeaderboardView       from '../../leaderboard/ui/LeaderboardView'
+import Countdown             from '../../../shared/ui/Countdown'
+import { useAuth }           from '../../../features/auth'
 import type { Game, Pick, Tournament } from '../../../shared/types'
 
 interface Props {
@@ -24,17 +27,18 @@ interface Props {
 
 export function SurvivorBracketView({ tournamentId }: Props) {
   const theme = useTheme()
+  const { profile } = useAuth()
 
   const { data: tournaments = [] } = useTournamentListQuery()
-  // Explicit Tournament annotation — `t` was implicit `any` when unwrap.ts failed.
   const tournament = tournaments.find((t: Tournament) => t.id === tournamentId) ?? null
+
+  const [viewMode, setViewMode] = useState<'bracket' | 'standings'>('bracket')
 
   const { data: games = [] } = useGames(tournamentId)
   const { data: picks = [] } = useMyPicks(tournamentId, games)
 
   const pickMutation = useMakeSurvivorPickMutation()
 
-  // Stable game ID array — eliminates the C-06 N+1 DB fetch inside mutationFn.
   const gameIds = useMemo(() => games.map((g: Game) => g.id), [games])
 
   const activeRound  = getActiveSurvivorRound(tournament)
@@ -92,44 +96,75 @@ export function SurvivorBracketView({ tournamentId }: Props) {
     )
   }
 
+  if (!tournament) return null
+
   return (
-    <div className={`w-full h-full flex flex-col p-4 md:p-8 ${theme.appBg}`}>
+    <div className={`w-full h-full flex flex-col p-4 md:p-8 ${theme.appBg} overflow-hidden`}>
       {/* ── Dashboard Banner ── */}
-      <div className={`flex flex-col md:flex-row items-center justify-between p-4 md:p-6 rounded-2xl border shadow-sm mb-8 ${theme.panelBg} ${theme.borderBase}`}>
-        <div className="flex flex-col">
-          <h1 className={`text-2xl font-black ${theme.textBase}`}>{tournament?.name}</h1>
+      <div className={`flex flex-col xl:flex-row items-center justify-between p-4 md:p-6 rounded-2xl border shadow-sm mb-6 flex-shrink-0 ${theme.panelBg} ${theme.borderBase}`}>
+        <div className="flex flex-col items-center xl:items-start text-center xl:text-left">
+          <h1 className={`text-2xl font-black ${theme.textBase}`}>{tournament.name}</h1>
           <span className={`text-sm font-bold uppercase tracking-widest ${theme.textMuted}`}>Survivor Mode</span>
         </div>
 
-        <div className="flex gap-4 mt-4 md:mt-0">
-          <div className={`flex flex-col items-center px-6 py-2 rounded-lg ${theme.bgMd}`}>
-            <span className={`text-xs font-bold uppercase ${theme.textMuted}`}>Active Round</span>
+        <div className="flex gap-2 bg-black/10 dark:bg-white/5 p-1.5 rounded-xl mt-4 xl:mt-0">
+          <button
+            onClick={() => setViewMode('bracket')}
+            className={`px-6 py-2 rounded-lg font-bold text-sm transition-all ${
+              viewMode === 'bracket' ? `${theme.bg} ${theme.border} ${theme.accentB} shadow-sm` : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+            }`}
+          >
+            My Picks
+          </button>
+          <button
+            onClick={() => setViewMode('standings')}
+            className={`px-6 py-2 rounded-lg font-bold text-sm transition-all ${
+              viewMode === 'standings' ? `${theme.bg} ${theme.border} ${theme.accentB} shadow-sm` : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+            }`}
+          >
+            Standings
+          </button>
+        </div>
+
+        <div className="flex gap-3 mt-4 xl:mt-0 items-center">
+          <Countdown tournament={tournament} isAdmin={profile?.is_admin ?? false} timezone={profile?.timezone ?? null} />
+          <div className={`flex flex-col items-center px-4 py-1.5 rounded-lg ${theme.bgMd}`}>
+            <span className={`text-xs font-bold uppercase ${theme.textMuted}`}>Active Rd</span>
             <span className={`text-lg font-black ${theme.accent}`}>{activeRound > 0 ? activeRound : 'Locked'}</span>
           </div>
-          <div className={`flex flex-col items-center px-6 py-2 rounded-lg ${theme.bgMd}`}>
+          <div className={`flex flex-col items-center px-4 py-1.5 rounded-lg ${theme.bgMd}`}>
             <span className={`text-xs font-bold uppercase ${theme.textMuted}`}>Seed Score</span>
             <span className={`text-lg font-black ${theme.textBase}`}>{seedScore}</span>
           </div>
         </div>
       </div>
 
-      {isEliminated && (
-        <div className="bg-red-500/10 border border-red-500/20 text-red-500 px-6 py-4 rounded-xl flex items-center gap-3 mb-8 shadow-sm">
-          <Ban size={24} />
-          <div>
-            <h3 className="font-bold text-lg">Eliminated</h3>
-            <p className="text-sm opacity-90">One of your picked teams lost. You are out of this survivor pool.</p>
+      {/* ── Main Content Area ── */}
+      {viewMode === 'bracket' ? (
+        <div className="flex-1 overflow-y-auto pr-2">
+          {isEliminated && (
+            <div className="bg-red-500/10 border border-red-500/20 text-red-500 px-6 py-4 rounded-xl flex items-center gap-3 mb-8 shadow-sm">
+              <Ban size={24} />
+              <div>
+                <h3 className="font-bold text-lg">Eliminated</h3>
+                <p className="text-sm opacity-90">One of your picked teams lost. You are out of this survivor pool.</p>
+              </div>
+            </div>
+          )}
+
+          <div className="flex flex-col gap-12">
+            {renderRegion('South',   southGames,   'left')}
+            {renderRegion('West',    westGames,    'left')}
+            {renderRegion('East',    eastGames,    'right')}
+            {renderRegion('Midwest', midwestGames, 'right')}
+            {renderRegion('Finals',  finalGames,   'center')}
           </div>
         </div>
+      ) : (
+        <div className={`flex-1 rounded-2xl border overflow-hidden shadow-xl ${theme.borderBase} bg-white dark:bg-slate-950`}>
+          <LeaderboardView tournament={tournament} />
+        </div>
       )}
-
-      <div className="flex flex-col gap-12">
-        {renderRegion('South',   southGames,   'left')}
-        {renderRegion('West',    westGames,    'left')}
-        {renderRegion('East',    eastGames,    'right')}
-        {renderRegion('Midwest', midwestGames, 'right')}
-        {renderRegion('Finals',  finalGames,   'center')}
-      </div>
     </div>
   )
 }
