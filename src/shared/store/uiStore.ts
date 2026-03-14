@@ -1,6 +1,17 @@
 // src/shared/store/uiStore.ts
+//
+// MOD-05 FIX: pushToast no longer registers setTimeout inside the
+// Zustand set() producer. React 18 StrictMode double-invokes producers
+// in development, which caused duplicate timers. A monotonically
+// increasing counter (_toastId) replaces Date.now() to prevent ID
+// collisions on rapid back-to-back toast calls within the same
+// event-loop tick.
+
 import { create } from 'zustand'
 import type { ActiveView, ToastMsg, ConfirmModalCfg } from '../types'
+
+// Monotonic counter — never collides regardless of call frequency.
+let _toastId = 0
 
 export interface UIStore {
   // Mobile / layout state
@@ -36,8 +47,8 @@ export interface UIStore {
   closeSnoop:    () => void
 
   // Confirm
-  confirmModal:      ConfirmModalCfg | null
-  setConfirmModal:   (cfg: ConfirmModalCfg | null) => void
+  confirmModal:    ConfirmModalCfg | null
+  setConfirmModal: (cfg: ConfirmModalCfg | null) => void
 
   // Toasts
   toasts:      ToastMsg[]
@@ -77,15 +88,15 @@ export const useUIStore = create<UIStore>((set) => ({
   setConfirmModal: (cfg) => set({ confirmModal: cfg }),
 
   toasts: [],
-  pushToast: (text, type = 'info') =>
-    set((state) => {
-      const id = Date.now()
-      // Auto-remove toast after 4 seconds
-      setTimeout(() => {
-        useUIStore.getState().removeToast(id)
-      }, 4000)
-      return { toasts: [...state.toasts, { id, text, type }] }
-    }),
+
+  // setTimeout is registered OUTSIDE the set() producer to prevent
+  // React 18 StrictMode double-invocation from creating duplicate timers.
+  pushToast: (text, type = 'info') => {
+    const id = ++_toastId
+    set((state) => ({ toasts: [...state.toasts, { id, text, type }] }))
+    setTimeout(() => useUIStore.getState().removeToast(id), 4_000)
+  },
+
   removeToast: (id) =>
     set((state) => ({
       toasts: state.toasts.filter((t) => t.id !== id),

@@ -25,7 +25,7 @@ export const THEMES: Record<ThemeKey, ThemeConfig> = {
   },
 
   ice: {
-    key: 'ice', label: 'Ice', emoji: '🧊',
+    key: 'ice', label: 'Ice', emoji: '❄️',
     btn:    'bg-cyan-600 hover:bg-cyan-500 shadow-lg shadow-cyan-600/25',
     btnSm:  'bg-cyan-600 hover:bg-cyan-500',
     accent: 'text-cyan-600 dark:text-cyan-400', accentB: 'text-cyan-500 dark:text-cyan-300',
@@ -46,7 +46,7 @@ export const THEMES: Record<ThemeKey, ThemeConfig> = {
   },
 
   plasma: {
-    key: 'plasma', label: 'Plasma', emoji: '🔮',
+    key: 'plasma', label: 'Plasma', emoji: '⚡',
     btn:    'bg-violet-600 hover:bg-violet-500 shadow-lg shadow-violet-600/25',
     btnSm:  'bg-violet-600 hover:bg-violet-500',
     accent: 'text-violet-600 dark:text-violet-400', accentB: 'text-violet-500 dark:text-violet-300',
@@ -88,7 +88,7 @@ export const THEMES: Record<ThemeKey, ThemeConfig> = {
   },
 
   mono: {
-    key: 'mono', label: 'Mono', emoji: '🌑',
+    key: 'mono', label: 'Mono', emoji: '🎱',
     btn:    'bg-slate-700 hover:bg-slate-600 shadow-lg shadow-slate-900/25',
     btnSm:  'bg-slate-700 hover:bg-slate-600',
     accent: 'text-slate-600 dark:text-slate-400', accentB: 'text-slate-500 dark:text-slate-300',

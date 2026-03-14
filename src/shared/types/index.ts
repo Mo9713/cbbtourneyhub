@@ -1,8 +1,17 @@
 // src/shared/types/index.ts
+//
+// M-03 FIX: 'leaderboard' removed from ActiveView.
+// ViewRouter mapped that case to <SettingsPage /> via fall-through,
+// making it a phantom route that could never render a leaderboard.
+// All leaderboard UX is now exclusively delivered through the
+// Standings tab embedded inside BracketView / SurvivorBracketView.
+// Removing it from the type union prevents any future code from
+// navigating to a ghost state and eliminates the dead guard in
+// useRealtimeSync (C-01).
 
 export type TournamentStatus = 'draft' | 'open' | 'locked'
 export type ThemeKey         = 'ember' | 'ice' | 'plasma' | 'forest' | 'mono'
-export type ActiveView       = 'home' | 'bracket' | 'leaderboard' | 'admin' | 'settings' | 'group'
+export type ActiveView       = 'home' | 'bracket' | 'admin' | 'settings' | 'group'
 export type TemplateKey      = 'blank' | 'standard' | 'bigdance'
 export type UIMode           = 'light' | 'dark'
 

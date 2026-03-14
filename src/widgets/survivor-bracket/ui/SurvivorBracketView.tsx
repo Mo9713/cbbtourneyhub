@@ -1,13 +1,21 @@
 // src/widgets/survivor-bracket/ui/SurvivorBracketView.tsx
+//
+// C-03 FIX: getIsEliminated now receives allTournamentPicks (all
+// participants' picks) and the tournament object so it can correctly
+// evaluate the revive_all elimination rule.
+//
+// MOD-02 FIX: LeaderboardView is now imported from the leaderboard
+// widget's public index.ts rather than directly from its internal ui/.
 
-import { useMemo, useState } from 'react'
-import { Ban }               from 'lucide-react'
-import { useTheme }          from '../../../shared/lib/theme'
+import { useMemo, useState }     from 'react'
+import { Ban }                   from 'lucide-react'
+import { useTheme }              from '../../../shared/lib/theme'
 import {
   useTournamentListQuery,
   useGames,
-}                            from '../../../entities/tournament/model/queries'
-import { useMyPicks }        from '../../../entities/pick/model/queries'
+}                                from '../../../entities/tournament/model/queries'
+import { useMyPicks }            from '../../../entities/pick/model/queries'
+import { useLeaderboardRaw }     from '../../../entities/leaderboard/model/queries'
 import { getActiveSurvivorRound } from '../../../shared/lib/time'
 import {
   getUsedTeams,
@@ -15,10 +23,11 @@ import {
   getAggregateSeedScore,
   useMakeSurvivorPickMutation,
   SurvivorGameCard,
-}                            from '../../../features/survivor'
-import LeaderboardView       from '../../leaderboard/ui/LeaderboardView'
-import Countdown             from '../../../shared/ui/Countdown'
-import { useAuth }           from '../../../features/auth'
+}                                from '../../../features/survivor'
+// MOD-02 FIX: Import via the public slice API, not the internal ui/ directory.
+import { LeaderboardView }       from '../../leaderboard'
+import Countdown                 from '../../../shared/ui/Countdown'
+import { useAuth }               from '../../../features/auth'
 import type { Game, Pick, Tournament } from '../../../shared/types'
 
 interface Props {
@@ -26,7 +35,7 @@ interface Props {
 }
 
 export function SurvivorBracketView({ tournamentId }: Props) {
-  const theme = useTheme()
+  const theme   = useTheme()
   const { profile } = useAuth()
 
   const { data: tournaments = [] } = useTournamentListQuery()
@@ -36,15 +45,29 @@ export function SurvivorBracketView({ tournamentId }: Props) {
 
   const { data: games = [] } = useGames(tournamentId)
   const { data: picks = [] } = useMyPicks(tournamentId, games)
+  const { data: raw }        = useLeaderboardRaw()
 
   const pickMutation = useMakeSurvivorPickMutation()
 
   const gameIds = useMemo(() => games.map((g: Game) => g.id), [games])
 
-  const activeRound  = getActiveSurvivorRound(tournament)
-  const usedTeams    = getUsedTeams(picks)
-  const isEliminated = getIsEliminated(picks, games)
-  const seedScore    = getAggregateSeedScore(picks, games)
+  // C-03 FIX: Derive all tournament participants' picks from the leaderboard
+  // raw cache for revive_all evaluation. This ensures getIsEliminated has
+  // the global context required to detect mass-elimination events.
+  const allTournamentPicks = useMemo<Pick[]>(() => {
+    const gameIdSet = new Set(gameIds)
+    return (raw?.allPicks ?? []).filter((p: Pick) => gameIdSet.has(p.game_id))
+  }, [raw, gameIds])
+
+  const activeRound = getActiveSurvivorRound(tournament)
+  const usedTeams   = getUsedTeams(picks)
+  const seedScore   = getAggregateSeedScore(picks, games)
+
+  // C-03 FIX: Pass allTournamentPicks and tournament to enable revive_all.
+  const isEliminated = useMemo(() => {
+    if (!tournament) return false
+    return getIsEliminated(picks, games, allTournamentPicks, tournament)
+  }, [picks, games, allTournamentPicks, tournament])
 
   const southGames   = games.filter((g: Game) => g.region === 'South'   && g.round_num <= 4)
   const westGames    = games.filter((g: Game) => g.region === 'West'    && g.round_num <= 4)

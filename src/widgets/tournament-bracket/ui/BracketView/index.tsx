@@ -1,4 +1,17 @@
 // src/widgets/tournament-bracket/ui/BracketView/index.tsx
+//
+// MOD-02 FIX: LeaderboardView is now imported from the leaderboard
+// widget's public index.ts rather than directly from its internal ui/.
+//
+// MOD-04 FIX: Removed redundant status checks from the isLocked
+// derivation. isPicksLocked() already handles draft and locked status
+// internally — duplicating those checks here created a maintenance
+// trap where changes to isPicksLocked could be silently overridden.
+//
+// C-03 FIX: allTournamentPicks is now fetched from useLeaderboardRaw
+// and provided to BracketViewContext for revive_all evaluation.
+// The fetch is gated: it only computes filtered picks for survivor
+// tournaments with the revive_all rule, adding zero overhead elsewhere.
 
 import { useState, useMemo, useCallback }      from 'react'
 import { useTheme }                            from '../../../../shared/lib/theme'
@@ -16,13 +29,15 @@ import { useAuth }                             from '../../../../features/auth'
 import { useUIStore }                          from '../../../../shared/store/uiStore'
 import { BracketViewProvider }                 from './BracketViewContext'
 import { useMyPicks, useMakePick, useSaveTiebreaker } from '../../../../entities/pick/model/queries'
+import { useLeaderboardRaw }                   from '../../../../entities/leaderboard/model/queries'
 import { buildPickMap, sortedRounds, getChampGame }   from '../../../../features/bracket/model/selectors'
 import { useGames, useTournamentListQuery }    from '../../../../entities/tournament/model/queries'
 import { useMakeSurvivorPickMutation }         from '../../../../features/survivor'
 import BracketHeader                           from './BracketHeader'
 import BracketGrid                             from './BracketGrid'
 import TiebreakerPanel                         from './TiebreakerPanel'
-import LeaderboardView                         from '../../../leaderboard/ui/LeaderboardView'
+// MOD-02 FIX: Import via public slice API, not the internal ui/ directory.
+import { LeaderboardView }                     from '../../../leaderboard'
 import type { Game, Pick, Tournament }         from '../../../../shared/types'
 
 export interface BracketViewProps {
@@ -67,12 +82,30 @@ export default function BracketView({
   const { mutateAsync: saveTiebreaker } = useSaveTiebreaker()
   const { mutate: makeSurvivorPick }    = useMakeSurvivorPickMutation()
 
+  // C-03 FIX: Fetch all participants' picks for revive_all evaluation.
+  // Only materialized for survivor + revive_all tournaments — undefined
+  // otherwise so the leaderboard query result is not wasted.
+  const { data: raw } = useLeaderboardRaw()
+  const allTournamentPicks = useMemo<Pick[] | undefined>(() => {
+    if (
+      !tournament ||
+      tournament.game_type !== 'survivor' ||
+      tournament.survivor_elimination_rule !== 'revive_all' ||
+      readOnly
+    ) return undefined
+
+    const gameIdSet = new Set(games.map((g: Game) => g.id))
+    return (raw?.allPicks ?? []).filter((p: Pick) => gameIdSet.has(p.game_id))
+  }, [raw, tournament, games, readOnly])
+
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null)
 
+  // MOD-04 FIX: Removed the redundant `|| tournament.status === 'draft'`
+  // and `|| tournament.status === 'locked'` checks. isPicksLocked()
+  // already handles all status-level locks internally. Duplicating them
+  // here created a maintenance trap.
   const isLocked = tournament && profile
     ? isPicksLocked(tournament, profile.is_admin)
-        || tournament.status === 'draft'
-        || tournament.status === 'locked'
     : false
 
   const isSurvivor = tournament?.game_type === 'survivor'
@@ -116,7 +149,6 @@ export default function BracketView({
   ): Promise<string | null> => {
     if (!tournament) return 'No active tournament'
     try {
-      // FIX: Claude's TS contract requires gameIds to be passed here for the exact cache key!
       await saveTiebreaker({ gameId, predictedWinner, score, tournamentId: tournament.id, gameIds })
       return null
     } catch (err: unknown) {
@@ -125,12 +157,13 @@ export default function BracketView({
   }, [saveTiebreaker, tournament, gameIds])
 
   const bracketViewValue = useMemo(() => ({
-    isLocked:       isLocked || readOnly,
+    isLocked:           isLocked || readOnly,
     readOnly,
     ownerName,
-    onPick:         handlePick,
-    onSurvivorPick: isSurvivor ? handleSurvivorPick : undefined,
-  }), [isLocked, readOnly, ownerName, handlePick, isSurvivor, handleSurvivorPick])
+    onPick:             handlePick,
+    onSurvivorPick:     isSurvivor ? handleSurvivorPick : undefined,
+    allTournamentPicks,
+  }), [isLocked, readOnly, ownerName, handlePick, isSurvivor, handleSurvivorPick, allTournamentPicks])
 
   if (!tournament || !profile) return null
 

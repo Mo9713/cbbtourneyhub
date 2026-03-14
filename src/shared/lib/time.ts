@@ -38,11 +38,13 @@ export function getActiveSurvivorRound(tournament: Tournament | null): number {
 
 /**
  * Returns true if picks should currently be locked for the tournament.
- * Admins are never locked out (is_admin short-circuits to false).
+ * Strict Integrity: Admins do NOT bypass time locks. Everyone plays by the same rules.
  */
 export function isPicksLocked(tournament: Tournament, _isAdmin = false): boolean {
   if (tournament.status === 'draft' || tournament.status === 'locked') return true
   
+  // No admin bypass here! Strict adherence to the clock.
+
   if (tournament.game_type === 'survivor') {
     return getActiveSurvivorRound(tournament) === 0
   }
@@ -75,18 +77,15 @@ export function msUntilUnlock(tournament: Tournament): number | null {
  * Returns the milliseconds until a tournament (or active survivor round) locks.
  */
 export function msUntilLock(tournament: Tournament): number | null {
-  // FIX: If survivor, measure time to the specific round lock
   if (tournament.game_type === 'survivor') {
     const activeRound = getActiveSurvivorRound(tournament)
     if (activeRound === 0) return null
-    // FIX: Removed String() cast, activeRound is already a number
     const lockStr = tournament.round_locks?.[activeRound]
     if (!lockStr) return null
     const ms = parseTournamentTimestamp(lockStr) - Date.now()
     return ms > 0 ? ms : null
   }
 
-  // Standard lock logic
   if (!tournament.locks_at) return null
   const ms = parseTournamentTimestamp(tournament.locks_at) - Date.now()
   return ms > 0 ? ms : null

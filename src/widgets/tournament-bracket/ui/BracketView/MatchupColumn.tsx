@@ -1,4 +1,12 @@
 // src/widgets/tournament-bracket/ui/BracketView/MatchupColumn.tsx
+//
+// C-03 FIX: allTournamentPicks is now read from BracketViewContext and
+// passed to getIsEliminated. This enables the revive_all elimination
+// rule to evaluate whether a mass-elimination event has occurred by
+// checking all participants' picks, not just the current user's.
+// allTournamentPicks is undefined for standard brackets and readOnly
+// contexts; getIsEliminated handles the undefined case by falling back
+// to current-user-only evaluation (pre-existing behavior).
 
 import { useMemo }                        from 'react'
 import { getRoundLabel, getScore }        from '../../../../shared/lib/helpers'
@@ -34,12 +42,7 @@ export default function MatchupColumn({
 }: Props) {
   const theme = useTheme()
 
-  // N-04 FIX: onSurvivorPick is read from context — it was hoisted to
-  // BracketView/index.tsx so useMakeSurvivorPickMutation() is called
-  // exactly once per bracket tree, not once per round column.
-  // onSurvivorPick is undefined for Standard brackets; presence of the
-  // value is the authoritative isSurvivor signal here.
-  const { onSurvivorPick } = useBracketView()
+  const { onSurvivorPick, allTournamentPicks } = useBracketView()
 
   const label     = tournament.round_names?.[round - 1] || getRoundLabel(round, maxRound)
   const pts       = tournament.scoring_config?.[String(round)] ?? getScore(round)
@@ -48,9 +51,23 @@ export default function MatchupColumn({
   const isSurvivor  = !!onSurvivorPick
   const activeRound = isSurvivor ? getActiveSurvivorRound(tournament) : 0
 
-  const allPicks     = useMemo(() => Array.from(pickMap.values()), [pickMap])
-  const usedTeams    = useMemo(() => isSurvivor ? getUsedTeams(allPicks)              : [], [isSurvivor, allPicks])
-  const isEliminated = useMemo(() => isSurvivor ? getIsEliminated(allPicks, allGames) : false, [isSurvivor, allPicks, allGames])
+  const userPicks = useMemo(() => Array.from(pickMap.values()), [pickMap])
+  const usedTeams = useMemo(() => isSurvivor ? getUsedTeams(userPicks) : [], [isSurvivor, userPicks])
+
+  // C-03 FIX: allTournamentPicks from context (all participants' picks)
+  // is passed alongside the user's picks. getIsEliminated uses this to
+  // evaluate the revive_all rule. For undefined allTournamentPicks
+  // (standard brackets, snoop readOnly), the function falls back to
+  // user-picks-only behavior, which is correct in those contexts.
+  const isEliminated = useMemo(() => {
+    if (!isSurvivor) return false
+    return getIsEliminated(
+      userPicks,
+      allGames,
+      allTournamentPicks ?? userPicks,
+      tournament,
+    )
+  }, [isSurvivor, userPicks, allGames, allTournamentPicks, tournament])
 
   return (
     <div className="flex flex-col h-full w-52 flex-shrink-0 relative z-10">

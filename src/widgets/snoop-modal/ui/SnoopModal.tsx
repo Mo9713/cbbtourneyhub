@@ -1,11 +1,19 @@
 // src/widgets/snoop-modal/ui/SnoopModal.tsx
+//
+// M-04 FIX: visibleTournaments is now filtered to only show tournaments
+// in which the target user has actually participated (has picks).
+// Previously, all non-draft tournaments were shown, meaning an admin
+// could see tabs for private group tournaments even if neither they
+// nor the target user were members of that group — a contextual data
+// exposure violation. Restricting to tournaments with actual target
+// picks is correct: if they made picks, they were a participant.
 
-import { useState, useMemo }         from 'react'
-import { X, Trophy, Lock }           from 'lucide-react'
+import { useState, useMemo }               from 'react'
+import { X, Trophy, Lock }                 from 'lucide-react'
 import { TournamentBracket as BracketView } from '../../tournament-bracket'
-import { useAuth }                   from '../../../features/auth'
-import { isPicksLocked }             from '../../../shared/lib/time'
-import { useLeaderboardRaw }         from '../../../entities/leaderboard/model/queries'
+import { useAuth }                          from '../../../features/auth'
+import { isPicksLocked }                   from '../../../shared/lib/time'
+import { useLeaderboardRaw }               from '../../../entities/leaderboard/model/queries'
 import { useTournamentListQuery, useGames } from '../../../entities/tournament/model/queries'
 import type { Game, Pick, Profile, Tournament } from '../../../shared/types'
 
@@ -31,16 +39,30 @@ export default function SnoopModal({ targetId, onClose }: Props) {
     [raw, targetId],
   )
 
+  // M-04 FIX: Derive the set of tournament IDs in which the target user
+  // has actually made at least one pick. This is the authoritative
+  // participation signal — group membership, admin status, and other
+  // contextual access controls are implicitly satisfied by having picks.
+  const targetParticipatingTids = useMemo(() => {
+    const allGames = raw?.allGames ?? []
+    return new Set(
+      targetPicks
+        .map(p => allGames.find((g: Game) => g.id === p.game_id)?.tournament_id)
+        .filter((tid): tid is string => !!tid),
+    )
+  }, [targetPicks, raw])
+
+  // Only show tournaments the target user has picks in, and which are
+  // not in draft status. Draft tournaments are admin-only admin tools.
   const visibleTournaments = useMemo(
-    () => tournaments.filter((t: Tournament) => t.status !== 'draft'),
-    [tournaments],
+    () => tournaments.filter((t: Tournament) =>
+      t.status !== 'draft' && targetParticipatingTids.has(t.id),
+    ),
+    [tournaments, targetParticipatingTids],
   )
 
   const [selectedTid, setSelectedTid] = useState<string | null>(
-    () =>
-      visibleTournaments.find((t: Tournament) => t.status !== 'draft')?.id ??
-      visibleTournaments[0]?.id ??
-      null,
+    () => visibleTournaments[0]?.id ?? null,
   )
 
   const selectedTournament = useMemo(
@@ -77,6 +99,7 @@ export default function SnoopModal({ targetId, onClose }: Props) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
       <div className="w-full max-w-5xl h-[90vh] bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden flex flex-col shadow-2xl">
+
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 flex-shrink-0">
           <div className="flex items-center gap-3">
@@ -85,7 +108,10 @@ export default function SnoopModal({ targetId, onClose }: Props) {
               {targetProfile.display_name}'s Bracket
             </span>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors">
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
+          >
             <X size={16} />
           </button>
         </div>
@@ -136,7 +162,7 @@ export default function SnoopModal({ targetId, onClose }: Props) {
         <div className="flex-1 overflow-auto scrollbar-thin relative bg-slate-950">
           {!selectedTournament ? (
             <div className="flex items-center justify-center h-full text-slate-600 text-sm">
-              No tournament selected.
+              No tournament participation found.
             </div>
           ) : showBracket ? (
             <BracketView

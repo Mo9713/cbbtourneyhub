@@ -1,22 +1,29 @@
 // src/widgets/sidebar/ui/Sidebar.tsx
+//
+// MOD-01 FIX: useUserGroupsQuery is now imported from the
+// entities/group public API (index.ts), not the internal model
+// sublayer. Direct imports into a slice's internals violate the
+// FSD Public API Enforcement rule and create fragile coupling to
+// internal file structure.
 
 import {
   Trophy, Home, Settings, LogOut, Plus, PanelLeftClose,
-  Users, UserPlus, Settings2, Moon, Sun, Shield
+  Users, UserPlus, Settings2, Moon, Sun, Shield,
 } from 'lucide-react'
 
 import { useTheme }               from '../../../shared/lib/theme'
 import { useUIStore }             from '../../../shared/store/uiStore'
 import { useAuth }                from '../../../features/auth'
 import { useTournamentListQuery } from '../../../entities/tournament/model/queries'
-import { useUserGroupsQuery }     from '../../../entities/group/model'
+// MOD-01 FIX: Import from the public slice index, not the internal /model sublayer.
+import { useUserGroupsQuery }     from '../../../entities/group'
 import { Avatar }                 from '../../../shared/ui'
 import type { ActiveView, Tournament, Group } from '../../../shared/types'
 
 interface SidebarProps {
-  onClose:             () => void
+  onClose:              () => void
   onOpenAddTournament?: () => void
-  onToggleDesktop?:    () => void
+  onToggleDesktop?:     () => void
 }
 
 export default function Sidebar({ onClose, onOpenAddTournament, onToggleDesktop }: SidebarProps) {
@@ -65,7 +72,6 @@ export default function Sidebar({ onClose, onOpenAddTournament, onToggleDesktop 
             Tourney<span className={theme.accent}>Hub</span>
           </span>
         </div>
-
         {onToggleDesktop && (
           <button
             onClick={onToggleDesktop}
@@ -177,7 +183,6 @@ export default function Sidebar({ onClose, onOpenAddTournament, onToggleDesktop 
                     >
                       <Trophy size={16} className={isSelected ? 'text-amber-500' : 'opacity-70'} />
                       <span className="truncate flex-1 text-left">{t.name}</span>
-
                       <div className="flex gap-1 opacity-60 ml-auto">
                         {t.status === 'locked' ? (
                           <div className="w-1.5 h-1.5 rounded-full bg-slate-500" title="Locked" />
@@ -213,12 +218,10 @@ export default function Sidebar({ onClose, onOpenAddTournament, onToggleDesktop 
 
       </div>
 
-      {/* ── Restored Sidebar Footer ── */}
+      {/* ── Sidebar Footer ── */}
       <div className="border-t border-slate-200 dark:border-slate-800/50 bg-slate-100/50 dark:bg-black/20 shrink-0">
-        
-        {/* Profile Row */}
         {profile && (
-          <button 
+          <button
             onClick={() => { selectTournament(null); navigateTo('settings') }}
             className={`w-full p-4 flex items-center gap-3 transition-colors ${activeView === 'settings' ? 'bg-slate-200 dark:bg-white/5' : 'hover:bg-slate-200/50 dark:hover:bg-white/5'}`}
           >
@@ -232,7 +235,9 @@ export default function Sidebar({ onClose, onOpenAddTournament, onToggleDesktop 
                 {isAdmin && (
                   <>
                     <span>·</span>
-                    <span className="flex items-center text-amber-600 dark:text-amber-500 font-bold"><Shield size={10} className="mr-0.5" /> Admin</span>
+                    <span className="flex items-center text-amber-600 dark:text-amber-500 font-bold">
+                      <Shield size={10} className="mr-0.5" /> Admin
+                    </span>
                   </>
                 )}
               </div>
@@ -241,7 +246,6 @@ export default function Sidebar({ onClose, onOpenAddTournament, onToggleDesktop 
           </button>
         )}
 
-        {/* Action Row */}
         <div className="flex items-center justify-between p-3 border-t border-slate-200 dark:border-slate-800/50">
           <button
             onClick={() => updateUIMode(profile?.ui_mode === 'dark' ? 'light' : 'dark')}

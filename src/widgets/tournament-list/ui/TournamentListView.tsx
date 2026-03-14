@@ -1,4 +1,11 @@
 // src/widgets/tournament-list/ui/TournamentListView.tsx
+//
+// M-02 FIX: Global home view now filters out group-private tournaments.
+// Tournaments with a non-null group_id are scoped to their group and
+// must not appear in the global public listing. Users who are not
+// members of the group have no path to join and would see stale or
+// misleading data. The GroupDashboard widget is the correct entry point
+// for group-private tournaments.
 
 import { useTheme }                         from '../../../shared/lib/theme'
 import { isPicksLocked }                    from '../../../shared/lib/time'
@@ -20,11 +27,11 @@ function TournamentCard({ t, isAdmin, onSelect }: CardProps) {
   const theme = useTheme()
   const { data: games = [] } = useGames(t.id)
   const { data: picks = [] } = useMyPicks(t.id, games)
-  const myPickCount = picks.length
-  const locked      = isPicksLocked(t, isAdmin)
-  const pct         = games.length > 0 ? Math.round((myPickCount / games.length) * 100) : 0
-  const isEffectivelyLocked = t.status === 'locked' || (t.status === 'open' && locked)
-  const displayStatus       = t.status === 'draft' ? 'draft' : isEffectivelyLocked ? 'locked' : 'open'
+  const myPickCount          = picks.length
+  const locked               = isPicksLocked(t, isAdmin)
+  const pct                  = games.length > 0 ? Math.round((myPickCount / games.length) * 100) : 0
+  const isEffectivelyLocked  = t.status === 'locked' || (t.status === 'open' && locked)
+  const displayStatus        = t.status === 'draft' ? 'draft' : isEffectivelyLocked ? 'locked' : 'open'
 
   return (
     <button
@@ -88,10 +95,14 @@ export default function TournamentListView() {
 
   const isAdmin = profile.is_admin
 
-  // Explicit Tournament types on all filter callbacks.
-  const open   = tournaments.filter((t: Tournament) => t.status === 'open' && !isPicksLocked(t, isAdmin))
-  const draft  = isAdmin ? tournaments.filter((t: Tournament) => t.status === 'draft') : []
-  const locked = tournaments.filter(
+  // M-02 FIX: Only show global (non-group-scoped) tournaments in the
+  // home view. Tournaments with a group_id are private to their group
+  // and must be accessed through the GroupDashboard.
+  const globalTournaments = tournaments.filter((t: Tournament) => !t.group_id)
+
+  const open   = globalTournaments.filter((t: Tournament) => t.status === 'open' && !isPicksLocked(t, isAdmin))
+  const draft  = isAdmin ? globalTournaments.filter((t: Tournament) => t.status === 'draft') : []
+  const locked = globalTournaments.filter(
     (t: Tournament) => t.status === 'locked' || (t.status === 'open' && isPicksLocked(t, isAdmin)),
   )
 

@@ -9,54 +9,31 @@
 // invalidateQueries use prefix/fuzzy matching by default and are correct
 // with the base key pickKeys.mine(tournamentId) — but getQueryData /
 // setQueryData are EXACT-MATCH only and will silently miss the compound
-// key if only the base is supplied. MakePickContext now carries exactKey
+// key if only the base is supplied. MakePickContext carries exactKey
 // so both onMutate and onError target the live cache entry.
 //
-// ── safeInvalidate ────────────────────────────────────────────
-// Invalidation fired from onSettled can race against Supabase Realtime
-// echo events. safeInvalidate defers by 150ms when a mutation is still
-// in flight, and deduplicates timers so rapid picks do not stack callbacks.
+// C-04 FIX: safeInvalidate is now imported from shared/lib/queryUtils.
+// The isolated module-level timer Map that previously lived here has been
+// removed. All three callers now share one Map, eliminating the
+// cross-file race condition where a Realtime echo and mutation onSettled
+// could both fire within the 150ms window for the same key into different,
+// non-deduplicating Maps.
 
 import {
   useQuery, useMutation, useQueryClient,
-  type QueryClient, type QueryKey,
 } from '@tanstack/react-query'
 
+import { safeInvalidate }           from '../../../shared/lib/queryUtils'
 import { unwrap }                   from '../../../shared/lib/unwrap'
 import { collectDownstreamGameIds } from '../../../shared/lib/bracketMath'
 import * as api                     from '../api'
 import type { Game, Pick }          from '../../../shared/types'
-
-const REALTIME_DEBOUNCE_MS = 150
-const invalidateTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
 // ── Query Keys ────────────────────────────────────────────────
 
 export const pickKeys = {
   mine:    (tid: string) => ['picks', 'mine', tid] as const,
   allMine: ()            => ['picks', 'all-mine']  as const,
-}
-
-// ── safeInvalidate ────────────────────────────────────────────
-// Uses timer deduplication: a second call for the same key before the
-// first fires will reset the clock, not stack a second callback.
-
-function safeInvalidate(qc: QueryClient, queryKey: QueryKey): void {
-  const keyStr = JSON.stringify(queryKey)
-  if (qc.isMutating() > 0) {
-    if (invalidateTimers.has(keyStr)) {
-      clearTimeout(invalidateTimers.get(keyStr)!)
-    }
-    const timer = setTimeout(() => {
-      // exact: false (default) — prefix-based invalidation covers compound
-      // observer keys such as ['picks', 'mine', tid, gameIds[]].
-      void qc.invalidateQueries({ queryKey })
-      invalidateTimers.delete(keyStr)
-    }, REALTIME_DEBOUNCE_MS)
-    invalidateTimers.set(keyStr, timer)
-  } else {
-    void qc.invalidateQueries({ queryKey })
-  }
 }
 
 // ── Local variable types ──────────────────────────────────────
@@ -143,11 +120,9 @@ export function useMakePick() {
       // cancelQueries uses prefix matching — the base key correctly reaches the observer.
       await qc.cancelQueries({ queryKey: pickKeys.mine(tournamentId) })
 
-      // Snapshot for rollback on error.
-      const prev = qc.getQueryData<Pick[]>(exactKey)
-
-      const downstreamIds = new Set(collectDownstreamGameIds(game, games))
-      const isToggle      = existingPick?.predicted_winner === team
+      const prev           = qc.getQueryData<Pick[]>(exactKey)
+      const downstreamIds  = new Set(collectDownstreamGameIds(game, games))
+      const isToggle       = existingPick?.predicted_winner === team
 
       qc.setQueryData<Pick[]>(exactKey, (old = []) => {
         const filtered = old.filter(
@@ -169,14 +144,12 @@ export function useMakePick() {
     },
 
     onError: (_err, _vars, ctx) => {
-      // Restore to the exact compound key the optimistic write targeted.
       if (ctx?.prev !== undefined) {
         qc.setQueryData(ctx.exactKey, ctx.prev)
       }
     },
 
     onSettled: (_data, _err, vars) => {
-      // invalidateQueries uses prefix matching — base key is sufficient here.
       safeInvalidate(qc, pickKeys.mine(vars.tournamentId))
       safeInvalidate(qc, pickKeys.allMine())
     },
@@ -218,7 +191,7 @@ export function useSaveTiebreaker() {
       }
     },
 
-    onSettled: (_d, _e, vars) => {
+    onSettled: (_data, _err, vars) => {
       safeInvalidate(qc, pickKeys.mine(vars.tournamentId))
       safeInvalidate(qc, pickKeys.allMine())
     },
