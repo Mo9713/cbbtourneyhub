@@ -7,4 +7,5 @@ export {
   useGroupMembersQuery,
   useJoinGroupMutation,
   useCreateGroupMutation,
+  useDeleteGroupMutation,
 } from '../model/queries'

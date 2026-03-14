@@ -91,12 +91,6 @@ export default function AdminGameCard({
     }
   }
 
-  const inDotCls = `w-2.5 h-2.5 rounded-full border-2 flex-shrink-0 transition-all
-    ${isValidLinkTarget
-      ? 'border-sky-400 bg-sky-400/40 hover:bg-sky-400 cursor-pointer animate-pulse'
-      : `${theme.borderBase} ${theme.inputBg}`
-    }`
-
   const pts        = getScore(game.round_num)
   const hasLinked  = !!game.next_game_id
   const linkedGame = hasLinked ? allGames.find(g => g.id === game.next_game_id) : null
@@ -135,7 +129,7 @@ export default function AdminGameCard({
   return (
     <div
       className={`
-        relative ${theme.panelBg} border rounded-xl overflow-visible transition-all
+        relative ${theme.panelBg} border rounded-xl overflow-visible transition-all w-52
         ${isDragOver        ? `border-amber-500/60 shadow-lg shadow-amber-500/10` : theme.borderBase}
         ${isValidLinkTarget ? `border-sky-500/60 shadow-lg shadow-sky-500/10`    : ''}
         ${isLinkingFrom     ? `border-amber-500/80 shadow-lg shadow-amber-500/20` : ''}
@@ -146,14 +140,14 @@ export default function AdminGameCard({
       onDragEnd={onDragEnd}
       onDrop={e      => onDrop(e, game.id)}
     >
-      {/* ── Output dot (link source) ── */}
+      {/* ── Output dot (link source) - Anchored perfectly to the right edge ── */}
       <button
         data-out={game.id}
         title="Link output to another game's input"
         onClick={e => { e.stopPropagation(); onStartLink(game.id) }}
         className={`
-          absolute -right-8 top-1/2 -translate-y-1/2
-          w-2.5 h-2.5 rounded-full border-2 transition-all cursor-pointer z-10
+          absolute -right-1.5 top-1/2 -translate-y-1/2
+          w-3 h-3 rounded-full border-2 transition-all cursor-pointer z-10
           ${isLinkingFrom
             ? 'border-amber-500 bg-amber-500/40 animate-pulse'
             : `${theme.borderBase} ${theme.panelBg} hover:border-amber-500 hover:bg-amber-500/20`
@@ -214,7 +208,7 @@ export default function AdminGameCard({
         <div
           key={field}
           className={`
-            flex items-center gap-1 px-2 py-1 border-b ${theme.borderBase} last:border-b-0
+            relative flex items-center gap-1.5 px-2 py-1 border-b ${theme.borderBase} last:border-b-0
             ${isValidLinkTarget ? `hover:${theme.bg} cursor-pointer` : ''}
             ${isWinner ? 'bg-emerald-500/10' : ''}
           `}
@@ -225,7 +219,15 @@ export default function AdminGameCard({
             }
           }}
         >
-          <div className={inDotCls} {...dataAttr} />
+          {/* Input Dot - Anchored perfectly to the left edge */}
+          <button
+            {...dataAttr}
+            className={`absolute -left-1.5 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full border-2 z-10 transition-all ${
+              isValidLinkTarget
+                ? 'border-sky-400 bg-sky-400/40 hover:bg-sky-400 cursor-pointer animate-pulse'
+                : `${theme.borderBase} ${theme.panelBg}`
+            }`}
+          />
 
           <input
             value={seedVal}
@@ -233,7 +235,7 @@ export default function AdminGameCard({
             onBlur={e => handleSeedBlur(seedField, e.target.value)}
             onClick={e => e.stopPropagation()}
             placeholder="#"
-            className={`w-6 ${theme.inputBg} border ${theme.borderBase} rounded px-1 text-[9px] font-bold ${theme.textMuted} text-center focus:outline-none focus:border-amber-500/50 transition-colors placeholder:${theme.textMuted}`}
+            className={`w-6 ${theme.inputBg} border ${theme.borderBase} rounded px-1 text-[9px] font-bold ${theme.textMuted} text-center focus:outline-none focus:border-amber-500/50 transition-colors placeholder:${theme.textMuted} ml-1`}
           />
 
           <input
@@ -257,7 +259,7 @@ export default function AdminGameCard({
           />
 
           {isWinner && (
-            <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-bold flex-shrink-0">✓</span>
+            <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-bold flex-shrink-0 absolute right-2">✓</span>
           )}
         </div>
       ))}

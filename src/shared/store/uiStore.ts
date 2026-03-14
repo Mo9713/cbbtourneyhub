@@ -9,9 +9,11 @@ export interface UIStore {
   setSidebarOpen:    (open: boolean) => void
   setMobileMenuOpen: (open: boolean) => void
 
-  // Navigation
+  // Navigation & Context
   activeView:           ActiveView
   setActiveView:        (v: ActiveView) => void
+  activeGroupId:        string | null
+  setActiveGroup:       (id: string | null) => void
   selectedTournamentId: string | null
   selectTournament:     (id: string | null) => void
 
@@ -51,6 +53,8 @@ export const useUIStore = create<UIStore>((set) => ({
 
   activeView:           'home',
   setActiveView:        (v) => set({ activeView: v }),
+  activeGroupId:        null,
+  setActiveGroup:       (id) => set({ activeGroupId: id }),
   selectedTournamentId: null,
   selectTournament:     (id) => set({ selectedTournamentId: id, mobileMenuOpen: false }),
 
@@ -76,6 +80,10 @@ export const useUIStore = create<UIStore>((set) => ({
   pushToast: (text, type = 'info') =>
     set((state) => {
       const id = Date.now()
+      // Auto-remove toast after 4 seconds
+      setTimeout(() => {
+        useUIStore.getState().removeToast(id)
+      }, 4000)
       return { toasts: [...state.toasts, { id, text, type }] }
     }),
   removeToast: (id) =>

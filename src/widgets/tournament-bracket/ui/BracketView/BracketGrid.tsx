@@ -124,7 +124,8 @@ export default function BracketGrid({
   const slotH         = computeSlotH(safeLeafSlots)
   const totalHeight   = safeLeafSlots * slotH + HEADER_H
 
-  const bracketRef              = useRef<HTMLDivElement>(null)
+  const outerScrollRef          = useRef<HTMLDivElement>(null)
+  const innerBracketRef         = useRef<HTMLDivElement>(null)
   const [svgLines, setSvgLines] = useState<ConnectorLine[]>([])
   const [svgDims,  setSvgDims]  = useState({ w: 0, h: 0 })
 
@@ -132,7 +133,7 @@ export default function BracketGrid({
   const panOrigin = useRef({ x: 0, y: 0, sl: 0, st: 0 })
 
   const recomputeLines = useCallback(() => {
-    const container = bracketRef.current
+    const container = innerBracketRef.current
     if (!container) return
     const cRect = container.getBoundingClientRect()
 
@@ -145,7 +146,7 @@ export default function BracketGrid({
     const lines = computeConnectorLines(
       allDisplayGames, gameNumbers,
       getOutRect, getInRect,
-      cRect, container.scrollLeft, container.scrollTop,
+      cRect, 0, 0,
     )
     setSvgLines(lines)
     setSvgDims({ w: container.scrollWidth, h: container.scrollHeight })
@@ -157,7 +158,7 @@ export default function BracketGrid({
     rafA = requestAnimationFrame(() => {
       rafB = requestAnimationFrame(recomputeLines)
     })
-    const container = bracketRef.current
+    const container = innerBracketRef.current
     if (!container) return () => { cancelAnimationFrame(rafA); cancelAnimationFrame(rafB) }
     const ro = new ResizeObserver(() => {
       cancelAnimationFrame(rafB)
@@ -174,7 +175,7 @@ export default function BracketGrid({
   const handlePanStart = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement
     if (target.closest('button') || target.closest('input')) return
-    const el = bracketRef.current
+    const el = outerScrollRef.current
     if (!el) return
     isPanning.current = true
     panOrigin.current = { x: e.clientX, y: e.clientY, sl: el.scrollLeft, st: el.scrollTop }
@@ -183,31 +184,33 @@ export default function BracketGrid({
   }, [])
 
   const handlePanMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (!isPanning.current || !bracketRef.current) return
-    bracketRef.current.scrollLeft = panOrigin.current.sl - (e.clientX - panOrigin.current.x)
-    bracketRef.current.scrollTop  = panOrigin.current.st - (e.clientY - panOrigin.current.y)
+    if (!isPanning.current || !outerScrollRef.current) return
+    outerScrollRef.current.scrollLeft = panOrigin.current.sl - (e.clientX - panOrigin.current.x)
+    outerScrollRef.current.scrollTop  = panOrigin.current.st - (e.clientY - panOrigin.current.y)
   }, [])
 
   const handlePanEnd = useCallback(() => {
     if (!isPanning.current) return
     isPanning.current = false
-    if (bracketRef.current) bracketRef.current.style.cursor = ''
+    if (outerScrollRef.current) outerScrollRef.current.style.cursor = ''
   }, [])
 
   return (
     <div
-      ref={bracketRef}
+      ref={outerScrollRef}
       className={`flex-1 overflow-auto p-6 scrollbar-thin select-none relative ${theme.appBg} transition-colors duration-300`}
       onMouseDown={handlePanStart}
       onMouseMove={handlePanMove}
       onMouseUp={handlePanEnd}
       onMouseLeave={handlePanEnd}
     >
-      <SvgConnectors lines={svgLines} dims={svgDims} />
-      <div
-        className="flex items-stretch gap-4"
+      <div 
+        ref={innerBracketRef} 
+        className="relative flex items-stretch gap-4"
         style={{ height: totalHeight, width: 'max-content' }}
       >
+        <SvgConnectors lines={svgLines} dims={svgDims} />
+        
         {rounds.map(([round]) => (
           <MatchupColumn
             key={round}
@@ -219,10 +222,11 @@ export default function BracketGrid({
             tournament={tournament}
             gameNumbers={gameNumbers}
             eliminatedTeams={eliminatedTeams}
+            allGames={allDisplayGames}
           />
         ))}
 
-        <div className="flex flex-col h-full w-52 flex-shrink-0">
+        <div className="flex flex-col h-full w-52 flex-shrink-0 relative z-10">
           <div
             className={`flex-shrink-0 flex items-center justify-center border-b ${theme.borderBase}`}
             style={{ height: HEADER_H }}

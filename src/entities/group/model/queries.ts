@@ -70,7 +70,6 @@ export function useGroupMembersQuery(groupId: string) {
 
       if (error) throw new Error(error.message)
 
-      // Explicitly utilizing GroupMember to resolve TS6196
       return data.map((item: any): GroupMember & { profile: Profile } => ({
         group_id: item.group_id,
         user_id: item.user_id,
@@ -144,5 +143,20 @@ export function useCreateGroupMutation() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: groupKeys.userGroups() })
     },
+  })
+}
+
+export function useDeleteGroupMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (groupId: string) => {
+      const { error } = await supabase.from('groups').delete().eq('id', groupId)
+      if (error) throw new Error(error.message)
+      return groupId
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: groupKeys.all })
+    }
   })
 }

@@ -1,7 +1,10 @@
 // src/widgets/group-dashboard/ui/GroupDashboard.tsx
 
-import { useGroupDetailsQuery } from '../../../entities/group'
+import { Trash2 }               from 'lucide-react'
+import { useGroupDetailsQuery, useDeleteGroupMutation } from '../../../entities/group'
 import { useTheme }             from '../../../shared/lib/theme'
+import { useUIStore }           from '../../../shared/store/uiStore'
+import { useAuth }              from '../../../features/auth'
 
 interface GroupDashboardProps {
   groupId: string
@@ -9,7 +12,37 @@ interface GroupDashboardProps {
 
 export function GroupDashboard({ groupId }: GroupDashboardProps) {
   const theme = useTheme()
+  const { profile } = useAuth()
   const { data: group, isLoading, error } = useGroupDetailsQuery(groupId)
+  const deleteGroupM = useDeleteGroupMutation()
+  
+  const openAddTournament = useUIStore(s => s.openAddTournament)
+  const setConfirmModal   = useUIStore(s => s.setConfirmModal)
+  const setActiveView     = useUIStore(s => s.setActiveView)
+  const setActiveGroup    = useUIStore(s => s.setActiveGroup)
+
+  const isOwner = profile?.id === group?.owner_id
+
+  const handleDelete = () => {
+    if (!group) return
+    setConfirmModal({
+      title: 'Delete Group',
+      message: `Are you sure you want to delete "${group.name}"? This action cannot be undone.`,
+      dangerous: true,
+      confirmLabel: 'Delete',
+      onConfirm: () => {
+        deleteGroupM.mutate(group.id, {
+          onSuccess: () => {
+            setActiveGroup(null)
+            setActiveView('home')
+            window.location.hash = '#/home'
+            setConfirmModal(null)
+          }
+        })
+      },
+      onCancel: () => setConfirmModal(null)
+    })
+  }
 
   if (isLoading) {
     return (
@@ -51,6 +84,15 @@ export function GroupDashboard({ groupId }: GroupDashboardProps) {
             </div>
           </div>
           <div className="flex items-center gap-3">
+            {isOwner && (
+              <button 
+                onClick={handleDelete}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-bold text-rose-500 hover:bg-rose-500/10 border border-rose-500/20 transition-all"
+              >
+                <Trash2 size={16} />
+                Delete
+              </button>
+            )}
             <span className={`px-3 py-1.5 rounded-full text-sm font-semibold border ${theme.borderBase} ${theme.textBase}`}>
               Group Hub
             </span>
@@ -62,9 +104,14 @@ export function GroupDashboard({ groupId }: GroupDashboardProps) {
       <section className="flex flex-col gap-4">
         <div className="flex items-center justify-between">
           <h2 className={`text-2xl font-bold ${theme.textBase}`}>Tournaments</h2>
-          <button className={`px-4 py-2 rounded-lg text-sm font-bold shadow-sm transition-transform hover:scale-105 ${theme.btn}`}>
-            + New Tournament
-          </button>
+          {profile?.is_admin && (
+            <button 
+              onClick={() => openAddTournament()}
+              className={`px-4 py-2 rounded-lg text-sm font-bold shadow-sm transition-transform hover:scale-105 ${theme.btn}`}
+            >
+              + New Tournament
+            </button>
+          )}
         </div>
         
         {/* Placeholder for Tournament List Widget */}
@@ -72,7 +119,8 @@ export function GroupDashboard({ groupId }: GroupDashboardProps) {
           <div className={`text-4xl opacity-50`}>🏆</div>
           <h3 className={`text-lg font-semibold ${theme.textBase}`}>No Tournaments Yet</h3>
           <p className={`max-w-md text-sm ${theme.textMuted}`}>
-            This group doesn't have any active tournaments. Create a Bracket or Survivor pool to get started.
+            This group doesn't have any active tournaments. 
+            {profile?.is_admin ? " Click '+ New Tournament' to create one." : " Wait for an admin to create one."}
           </p>
         </div>
       </section>

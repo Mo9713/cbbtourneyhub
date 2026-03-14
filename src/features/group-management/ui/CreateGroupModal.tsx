@@ -12,6 +12,7 @@ interface Props {
 export function CreateGroupModal({ onClose }: Props) {
   const theme     = useTheme()
   const pushToast = useUIStore((s) => s.pushToast)
+  const setActiveView = useUIStore((s) => s.setActiveView)
 
   const [name, setName]             = useState('')
   const [inviteCode, setInviteCode] = useState('')
@@ -34,8 +35,11 @@ export function CreateGroupModal({ onClose }: Props) {
     mutate(
       { name: name.trim(), invite_code: inviteCode.trim() },
       {
-        onSuccess: () => {
+        onSuccess: (group) => {
           pushToast('Group created successfully!', 'success')
+          // Auto-navigate to the newly created group dashboard
+          setActiveView('group')
+          window.location.hash = `#/group/${group.id}`
           onClose()
         },
         onError: (error: Error) => {

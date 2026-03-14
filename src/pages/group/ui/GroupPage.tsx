@@ -1,29 +1,12 @@
 // src/pages/group/ui/GroupPage.tsx
 
-import { useEffect, useState } from 'react'
 import { GroupDashboard } from '../../../widgets/group-dashboard'
+import { useUIStore }     from '../../../shared/store/uiStore'
 import { useTheme }       from '../../../shared/lib/theme'
 
 export function GroupPage() {
   const theme = useTheme()
-  const [groupId, setGroupId] = useState<string | null>(null)
-
-  useEffect(() => {
-    const handleHashChange = () => {
-      const hash = window.location.hash
-      // Parse paths like #/group/uuid
-      const parts = hash.split('/')
-      if (parts[1] === 'group' && parts[2]) {
-        setGroupId(parts[2])
-      } else {
-        setGroupId(null)
-      }
-    }
-
-    handleHashChange()
-    window.addEventListener('hashchange', handleHashChange)
-    return () => window.removeEventListener('hashchange', handleHashChange)
-  }, [])
+  const groupId = useUIStore(s => s.activeGroupId)
 
   if (!groupId) {
     return (

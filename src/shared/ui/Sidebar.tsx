@@ -1,14 +1,15 @@
 // src/shared/ui/Sidebar.tsx
 
 import {
-  Trophy, Home, Settings, LogOut, Code, Plus, Database, PanelLeftClose, Users, UserPlus
+  Trophy, Home, Settings, LogOut, Plus, PanelLeftClose, Users, UserPlus, Settings2, Trash2, LayoutList
 } from 'lucide-react'
 import { supabase }               from '../infra/supabaseClient'
 import { useTheme }               from '../lib/theme'
 import { useAuth }                from '../../features/auth/model/useAuth'
 import { useTournamentListQuery } from '../../entities/tournament/model/queries'
-import { useUserGroupsQuery }     from '../../entities/group/api'
+import { useUserGroupsQuery, useDeleteGroupMutation } from '../../entities/group/api'
 import { useUIStore }             from '../store/uiStore'
+import type { Group }             from '../types'
 
 interface SidebarProps {
   onClose: () => void
@@ -22,16 +23,25 @@ export default function Sidebar({ onClose, onOpenAddTournament, onToggleDesktop 
   
   const activeView           = useUIStore(s => s.activeView)
   const setActiveView        = useUIStore(s => s.setActiveView)
+  const activeGroupId        = useUIStore(s => s.activeGroupId)
+  const setActiveGroup       = useUIStore(s => s.setActiveGroup)
   const selectedTournamentId = useUIStore(s => s.selectedTournamentId)
   const selectTournament     = useUIStore(s => s.selectTournament)
   
   const openCreateGroup      = useUIStore(s => s.openCreateGroup)
   const openJoinGroup        = useUIStore(s => s.openJoinGroup)
+  const setConfirmModal      = useUIStore(s => s.setConfirmModal)
 
-  const { data: tournaments = [], isLoading } = useTournamentListQuery()
-  const { data: groups = [] }                 = useUserGroupsQuery()
+  const { data: allTournaments = [], isLoading } = useTournamentListQuery()
+  const { data: groups = [] }                    = useUserGroupsQuery()
+  const deleteGroupM                             = useDeleteGroupMutation()
 
   const isAdmin = profile?.is_admin
+
+  // Contextual Filtering: Only show tournaments belonging to the active group, or global if none.
+  const tournaments = activeGroupId 
+    ? allTournaments.filter(t => t.group_id === activeGroupId)
+    : allTournaments.filter(t => !t.group_id)
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -42,6 +52,25 @@ export default function Sidebar({ onClose, onOpenAddTournament, onToggleDesktop 
     setActiveView(view)
     window.location.hash = hash
     onClose()
+  }
+
+  const handleDeleteGroup = (e: React.MouseEvent, group: Group) => {
+    e.stopPropagation()
+    setConfirmModal({
+      title: 'Delete Group',
+      message: `Are you sure you want to delete "${group.name}"? This action cannot be undone.`,
+      dangerous: true,
+      confirmLabel: 'Delete',
+      onConfirm: () => {
+        deleteGroupM.mutate(group.id)
+        setConfirmModal(null)
+        if (activeView === 'group' && window.location.hash.includes(group.id)) {
+          setActiveGroup(null)
+          navigateTo('home', 'home')
+        }
+      },
+      onCancel: () => setConfirmModal(null)
+    })
   }
 
   const navItemCls = `w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-bold text-sm transition-all duration-200`
@@ -60,7 +89,6 @@ export default function Sidebar({ onClose, onOpenAddTournament, onToggleDesktop 
           </span>
         </div>
         
-        {/* Desktop toggle button (hidden on mobile) */}
         {onToggleDesktop && (
           <button
             onClick={onToggleDesktop}
@@ -77,13 +105,23 @@ export default function Sidebar({ onClose, onOpenAddTournament, onToggleDesktop 
         {/* ── Global Hub ── */}
         <div className="space-y-1">
           <button
-            onClick={() => { selectTournament(null); navigateTo('home', 'home') }}
+            onClick={() => { setActiveGroup(null); selectTournament(null); navigateTo('home', 'home') }}
             className={`${navItemCls} ${activeView === 'home' && !selectedTournamentId 
               ? `${theme.bgMd} ${theme.textBase} shadow-sm ring-1 ring-slate-200 dark:ring-white/10` 
               : `${theme.textMuted} hover:${theme.bg} hover:${theme.textBase}`}`}
           >
             <Home size={18} className={activeView === 'home' && !selectedTournamentId ? theme.accent : 'opacity-70'} />
-            Global Hub
+            Home
+          </button>
+          
+          <button
+            onClick={() => { selectTournament(null); navigateTo('leaderboard', 'leaderboard') }}
+            className={`${navItemCls} ${activeView === 'leaderboard' && !selectedTournamentId 
+              ? `${theme.bgMd} ${theme.textBase} shadow-sm ring-1 ring-slate-200 dark:ring-white/10` 
+              : `${theme.textMuted} hover:${theme.bg} hover:${theme.textBase}`}`}
+          >
+            <LayoutList size={18} className={activeView === 'leaderboard' && !selectedTournamentId ? theme.accent : 'opacity-70'} />
+            Leaderboard
           </button>
         </div>
 
@@ -96,19 +134,31 @@ export default function Sidebar({ onClose, onOpenAddTournament, onToggleDesktop 
           </div>
           <div className="space-y-1">
             {groups.map((group) => {
-              const isActive = activeView === 'group' && window.location.hash.includes(group.id)
+              const isActive = activeGroupId === group.id
+              const isOwner = group.owner_id === profile?.id
+
               return (
-                <button
-                  key={group.id}
-                  onClick={() => { selectTournament(null); navigateTo('group', `group/${group.id}`) }}
-                  className={`${navItemCls} ${isActive
-                    ? `${theme.bgMd} ${theme.textBase} shadow-sm ring-1 ring-slate-200 dark:ring-white/10`
-                    : `${theme.textMuted} hover:${theme.bg} hover:${theme.textBase}`
-                  }`}
-                >
-                  <Users size={16} className={isActive ? theme.accent : 'opacity-70'} />
-                  <span className="truncate flex-1 text-left">{group.name}</span>
-                </button>
+                <div key={group.id} className="group flex items-center justify-between">
+                  <button
+                    onClick={() => { setActiveGroup(group.id); selectTournament(null); navigateTo('group', `#/group/${group.id}`) }}
+                    className={`flex-1 flex items-center gap-3 px-3 py-2.5 rounded-xl font-bold text-sm transition-all duration-200 ${isActive
+                      ? `${theme.bgMd} ${theme.textBase} shadow-sm ring-1 ring-slate-200 dark:ring-white/10`
+                      : `${theme.textMuted} hover:${theme.bg} hover:${theme.textBase}`
+                    }`}
+                  >
+                    <Users size={16} className={isActive ? theme.accent : 'opacity-70'} />
+                    <span className="truncate flex-1 text-left">{group.name}</span>
+                  </button>
+                  {isOwner && (
+                    <button
+                      onClick={(e) => handleDeleteGroup(e, group)}
+                      className="p-2 ml-1 opacity-0 group-hover:opacity-100 text-rose-400 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all"
+                      title="Delete Group"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
+                </div>
               )
             })}
             
@@ -133,7 +183,7 @@ export default function Sidebar({ onClose, onOpenAddTournament, onToggleDesktop 
         <div>
           <div className={`px-3 mb-2 flex items-center justify-between`}>
             <span className={`text-[10px] font-bold uppercase tracking-widest ${theme.textMuted}`}>
-              Tournaments
+              {activeGroupId ? 'Group Tournaments' : 'Global Tournaments'}
             </span>
             {isAdmin && onOpenAddTournament && (
               <button
@@ -160,10 +210,10 @@ export default function Sidebar({ onClose, onOpenAddTournament, onToggleDesktop 
               tournaments.map((t) => {
                 const isSelected = selectedTournamentId === t.id
                 return (
-                  <div key={t.id} className="group flex flex-col">
+                  <div key={t.id} className="group flex items-center justify-between">
                     <button
                       onClick={() => { selectTournament(t.id); navigateTo('bracket', 'bracket') }}
-                      className={`${navItemCls} ${isSelected
+                      className={`flex-1 flex items-center gap-3 px-3 py-2.5 rounded-xl font-bold text-sm transition-all duration-200 ${isSelected
                         ? `${theme.bgMd} ${theme.textBase} shadow-sm ring-1 ring-slate-200 dark:ring-white/10` 
                         : `${theme.textMuted} hover:${theme.bg} hover:${theme.textBase}`
                       }`}
@@ -171,7 +221,7 @@ export default function Sidebar({ onClose, onOpenAddTournament, onToggleDesktop 
                       <Trophy size={16} className={isSelected ? 'text-amber-500' : 'opacity-70'} />
                       <span className="truncate flex-1 text-left">{t.name}</span>
                       
-                      <div className="flex gap-1 opacity-60">
+                      <div className="flex gap-1 opacity-60 ml-auto">
                         {t.status === 'locked' ? (
                           <div className="w-1.5 h-1.5 rounded-full bg-slate-400" title="Locked" />
                         ) : t.status === 'open' ? (
@@ -181,33 +231,18 @@ export default function Sidebar({ onClose, onOpenAddTournament, onToggleDesktop 
                         )}
                       </div>
                     </button>
-
-                    {isSelected && (
-                      <div className="ml-9 mt-1 mb-2 space-y-1 relative before:absolute before:left-0 before:top-0 before:bottom-0 before:w-px before:bg-slate-200 dark:before:bg-slate-700/50">
-                        <button
-                          onClick={() => navigateTo('bracket', 'bracket')}
-                          className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${activeView === 'bracket' ? `${theme.textBase} bg-slate-100 dark:bg-white/5` : `${theme.textMuted} hover:${theme.textBase} hover:bg-slate-50 dark:hover:bg-white/5`}`}
-                        >
-                          <Database size={12} className={activeView === 'bracket' ? theme.accent : ''} />
-                          My Bracket
-                        </button>
-                        <button
-                          onClick={() => navigateTo('leaderboard', 'leaderboard')}
-                          className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${activeView === 'leaderboard' ? `${theme.textBase} bg-slate-100 dark:bg-white/5` : `${theme.textMuted} hover:${theme.textBase} hover:bg-slate-50 dark:hover:bg-white/5`}`}
-                        >
-                          <Trophy size={12} className={activeView === 'leaderboard' ? theme.accent : ''} />
-                          Leaderboard
-                        </button>
-                        {isAdmin && (
-                          <button
-                            onClick={() => navigateTo('admin', 'admin')}
-                            className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${activeView === 'admin' ? `${theme.textBase} bg-amber-500/10 text-amber-600 dark:text-amber-400` : `${theme.textMuted} hover:${theme.textBase} hover:bg-slate-50 dark:hover:bg-white/5`}`}
-                          >
-                            <Code size={12} className={activeView === 'admin' ? 'text-amber-500' : ''} />
-                            Admin Builder
-                          </button>
-                        )}
-                      </div>
+                    {isAdmin && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          selectTournament(t.id)
+                          navigateTo('admin', 'admin')
+                        }}
+                        className={`p-2 ml-1 rounded-lg transition-colors ${activeView === 'admin' && isSelected ? 'bg-amber-500/20 text-amber-500' : 'text-slate-400 hover:bg-slate-800/50 hover:text-amber-400'}`}
+                        title="Admin Builder"
+                      >
+                        <Settings2 size={16} />
+                      </button>
                     )}
                   </div>
                 )
