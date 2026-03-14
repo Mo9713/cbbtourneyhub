@@ -30,10 +30,10 @@ export default function AdminBuilderView() {
   // ── Tournament data ───────────────────────────────────────
   const { data: tournaments = [] } = useTournamentListQuery()
   const selectedTournamentId       = useUIStore((s) => s.selectedTournamentId)
-  
+
   const tournament = useMemo(
-    () => tournaments.find((t) => t.id === selectedTournamentId) ?? null, 
-    [tournaments, selectedTournamentId]
+    () => tournaments.find((t: Tournament) => t.id === selectedTournamentId) ?? null,
+    [tournaments, selectedTournamentId],
   )
 
   const { data: games = [] } = useGames(tournament?.id ?? null)
@@ -67,7 +67,7 @@ export default function AdminBuilderView() {
 
   const handleDeleteTournament = useCallback(() => {
     if (!tournament) return
-    const gameIds = games.map((g) => g.id)
+    const gameIds = games.map((g: Game) => g.id)
     setConfirmModal({
       title:        'Delete Tournament',
       message:      `Permanently delete "${tournament.name}" and all its games?`,
@@ -91,7 +91,7 @@ export default function AdminBuilderView() {
     if (!tid) return 'No tournament selected'
     const result = await gameService.updateGame(id, updates)
     if (!result.ok) return result.error
-    patchGamesCache(tid, (prev) => prev.map((g) => g.id === id ? { ...g, ...updates } : g))
+    patchGamesCache(tid, (prev) => prev.map((g: Game) => g.id === id ? { ...g, ...updates } : g))
     return null
   }, [tournament?.id, patchGamesCache])
 
@@ -117,8 +117,10 @@ export default function AdminBuilderView() {
   const addNextRound = useCallback(async (): Promise<string | null> => {
     const tid = tournament?.id
     if (!tid) return 'No tournament selected'
-    const maxRound = games.length ? Math.max(...games.map((g) => g.round_num)) : 0
-    const result   = await gameService.addGameToRound(tid, maxRound + 1, 0)
+    const maxRound = games.length
+      ? Math.max(...games.map((g: Game) => g.round_num))
+      : 0
+    const result = await gameService.addGameToRound(tid, maxRound + 1, 0)
     if (!result.ok) return result.error
     void qc.invalidateQueries({ queryKey: tournamentKeys.games(tid) })
     return null
@@ -138,9 +140,9 @@ export default function AdminBuilderView() {
     const tid = tournament?.id
     if (!tid) return 'No tournament selected'
     const gameNums = computeGameNumbers(games)
-    const fromGame = games.find((g) => g.id === fromId)
+    const fromGame = games.find((g: Game) => g.id === fromId)
     if (!fromGame) return 'Game not found'
-    patchGamesCache(tid, (prev) => prev.map((g) => {
+    patchGamesCache(tid, (prev) => prev.map((g: Game) => {
       if (g.id === fromId) return { ...g, next_game_id: toId }
       if (g.id === toId)   return { ...g, [slot]: `Winner of Game #${gameNums[fromId]}` }
       return g
@@ -158,9 +160,9 @@ export default function AdminBuilderView() {
     const tid = tournament?.id
     if (!tid) return 'No tournament selected'
     const gameNums = computeGameNumbers(games)
-    const fromGame = games.find((g) => g.id === fromId)
+    const fromGame = games.find((g: Game) => g.id === fromId)
     if (!fromGame) return 'Game not found'
-    patchGamesCache(tid, (prev) => prev.map((g) => g.id === fromId ? { ...g, next_game_id: null } : g))
+    patchGamesCache(tid, (prev) => prev.map((g: Game) => g.id === fromId ? { ...g, next_game_id: null } : g))
     const result = await gameService.unlinkGame(fromGame, games, gameNums)
     if (!result.ok) {
       void qc.invalidateQueries({ queryKey: tournamentKeys.games(tid) })
@@ -193,23 +195,25 @@ export default function AdminBuilderView() {
 
   const gameNumbers  = useMemo(() => computeGameNumbers(games), [games])
   const maxRound     = useMemo(
-    () => (games.length ? Math.max(...games.map((g) => g.round_num)) : 1),
+    () => (games.length ? Math.max(...games.map((g: Game) => g.round_num)) : 1),
     [games],
   )
-  const isBigDance   = useMemo(() => games.some((g) => g.region), [games])
+  const isBigDance   = useMemo(() => games.some((g: Game) => g.region), [games])
   const publishValid = useMemo(() => {
-    const nonChamp = games.filter((g) => g.round_num < maxRound)
-    return nonChamp.length === 0 || nonChamp.every((g) => g.next_game_id)
+    const nonChamp = games.filter((g: Game) => g.round_num < maxRound)
+    return nonChamp.length === 0 || nonChamp.every((g: Game) => g.next_game_id)
   }, [games, maxRound])
 
   const displayGames = useMemo(
-    () => (!isBigDance || !selectedRegion ? games : games.filter((g) => g.region === selectedRegion)),
+    () => (!isBigDance || !selectedRegion
+      ? games
+      : games.filter((g: Game) => g.region === selectedRegion)),
     [games, isBigDance, selectedRegion],
   )
 
   const rounds = useMemo(() => {
     const map = new Map<number, Game[]>()
-    displayGames.forEach((g) => {
+    displayGames.forEach((g: Game) => {
       if (!map.has(g.round_num)) map.set(g.round_num, [])
       map.get(g.round_num)!.push(g)
     })
@@ -217,7 +221,7 @@ export default function AdminBuilderView() {
       .sort(([a], [b]) => a - b)
       .map(
         ([r, gs]) =>
-          [r, gs.sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))] as [number, Game[]],
+          [r, gs.sort((a: Game, b: Game) => (a.sort_order ?? 0) - (b.sort_order ?? 0))] as [number, Game[]],
       )
   }, [displayGames])
 
@@ -242,11 +246,11 @@ export default function AdminBuilderView() {
 
   // ── Drag handlers ─────────────────────────────────────────
   const handleDragStart = useCallback((id: string) => setDraggedGameId(id), [])
-  const handleDragOver = useCallback((e: React.DragEvent, id: string) => {
+  const handleDragOver  = useCallback((e: React.DragEvent, id: string) => {
     e.preventDefault()
     setDragOverGameId(id)
   }, [])
-  const handleDragEnd = useCallback(() => {
+  const handleDragEnd   = useCallback(() => {
     setDraggedGameId(null)
     setDragOverGameId(null)
   }, [])
@@ -254,18 +258,18 @@ export default function AdminBuilderView() {
     async (e: React.DragEvent, targetId: string) => {
       e.preventDefault()
       if (!draggedGameId) return
-      const roundNum = games.find((g) => g.id === draggedGameId)?.round_num
+      const roundNum = games.find((g: Game) => g.id === draggedGameId)?.round_num
       const sorted   = games
-        .filter((g) => g.round_num === roundNum)
-        .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
-      const fromIdx  = sorted.findIndex((g) => g.id === draggedGameId)
-      const toIdx    = sorted.findIndex((g) => g.id === targetId)
+        .filter((g: Game) => g.round_num === roundNum)
+        .sort((a: Game, b: Game) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+      const fromIdx  = sorted.findIndex((g: Game) => g.id === draggedGameId)
+      const toIdx    = sorted.findIndex((g: Game) => g.id === targetId)
       if (fromIdx === -1 || toIdx === -1) { handleDragEnd(); return }
 
       const reordered      = [...sorted]
       const [removed]      = reordered.splice(fromIdx, 1)
       reordered.splice(toIdx, 0, removed)
-      await Promise.all(reordered.map((g, i) => updateGame(g.id, { sort_order: i })))
+      await Promise.all(reordered.map((g: Game, i: number) => updateGame(g.id, { sort_order: i })))
       handleDragEnd()
     },
     [draggedGameId, games, updateGame, handleDragEnd],

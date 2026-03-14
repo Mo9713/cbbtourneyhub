@@ -1,4 +1,5 @@
 // src/widgets/tournament-bracket/ui/BracketView/index.tsx
+
 import { useState, useMemo, useCallback }      from 'react'
 import { useTheme }                            from '../../../../shared/lib/theme'
 import { isPicksLocked }                       from '../../../../shared/lib/time'
@@ -11,12 +12,13 @@ import {
   computeGameNumbers,
   type EffectiveNames,
 }                                              from '../../../../shared/lib/bracketMath'
-import { useAuth }                             from '../../../../features/auth/model/useAuth'
+import { useAuth }                             from '../../../../features/auth'
 import { useUIStore }                          from '../../../../shared/store/uiStore'
 import { BracketViewProvider }                 from './BracketViewContext'
 import { useMyPicks, useMakePick, useSaveTiebreaker } from '../../../../entities/pick/model/queries'
 import { buildPickMap, sortedRounds, getChampGame }   from '../../../../features/bracket/model/selectors'
 import { useGames, useTournamentListQuery }    from '../../../../entities/tournament/model/queries'
+import { useMakeSurvivorPickMutation }         from '../../../../features/survivor'
 import BracketHeader                           from './BracketHeader'
 import BracketGrid                             from './BracketGrid'
 import TiebreakerPanel                         from './TiebreakerPanel'
@@ -42,10 +44,11 @@ export default function BracketView({
   const { profile }                = useAuth()
   const { data: tournaments = [] } = useTournamentListQuery()
   const selectedTournamentId       = useUIStore((s) => s.selectedTournamentId)
-  
-  const selectedTournament = useMemo(() => {
-    return tournaments.find((t) => t.id === selectedTournamentId) ?? null
-  }, [tournaments, selectedTournamentId])
+
+  const selectedTournament = useMemo(
+    () => tournaments.find((t) => t.id === selectedTournamentId) ?? null,
+    [tournaments, selectedTournamentId],
+  )
 
   const tournament = overrideTournament ?? selectedTournament
 
@@ -60,26 +63,31 @@ export default function BracketView({
   const { mutateAsync: makePick }       = useMakePick()
   const { mutateAsync: saveTiebreaker } = useSaveTiebreaker()
 
+  // N-04 FIX: Hook is initialised once at this level, not inside every
+  // MatchupColumn render. Rules of Hooks requires it to be called
+  // unconditionally — the handler is passed into context only when the
+  // tournament is Survivor mode, so Standard bracket columns receive
+  // undefined and never invoke it.
+  const { mutate: makeSurvivorPick } = useMakeSurvivorPickMutation()
+
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null)
 
   const isLocked = tournament && profile
     ? isPicksLocked(tournament, profile.is_admin)
-      || tournament.status === 'draft'
-      || tournament.status === 'locked'
+        || tournament.status === 'draft'
+        || tournament.status === 'locked'
     : false
 
+  const isSurvivor = tournament?.game_type === 'survivor'
   const isBigDance = useMemo(() => games.some((g) => g.region), [games])
 
-  const pickMap         = useMemo(() => buildPickMap(picks), [picks])
-  const rounds          = useMemo(
-    () => sortedRounds(games, isBigDance ? selectedRegion : null),
-    [games, isBigDance, selectedRegion],
-  )
-  const effectiveNames  = useMemo<EffectiveNames>(() => deriveEffectiveNames(games, picks), [games, picks])
-  const champion        = useMemo(() => deriveChampion(games, picks, effectiveNames), [games, picks, effectiveNames])
-  const champGame       = useMemo(() => getChampGame(games), [games])
-  const gameNumbers     = useMemo(() => computeGameNumbers(games), [games])
-  const eliminatedTeams = useMemo(() => deriveEliminatedTeams(games, effectiveNames), [games, effectiveNames])
+  const pickMap         = useMemo(() => buildPickMap(picks),                                            [picks])
+  const rounds          = useMemo(() => sortedRounds(games, isBigDance ? selectedRegion : null),        [games, isBigDance, selectedRegion])
+  const effectiveNames  = useMemo<EffectiveNames>(() => deriveEffectiveNames(games, picks),             [games, picks])
+  const champion        = useMemo(() => deriveChampion(games, picks, effectiveNames),                   [games, picks, effectiveNames])
+  const champGame       = useMemo(() => getChampGame(games),                                            [games])
+  const gameNumbers     = useMemo(() => computeGameNumbers(games),                                      [games])
+  const eliminatedTeams = useMemo(() => deriveEliminatedTeams(games, effectiveNames),                   [games, effectiveNames])
 
   const score = useMemo(() => {
     if (!tournament) return { current: 0, max: 0 }
@@ -91,11 +99,33 @@ export default function BracketView({
     [champGame, picks],
   )
 
+  // Stable game ID array for the survivor handler — derived from the
+  // already-cached games list, eliminating the C-06 N+1 DB fetch.
+  const gameIds = useMemo(() => games.map((g) => g.id), [games])
+
   const handlePick = useCallback(async (game: Game, team: string) => {
     if (!tournament || readOnly || isLocked) return
     const existingPick = pickMap.get(game.id)
     await makePick({ game, team, tournamentId: tournament.id, games, existingPick })
   }, [tournament, readOnly, isLocked, pickMap, makePick, games])
+
+  // Only wired into the context value when isSurvivor is true.
+  // Standard bracket columns receive undefined from context and skip
+  // the SurvivorGameCard render path entirely.
+  const handleSurvivorPick = useCallback((
+    gameId:          string,
+    teamName:        string | null,
+    roundNum:        number,
+  ) => {
+    if (!tournament || readOnly || isLocked) return
+    makeSurvivorPick({
+      tournamentId:    tournament.id,
+      gameId,
+      predictedWinner: teamName,
+      roundNum,
+      gameIds,
+    })
+  }, [tournament, readOnly, isLocked, makeSurvivorPick, gameIds])
 
   const handleTiebreaker = useCallback(async (
     gameId: string, predictedWinner: string, score: number,
@@ -104,17 +134,21 @@ export default function BracketView({
     try {
       await saveTiebreaker({ gameId, predictedWinner, score, tournamentId: tournament.id })
       return null
-    } catch (err: any) {
-      return err.message || 'Failed to save tiebreaker'
+    } catch (err: unknown) {
+      return err instanceof Error ? err.message : 'Failed to save tiebreaker'
     }
   }, [saveTiebreaker, tournament])
 
   const bracketViewValue = useMemo(() => ({
-    isLocked: isLocked || readOnly,
+    isLocked:       isLocked || readOnly,
     readOnly,
     ownerName,
-    onPick: handlePick,
-  }), [isLocked, readOnly, ownerName, handlePick])
+    onPick:         handlePick,
+    // Populate onSurvivorPick only for Survivor tournaments so that
+    // MatchupColumn can guard on its presence without an explicit
+    // isSurvivor prop.
+    onSurvivorPick: isSurvivor ? handleSurvivorPick : undefined,
+  }), [isLocked, readOnly, ownerName, handlePick, isSurvivor, handleSurvivorPick])
 
   if (!tournament || !profile) return null
 

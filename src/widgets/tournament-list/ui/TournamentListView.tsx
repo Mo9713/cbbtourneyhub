@@ -1,7 +1,9 @@
+// src/widgets/tournament-list/ui/TournamentListView.tsx
+
 import { useTheme }                         from '../../../shared/lib/theme'
 import { isPicksLocked }                    from '../../../shared/lib/time'
 import { statusLabel, statusIcon }          from '../../../shared/lib/helpers'
-import { useAuth }                          from '../../../features/auth/model/useAuth'
+import { useAuth }                          from '../../../features/auth'
 import { useUIStore }                       from '../../../shared/store/uiStore'
 import { useTournamentListQuery, useGames } from '../../../entities/tournament/model/queries'
 import { useMyPicks }                       from '../../../entities/pick/model/queries'
@@ -51,7 +53,9 @@ function TournamentCard({ t, isAdmin, onSelect }: CardProps) {
         <div className="mt-2">
           <div className="flex items-center justify-between mb-1">
             <span className="text-[10px] text-slate-500">Your picks</span>
-            <span className={`text-[10px] font-bold ${pct === 100 ? 'text-emerald-600 dark:text-emerald-400' : theme.accent}`}>
+            <span className={`text-[10px] font-bold ${pct === 100
+              ? 'text-emerald-600 dark:text-emerald-400'
+              : theme.accent}`}>
               {myPickCount} / {games.length}
             </span>
           </div>
@@ -83,10 +87,12 @@ export default function TournamentListView() {
   if (!profile) return null
 
   const isAdmin = profile.is_admin
-  const open   = tournaments.filter((t) => t.status === 'open' && !isPicksLocked(t, isAdmin))
-  const draft  = isAdmin ? tournaments.filter((t) => t.status === 'draft') : []
+
+  // Explicit Tournament types on all filter callbacks.
+  const open   = tournaments.filter((t: Tournament) => t.status === 'open' && !isPicksLocked(t, isAdmin))
+  const draft  = isAdmin ? tournaments.filter((t: Tournament) => t.status === 'draft') : []
   const locked = tournaments.filter(
-    (t) => t.status === 'locked' || (t.status === 'open' && isPicksLocked(t, isAdmin)),
+    (t: Tournament) => t.status === 'locked' || (t.status === 'open' && isPicksLocked(t, isAdmin)),
   )
 
   const handleSelect = (t: Tournament) => selectTournamentId(t.id)
@@ -99,7 +105,7 @@ export default function TournamentListView() {
           {label}
         </h2>
         <div className="grid gap-3 sm:grid-cols-2">
-          {items.map((t) => (
+          {items.map((t: Tournament) => (
             <TournamentCard
               key={t.id}
               t={t}

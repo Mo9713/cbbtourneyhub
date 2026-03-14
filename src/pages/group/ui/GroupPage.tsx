@@ -5,7 +5,7 @@ import { useUIStore }     from '../../../shared/store/uiStore'
 import { useTheme }       from '../../../shared/lib/theme'
 
 export function GroupPage() {
-  const theme = useTheme()
+  const theme   = useTheme()
   const groupId = useUIStore(s => s.activeGroupId)
 
   if (!groupId) {
@@ -16,8 +16,14 @@ export function GroupPage() {
           <p className={`${theme.textMuted} mb-6`}>
             The group URL is invalid or missing an ID.
           </p>
-          <button 
-            onClick={() => window.location.hash = '#/home'}
+          {/*
+            N-06 FIX: No longer writes window.location.hash directly.
+            setActiveView() is the single source of truth for navigation —
+            useHashRouter's effect reads the new Zustand state and calls
+            history.pushState('#/home') on the next tick.
+          */}
+          <button
+            onClick={() => useUIStore.getState().setActiveView('home')}
             className={`px-6 py-2 rounded-lg font-bold w-full transition-colors ${theme.btn}`}
           >
             Return Home

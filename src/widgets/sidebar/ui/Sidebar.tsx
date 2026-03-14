@@ -1,32 +1,35 @@
-// src/shared/ui/Sidebar.tsx
+// src/widgets/sidebar/ui/Sidebar.tsx
 
 import {
-  Trophy, Home, Settings, LogOut, Plus, PanelLeftClose, Users, UserPlus, Settings2, LayoutList
+  Trophy, Home, Settings, LogOut, Plus, PanelLeftClose,
+  Users, UserPlus, Settings2, LayoutList,
 } from 'lucide-react'
-import { supabase }               from '../infra/supabaseClient'
-import { useTheme }               from '../lib/theme'
-import { useAuth }                from '../../features/auth/model/useAuth'
-import { useTournamentListQuery } from '../../entities/tournament/model/queries'
-import { useUserGroupsQuery }     from '../../entities/group/api'
-import { useUIStore }             from '../store/uiStore'
+
+import { useTheme }               from '../../../shared/lib/theme'
+import { useUIStore }             from '../../../shared/store/uiStore'
+import { useAuth }                from '../../../features/auth'
+import { useTournamentListQuery } from '../../../entities/tournament/model/queries'
+// C-03 cascade FIX: hooks come from the model public API, not the api sublayer.
+import { useUserGroupsQuery }     from '../../../entities/group/model'
+import type { ActiveView, Tournament, Group } from '../../../shared/types'
 
 interface SidebarProps {
-  onClose: () => void
+  onClose:             () => void
   onOpenAddTournament?: () => void
-  onToggleDesktop?: () => void
+  onToggleDesktop?:    () => void
 }
 
 export default function Sidebar({ onClose, onOpenAddTournament, onToggleDesktop }: SidebarProps) {
   const theme = useTheme()
-  const { profile } = useAuth()
-  
+
+  const { profile, signOut } = useAuth()
+
   const activeView           = useUIStore(s => s.activeView)
   const setActiveView        = useUIStore(s => s.setActiveView)
   const activeGroupId        = useUIStore(s => s.activeGroupId)
   const setActiveGroup       = useUIStore(s => s.setActiveGroup)
   const selectedTournamentId = useUIStore(s => s.selectedTournamentId)
   const selectTournament     = useUIStore(s => s.selectTournament)
-  
   const openCreateGroup      = useUIStore(s => s.openCreateGroup)
   const openJoinGroup        = useUIStore(s => s.openJoinGroup)
 
@@ -35,18 +38,20 @@ export default function Sidebar({ onClose, onOpenAddTournament, onToggleDesktop 
 
   const isAdmin = profile?.is_admin
 
-  const tournaments = activeGroupId 
-    ? allTournaments.filter(t => t.group_id === activeGroupId)
-    : allTournaments.filter(t => !t.group_id)
+  // Explicit types on filter callbacks — parameter inference was broken
+  // when unwrap.ts failed as a module (cascades to Tournament[] being `any[]`).
+  const tournaments = activeGroupId
+    ? allTournaments.filter((t: Tournament) => t.group_id === activeGroupId)
+    : allTournaments.filter((t: Tournament) => !t.group_id)
 
   const handleLogout = async () => {
-    await supabase.auth.signOut()
-    window.location.reload()
+    await signOut()
   }
 
-  const navigateTo = (view: 'home' | 'bracket' | 'leaderboard' | 'admin' | 'settings' | 'group', hash: string) => {
+  // N-05 FIX: navigateTo no longer writes window.location.hash.
+  // setActiveView → useHashRouter effect → history.pushState (single write path).
+  const navigateTo = (view: ActiveView) => {
     setActiveView(view)
-    window.location.hash = hash
     onClose()
   }
 
@@ -54,7 +59,7 @@ export default function Sidebar({ onClose, onOpenAddTournament, onToggleDesktop 
 
   return (
     <aside className={`w-64 h-full flex flex-col border-r shadow-2xl overflow-hidden relative ${theme.sidebarBg} border-slate-200 dark:border-slate-800 transition-colors duration-300`}>
-      
+
       {/* ── Header ── */}
       <div className="p-5 flex-shrink-0 flex items-center justify-between border-b border-slate-200 dark:border-slate-800/50">
         <div className="flex items-center gap-2">
@@ -65,11 +70,11 @@ export default function Sidebar({ onClose, onOpenAddTournament, onToggleDesktop 
             Tourney<span className={theme.accent}>Hub</span>
           </span>
         </div>
-        
+
         {onToggleDesktop && (
           <button
             onClick={onToggleDesktop}
-            className={`hidden md:flex p-1.5 rounded-lg text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 transition-colors`}
+            className="hidden md:flex p-1.5 rounded-lg text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
             title="Collapse sidebar"
           >
             <PanelLeftClose size={18} />
@@ -82,19 +87,19 @@ export default function Sidebar({ onClose, onOpenAddTournament, onToggleDesktop 
         {/* ── Global Hub ── */}
         <div className="space-y-1">
           <button
-            onClick={() => { setActiveGroup(null); selectTournament(null); navigateTo('home', 'home') }}
-            className={`${navItemCls} ${activeView === 'home' && !selectedTournamentId 
-              ? `${theme.bgMd} ${theme.textBase} shadow-sm ring-1 ring-slate-200 dark:ring-white/10` 
+            onClick={() => { setActiveGroup(null); selectTournament(null); navigateTo('home') }}
+            className={`${navItemCls} ${activeView === 'home' && !selectedTournamentId
+              ? `${theme.bgMd} ${theme.textBase} shadow-sm ring-1 ring-slate-200 dark:ring-white/10`
               : `${theme.textMuted} hover:${theme.bg} hover:${theme.textBase}`}`}
           >
             <Home size={18} className={activeView === 'home' && !selectedTournamentId ? theme.accent : 'opacity-70'} />
             Home
           </button>
-          
+
           <button
-            onClick={() => { selectTournament(null); navigateTo('leaderboard', 'leaderboard') }}
-            className={`${navItemCls} ${activeView === 'leaderboard' && !selectedTournamentId 
-              ? `${theme.bgMd} ${theme.textBase} shadow-sm ring-1 ring-slate-200 dark:ring-white/10` 
+            onClick={() => { selectTournament(null); navigateTo('leaderboard') }}
+            className={`${navItemCls} ${activeView === 'leaderboard' && !selectedTournamentId
+              ? `${theme.bgMd} ${theme.textBase} shadow-sm ring-1 ring-slate-200 dark:ring-white/10`
               : `${theme.textMuted} hover:${theme.bg} hover:${theme.textBase}`}`}
           >
             <LayoutList size={18} className={activeView === 'leaderboard' && !selectedTournamentId ? theme.accent : 'opacity-70'} />
@@ -104,40 +109,43 @@ export default function Sidebar({ onClose, onOpenAddTournament, onToggleDesktop 
 
         {/* ── My Groups ── */}
         <div>
-          <div className={`px-3 mb-2 flex items-center justify-between`}>
+          <div className="px-3 mb-2 flex items-center justify-between">
             <span className={`text-[10px] font-bold uppercase tracking-widest ${theme.textMuted}`}>
               My Groups
             </span>
           </div>
           <div className="space-y-1">
-            {groups.map((group) => {
+            {groups.map((group: Group) => {
               const isActive = activeGroupId === group.id
-
               return (
                 <div key={group.id} className="group flex items-center justify-between">
                   <button
-                    onClick={() => { setActiveGroup(group.id); selectTournament(null); navigateTo('group', `#/group/${group.id}`) }}
+                    onClick={() => {
+                      setActiveGroup(group.id)
+                      selectTournament(null)
+                      navigateTo('group')
+                    }}
                     className={`flex-1 flex items-center gap-3 px-3 py-2.5 rounded-xl font-bold text-sm transition-all duration-200 min-w-0 ${isActive
                       ? `${theme.bgMd} ${theme.textBase} shadow-sm ring-1 ring-slate-200 dark:ring-white/10`
                       : `${theme.textMuted} hover:${theme.bg} hover:${theme.textBase}`
                     }`}
                   >
                     <Users size={16} className={isActive ? theme.accent : 'opacity-70'} />
-                    <span className="truncate flex-1 text-left">My Group</span>
+                    <span className="truncate flex-1 text-left">{group.name}</span>
                   </button>
                 </div>
               )
             })}
-            
+
             <div className="flex gap-2 px-1 pt-2">
               <button
-                onClick={() => { onClose(); openCreateGroup(); }}
+                onClick={() => { onClose(); openCreateGroup() }}
                 className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors border border-slate-200 dark:border-white/5 bg-slate-50 dark:bg-white/5 hover:bg-slate-100 dark:hover:bg-white/10 ${theme.textBase}`}
               >
                 <Plus size={12} /> Create
               </button>
               <button
-                onClick={() => { onClose(); openJoinGroup(); }}
+                onClick={() => { onClose(); openJoinGroup() }}
                 className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors border border-slate-200 dark:border-white/5 bg-slate-50 dark:bg-white/5 hover:bg-slate-100 dark:hover:bg-white/10 ${theme.textBase}`}
               >
                 <UserPlus size={12} /> Join
@@ -148,21 +156,21 @@ export default function Sidebar({ onClose, onOpenAddTournament, onToggleDesktop 
 
         {/* ── Tournaments ── */}
         <div>
-          <div className={`px-3 mb-2 flex items-center justify-between`}>
+          <div className="px-3 mb-2 flex items-center justify-between">
             <span className={`text-[10px] font-bold uppercase tracking-widest ${theme.textMuted}`}>
               {activeGroupId ? 'Group Tournaments' : 'Global Tournaments'}
             </span>
             {isAdmin && onOpenAddTournament && (
               <button
                 onClick={() => { onClose(); onOpenAddTournament() }}
-                className={`p-1 rounded-md bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 transition-colors`}
+                className="p-1 rounded-md bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 transition-colors"
                 title="Create Tournament"
               >
                 <Plus size={12} />
               </button>
             )}
           </div>
-          
+
           <div className="space-y-1">
             {isLoading ? (
               <div className="px-3 py-2 text-xs text-slate-400 animate-pulse flex items-center gap-2">
@@ -174,20 +182,20 @@ export default function Sidebar({ onClose, onOpenAddTournament, onToggleDesktop 
                 No active tournaments
               </div>
             ) : (
-              tournaments.map((t) => {
+              tournaments.map((t: Tournament) => {
                 const isSelected = selectedTournamentId === t.id
                 return (
                   <div key={t.id} className="group flex items-center justify-between">
                     <button
-                      onClick={() => { selectTournament(t.id); navigateTo('bracket', 'bracket') }}
+                      onClick={() => { selectTournament(t.id); navigateTo('bracket') }}
                       className={`flex-1 flex items-center gap-3 px-3 py-2.5 rounded-xl font-bold text-sm transition-all duration-200 min-w-0 ${isSelected
-                        ? `${theme.bgMd} ${theme.textBase} shadow-sm ring-1 ring-slate-200 dark:ring-white/10` 
+                        ? `${theme.bgMd} ${theme.textBase} shadow-sm ring-1 ring-slate-200 dark:ring-white/10`
                         : `${theme.textMuted} hover:${theme.bg} hover:${theme.textBase}`
                       }`}
                     >
                       <Trophy size={16} className={isSelected ? 'text-amber-500' : 'opacity-70'} />
                       <span className="truncate flex-1 text-left">{t.name}</span>
-                      
+
                       <div className="flex gap-1 opacity-60 ml-auto">
                         {t.status === 'locked' ? (
                           <div className="w-1.5 h-1.5 rounded-full bg-slate-400" title="Locked" />
@@ -198,14 +206,17 @@ export default function Sidebar({ onClose, onOpenAddTournament, onToggleDesktop 
                         )}
                       </div>
                     </button>
+
                     {isAdmin && (
                       <button
                         onClick={(e) => {
                           e.stopPropagation()
                           selectTournament(t.id)
-                          navigateTo('admin', 'admin')
+                          navigateTo('admin')
                         }}
-                        className={`p-2 ml-1 rounded-lg transition-colors ${activeView === 'admin' && isSelected ? 'bg-amber-500/20 text-amber-500' : 'text-slate-400 hover:bg-slate-800/50 hover:text-amber-400'}`}
+                        className={`p-2 ml-1 rounded-lg transition-colors ${activeView === 'admin' && isSelected
+                          ? 'bg-amber-500/20 text-amber-500'
+                          : 'text-slate-400 hover:bg-slate-800/50 hover:text-amber-400'}`}
                         title="Admin Builder"
                       >
                         <Settings2 size={16} />
@@ -221,16 +232,18 @@ export default function Sidebar({ onClose, onOpenAddTournament, onToggleDesktop 
       </div>
 
       {/* ── Footer ── */}
-      <div className={`p-4 border-t border-slate-200 dark:border-slate-800/50 bg-slate-50/50 dark:bg-black/20 shrink-0`}>
+      <div className="p-4 border-t border-slate-200 dark:border-slate-800/50 bg-slate-50/50 dark:bg-black/20 shrink-0">
         <div className="flex items-center justify-between">
           <button
-            onClick={() => { selectTournament(null); navigateTo('settings', 'settings') }}
-            className={`flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-bold transition-colors ${activeView === 'settings' ? `${theme.textBase} ${theme.bgMd} shadow-sm ring-1 ring-slate-200 dark:ring-white/10` : `${theme.textMuted} hover:${theme.bg} hover:${theme.textBase}`}`}
+            onClick={() => { selectTournament(null); navigateTo('settings') }}
+            className={`flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-bold transition-colors ${activeView === 'settings'
+              ? `${theme.textBase} ${theme.bgMd} shadow-sm ring-1 ring-slate-200 dark:ring-white/10`
+              : `${theme.textMuted} hover:${theme.bg} hover:${theme.textBase}`}`}
           >
             <Settings size={16} className={activeView === 'settings' ? theme.accent : 'opacity-70'} />
             Settings
           </button>
-          
+
           <button
             onClick={handleLogout}
             title="Log out"
@@ -240,6 +253,7 @@ export default function Sidebar({ onClose, onOpenAddTournament, onToggleDesktop 
           </button>
         </div>
       </div>
+
     </aside>
   )
 }

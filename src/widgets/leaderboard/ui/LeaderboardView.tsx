@@ -3,12 +3,12 @@
 import { useState, useMemo, useEffect }  from 'react'
 import { BarChart2, Shield, Skull }      from 'lucide-react'
 import { useTheme }                      from '../../../shared/lib/theme'
-import { useAuth }                       from '../../../features/auth/model/useAuth'
+import { useAuth }                       from '../../../features/auth'
 import { useTournamentListQuery }        from '../../../entities/tournament/model/queries'
 import { useLeaderboardRaw }             from '../../../entities/leaderboard/model/queries'
 import { computeLeaderboard }            from '../../../features/leaderboard/model/selectors'
-import Avatar                            from '../../../shared/ui/Avatar'
-import type { Game }                     from '../../../shared/types'
+import { Avatar }                        from '../../../shared/ui'
+import type { Game, Tournament }         from '../../../shared/types'
 
 export interface LeaderboardViewProps {
   onSnoop: (targetId: string) => void
@@ -20,9 +20,9 @@ export default function LeaderboardView({ onSnoop }: LeaderboardViewProps) {
   const { profile }                = useAuth()
   const { data: tournaments = [] } = useTournamentListQuery()
   const { data: raw }              = useLeaderboardRaw()
-  
+
   const [selectedTournaments, setSelectedTournaments] = useState<Set<string>>(
-    () => new Set(tournaments.map((t) => t.id)),
+    () => new Set(tournaments.map((t: Tournament) => t.id)),
   )
 
   const toggleTournament = (id: string) => {
@@ -35,10 +35,10 @@ export default function LeaderboardView({ onSnoop }: LeaderboardViewProps) {
 
   useEffect(() => {
     setSelectedTournaments((prev) => {
-      const serverIds = new Set(tournaments.map((t) => t.id))
+      const serverIds = new Set(tournaments.map((t: Tournament) => t.id))
       const next      = new Set(prev)
       let   changed   = false
-      tournaments.forEach((t) => {
+      tournaments.forEach((t: Tournament) => {
         if (!next.has(t.id)) { next.add(t.id); changed = true }
       })
       next.forEach((id) => {
@@ -50,8 +50,10 @@ export default function LeaderboardView({ onSnoop }: LeaderboardViewProps) {
 
   const leaderboard = useMemo(() => {
     if (!raw || !raw.allProfiles.length) return []
-    const tournamentMap = new Map(tournaments.map((t) => [t.id, t]))
-    const scopedGames   =
+    const tournamentMap = new Map<string, Tournament>(
+      tournaments.map((t: Tournament) => [t.id, t]),
+    )
+    const scopedGames =
       selectedTournaments.size > 0
         ? raw.allGames.filter((g: Game) => selectedTournaments.has(g.tournament_id))
         : raw.allGames
@@ -67,16 +69,12 @@ export default function LeaderboardView({ onSnoop }: LeaderboardViewProps) {
   const isAdmin   = profile?.is_admin ?? false
   const currentId = profile?.id ?? ''
 
-  // ── SNOOPING LOGIC FRAMEWORK ────────────────────────────────
-  const isGroupContext = false 
-  const isGroupLocked  = false 
-  const canSnoop = isAdmin || (isGroupContext && isGroupLocked)
-  // ────────────────────────────────────────────────────────────
+  // N-02 FIX: dead placeholders removed — canSnoop always reduces to isAdmin.
+  const canSnoop = isAdmin
 
-  // Dynamically determine if the leaderboard needs to display Survivor-specific columns
   const isSurvivorMode = useMemo(() => {
     return Array.from(selectedTournaments).some(id => {
-      const t = tournaments.find(t => t.id === id)
+      const t = tournaments.find((t: Tournament) => t.id === id)
       return t?.game_type === 'survivor'
     })
   }, [selectedTournaments, tournaments])
@@ -98,7 +96,7 @@ export default function LeaderboardView({ onSnoop }: LeaderboardViewProps) {
             <span className="text-[10px] font-bold text-amber-400 uppercase tracking-widest flex items-center gap-1 mr-1">
               <Shield size={9} /> Filter:
             </span>
-            {tournaments.map((t) => (
+            {tournaments.map((t: Tournament) => (
               <label
                 key={t.id}
                 className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border cursor-pointer text-xs font-medium transition-all select-none
@@ -151,11 +149,7 @@ export default function LeaderboardView({ onSnoop }: LeaderboardViewProps) {
             leaderboard.map((entry, i) => {
               const isMe  = entry.profile.id === currentId
               const medal = medals[i] ?? null
-
-              // Strikethrough style for survivor elimination
-              const eliminatedCls = entry.isEliminated 
-                ? 'opacity-60 grayscale' 
-                : ''
+              const eliminatedCls = entry.isEliminated ? 'opacity-60 grayscale' : ''
 
               return (
                 <div
@@ -198,7 +192,7 @@ export default function LeaderboardView({ onSnoop }: LeaderboardViewProps) {
                       )}
                     </div>
                   </div>
-                  
+
                   {isSurvivorMode && (
                     <div className="w-20 text-right flex-shrink-0 hidden sm:block">
                       <p className="text-sm font-bold text-slate-500 tabular-nums">
@@ -211,19 +205,22 @@ export default function LeaderboardView({ onSnoop }: LeaderboardViewProps) {
                     <p className={`text-lg font-bold tabular-nums ${entry.isEliminated ? 'text-slate-500' : isMe ? theme.accentB : 'text-slate-900 dark:text-white'}`}>
                       {entry.points}
                     </p>
+                    <p className="text-[10px] text-slate-500 tabular-nums">
+                      {entry.correct}/{entry.total}
+                    </p>
                   </div>
-                  
+
                   {!isSurvivorMode && (
                     <div className="w-24 text-right flex-shrink-0 hidden sm:block">
-                      <p className="text-sm text-emerald-600 dark:text-emerald-400 tabular-nums font-medium">
+                      <p className={`text-sm font-medium tabular-nums ${entry.isEliminated ? 'text-slate-600' : 'text-slate-400'}`}>
                         {entry.maxPossible}
                       </p>
                     </div>
                   )}
-                  
-                  {canSnoop && (
-                    <div className="w-6 hidden sm:flex justify-end flex-shrink-0">
-                      {!isMe && <BarChart2 size={16} className="text-slate-400" />}
+
+                  {canSnoop && !isMe && (
+                    <div className="w-6 hidden sm:flex items-center justify-center flex-shrink-0">
+                      <BarChart2 size={14} className="text-slate-600 group-hover:text-slate-400" />
                     </div>
                   )}
                 </div>

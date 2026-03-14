@@ -1,6 +1,6 @@
 // src/features/group-management/ui/CreateGroupModal.tsx
 
-import React, { useState } from 'react'
+import React, { useState }        from 'react'
 import { useCreateGroupMutation } from '../../../entities/group'
 import { useUIStore }             from '../../../shared/store/uiStore'
 import { useTheme }               from '../../../shared/lib/theme'
@@ -12,11 +12,10 @@ interface Props {
 export function CreateGroupModal({ onClose }: Props) {
   const theme     = useTheme()
   const pushToast = useUIStore((s) => s.pushToast)
-  const setActiveView = useUIStore((s) => s.setActiveView)
 
   const [name, setName]             = useState('')
   const [inviteCode, setInviteCode] = useState('')
-  
+
   const { mutate, isPending } = useCreateGroupMutation()
 
   const handleGenerateCode = () => {
@@ -26,7 +25,7 @@ export function CreateGroupModal({ onClose }: Props) {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     if (!name.trim() || !inviteCode.trim()) {
       pushToast('Group Name and Invite Code are required.', 'error')
       return
@@ -36,16 +35,17 @@ export function CreateGroupModal({ onClose }: Props) {
       { name: name.trim(), invite_code: inviteCode.trim() },
       {
         onSuccess: (group) => {
+          // `group` is correctly typed as Group — no longer unknown.
+          // N-11 FIX: setActiveGroup + setActiveView instead of direct hash write.
           pushToast('Group created successfully!', 'success')
-          // Auto-navigate to the newly created group dashboard
-          setActiveView('group')
-          window.location.hash = `#/group/${group.id}`
+          useUIStore.getState().setActiveGroup(group.id)
+          useUIStore.getState().setActiveView('group')
           onClose()
         },
         onError: (error: Error) => {
           pushToast(error.message || 'Failed to create group.', 'error')
-        }
-      }
+        },
+      },
     )
   }
 
@@ -55,7 +55,7 @@ export function CreateGroupModal({ onClose }: Props) {
         <div className={`px-6 py-4 border-b ${theme.borderBase} ${theme.headerBg}`}>
           <h2 className={`text-xl font-bold ${theme.textBase}`}>Create a Group</h2>
         </div>
-        
+
         <form onSubmit={handleSubmit} className="p-6 flex flex-col gap-5">
           <div className="flex flex-col gap-2">
             <label htmlFor="groupName" className={`text-sm font-semibold ${theme.textBase}`}>

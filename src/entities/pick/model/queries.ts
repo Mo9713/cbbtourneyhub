@@ -1,49 +1,61 @@
 // src/entities/pick/model/queries.ts
+
 import {
-  useQuery, useMutation, useQueryClient, QueryClient
+  useQuery, useMutation, useQueryClient, type QueryClient,
 } from '@tanstack/react-query'
+
+import { unwrap }                   from '../../../shared/lib/unwrap'
 import { collectDownstreamGameIds } from '../../../shared/lib/bracketMath'
-import * as api from '../api'
-import type { Game, Pick } from '../../../shared/types'
+import * as api                     from '../api'
+import type { Game, Pick }          from '../../../shared/types'
 
 // ── Query Keys ────────────────────────────────────────────────
 
 export const pickKeys = {
-  mine:    (tid: string)  => ['picks', 'mine', tid]  as const,
-  allMine: ()             => ['picks', 'all-mine']   as const,
+  mine:    (tid: string) => ['picks', 'mine', tid] as const,
+  allMine: ()            => ['picks', 'all-mine']  as const,
 }
 
-// ── Helpers ───────────────────────────────────────────────────
+// ── safeInvalidate ────────────────────────────────────────────
 
-async function unwrap<T>(
-  p: Promise<{ ok: true; data: T } | { ok: false; error: string }>,
-): Promise<T> {
-  const r = await p
-  if (!r.ok) throw new Error(r.error)
-  return r.data
-}
-
-/**
- * Phase 1 Realtime Contract
- * Delays cache invalidation if other mutations are inflight to prevent 
- * Realtime echoes from reverting optimistic updates.
- */
-function safeInvalidate(qc: QueryClient, queryKey: readonly unknown[]) {
+function safeInvalidate(qc: QueryClient, queryKey: readonly unknown[]): void {
   if (qc.isMutating() > 0) {
-    setTimeout(() => {
-      qc.invalidateQueries({ queryKey })
-    }, 150)
+    setTimeout(() => void qc.invalidateQueries({ queryKey }), 150)
   } else {
-    qc.invalidateQueries({ queryKey })
+    void qc.invalidateQueries({ queryKey })
   }
+}
+
+// ── Local variable types ──────────────────────────────────────
+
+interface MakePickVars {
+  game:         Game
+  team:         string
+  tournamentId: string
+  games:        Game[]
+  existingPick: Pick | undefined
+}
+
+// Context snapshot for optimistic rollback
+type MakePickContext = { prev: Pick[] | undefined }
+
+type SaveTiebreakerVars = {
+  gameId:          string
+  predictedWinner: string
+  score:           number
+  tournamentId:    string
 }
 
 // ── Queries ───────────────────────────────────────────────────
 
+/**
+ * C-07 FIX: `gameIds` is included in the query key so any change to the
+ * tournament's game set triggers a cache miss and fresh fetch.
+ */
 export function useMyPicks(tournamentId: string | null, games: Game[]) {
-  const gameIds = games.map(g => g.id)
-  return useQuery({
-    queryKey: pickKeys.mine(tournamentId ?? ''),
+  const gameIds = games.map((g: Game) => g.id)
+  return useQuery<Pick[], Error, Pick[]>({
+    queryKey: [...pickKeys.mine(tournamentId ?? ''), gameIds] as const,
     queryFn:  () => unwrap(api.fetchMyPicksForTournament(gameIds)),
     enabled:  !!tournamentId && games.length > 0,
     select:   (data) => data ?? ([] as Pick[]),
@@ -51,7 +63,7 @@ export function useMyPicks(tournamentId: string | null, games: Game[]) {
 }
 
 export function useAllMyPicks() {
-  return useQuery({
+  return useQuery<Pick[], Error, Pick[]>({
     queryKey: pickKeys.allMine(),
     queryFn:  () => unwrap(api.fetchAllMyPicks()),
     select:   (data) => data ?? ([] as Pick[]),
@@ -60,34 +72,24 @@ export function useAllMyPicks() {
 
 // ── Mutations ─────────────────────────────────────────────────
 
-interface MakePickVars {
-  game:         Game
-  team:         string
-  tournamentId: string
-  games:        Game[]         
-  existingPick: Pick | undefined
-}
-
 export function useMakePick() {
   const qc = useQueryClient()
 
-  return useMutation({
-    mutationFn: async ({ game, team, games, existingPick }: MakePickVars) => {
+  return useMutation<Pick | null, Error, MakePickVars, MakePickContext>({
+    mutationFn: async ({ game, team, games, existingPick }) => {
       const downstreamIds = collectDownstreamGameIds(game, games)
 
-      // Toggle: same team clicked again → delete pick + cascade
       if (existingPick?.predicted_winner === team) {
         await unwrap(api.deletePick(existingPick.id))
         await unwrap(api.deletePicksForGames(downstreamIds))
         return null
       }
 
-      // New/changed pick: cascade first, then save
       await unwrap(api.deletePicksForGames(downstreamIds))
       return unwrap(api.savePick(game.id, team))
     },
 
-    onMutate: async ({ game, team, tournamentId, games, existingPick }) => {
+    onMutate: async ({ game, team, tournamentId, games, existingPick }): Promise<MakePickContext> => {
       await qc.cancelQueries({ queryKey: pickKeys.mine(tournamentId) })
       const prev = qc.getQueryData<Pick[]>(pickKeys.mine(tournamentId))
 
@@ -96,11 +98,10 @@ export function useMakePick() {
 
       qc.setQueryData<Pick[]>(pickKeys.mine(tournamentId), (old = []) => {
         const filtered = old.filter(
-          p => p.game_id !== game.id && !downstreamIds.has(p.game_id),
+          (p: Pick) => p.game_id !== game.id && !downstreamIds.has(p.game_id),
         )
         if (isToggle) return filtered
 
-        // Optimistic new pick — real id filled in on settle
         const optimistic: Pick = {
           id:               'optimistic-' + Date.now(),
           user_id:          existingPick?.user_id ?? 'me',
@@ -129,10 +130,9 @@ export function useMakePick() {
 
 export function useSaveTiebreaker() {
   const qc = useQueryClient()
-  return useMutation({
-    mutationFn: ({ gameId, predictedWinner, score }: {
-      gameId: string; predictedWinner: string; score: number; tournamentId: string
-    }) => unwrap(api.saveTiebreakerScore(gameId, predictedWinner, score)),
+  return useMutation<Pick, Error, SaveTiebreakerVars>({
+    mutationFn: ({ gameId, predictedWinner, score }) =>
+      unwrap(api.saveTiebreakerScore(gameId, predictedWinner, score)),
     onSettled: (_d, _e, vars) => {
       safeInvalidate(qc, pickKeys.mine(vars.tournamentId))
     },

@@ -9,16 +9,19 @@ import { GroupPage }                              from '../pages/group'
 
 import { useTournamentListQuery }                 from '../entities/tournament/model/queries'
 import { useUIStore }                             from '../shared/store/uiStore'
+import type { Tournament }                        from '../shared/types'
 
 export default function ViewRouter() {
   const { profile, user, setProfile } = useAuth()
   const { openSnoop, pushToast }      = useUIStore()
-  
+
   const activeView           = useUIStore((s) => s.activeView)
   const selectedTournamentId = useUIStore((s) => s.selectedTournamentId)
 
   const { data: tournaments = [] } = useTournamentListQuery()
-  const selectedTournament = tournaments.find((t) => t.id === selectedTournamentId) ?? null
+  // Explicit Tournament type annotation — `t` was implicit `any` when
+  // unwrap.ts failed to load as a module, breaking query return inference.
+  const selectedTournament = tournaments.find((t: Tournament) => t.id === selectedTournamentId) ?? null
 
   if (!profile) return null
 

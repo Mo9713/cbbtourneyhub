@@ -65,7 +65,6 @@ export default function GameCard({
         className={`relative flex flex-col w-full bg-white dark:bg-[#11141d] border rounded-none transition-colors duration-150 ${cardBorderCls}`}
         style={cardShadowStyle}
       >
-        {/* FIX: Perfect Vertical Output Anchoring */}
         <div className="absolute inset-y-0 right-0 flex flex-col justify-center pointer-events-none z-10">
           <div data-out={game.id} className="w-0 h-0" aria-hidden />
         </div>
@@ -130,7 +129,6 @@ export default function GameCard({
               `}
               onClick={() => canPick && onPick(game, predicted)}
             >
-              {/* FIX: Perfect Vertical Input Anchoring */}
               <div className="absolute inset-y-0 left-0 flex flex-col justify-center pointer-events-none z-10">
                 <div {...{ [inKey]: game.id }} className="w-0 h-0" aria-hidden />
               </div>

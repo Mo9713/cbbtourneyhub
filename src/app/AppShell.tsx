@@ -7,8 +7,9 @@ import { SnoopModal }                   from '../widgets/snoop-modal'
 import { AddTournamentModal }           from '../features/tournament'
 import { CreateGroupModal, JoinGroupModal } from '../features/group-management'
 
+import { Sidebar }                      from '../widgets/sidebar'
 import {
-  Sidebar, MobileHeader, Toaster, ConfirmModal,
+  MobileHeader, Toaster, ConfirmModal,
 } from '../shared/ui'
 import { useTheme }                     from '../shared/lib/theme'
 import { useRealtimeSync }              from './hooks/useRealtimeSync'

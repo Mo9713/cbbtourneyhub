@@ -1,19 +1,28 @@
 // src/features/tournament/ui/AddTournamentModal.tsx
-import { useState } from 'react'
+
+import { useState }             from 'react'
 import { X, ShieldAlert, Trophy } from 'lucide-react'
-import { useTheme } from '../../../shared/lib/theme'
-import { useUserGroupsQuery } from '../../../entities/group/api'
-import type { TemplateKey } from '../../../shared/types'
+import { useTheme }             from '../../../shared/lib/theme'
+// C-03 cascade: useUserGroupsQuery is a hook — it must be imported from
+// the model public API (entities/group), not from the api/ sublayer.
+import { useUserGroupsQuery }   from '../../../entities/group'
+import type { TemplateKey }     from '../../../shared/types'
 
 interface Props {
-  onClose: () => void
-  onCreate: (name: string, template: TemplateKey, teamCount?: number, gameType?: 'bracket' | 'survivor', groupId?: string | null) => void
+  onClose:  () => void
+  onCreate: (
+    name:      string,
+    template:  TemplateKey,
+    teamCount?: number,
+    gameType?:  'bracket' | 'survivor',
+    groupId?:   string | null,
+  ) => void
 }
 
 export function AddTournamentModal({ onClose, onCreate }: Props) {
   const theme = useTheme()
   const { data: groups = [] } = useUserGroupsQuery()
-  
+
   const [name,      setName]      = useState('')
   const [template,  setTemplate]  = useState<TemplateKey>('blank')
   const [teamCount, setTeamCount] = useState(16)
@@ -21,15 +30,15 @@ export function AddTournamentModal({ onClose, onCreate }: Props) {
   const [groupId,   setGroupId]   = useState<string>('none')
 
   const templates: { key: TemplateKey; label: string; desc: string; icon: string }[] = [
-    { key: 'blank',    label: 'Blank Slate',     desc: '0 games — build manually',              icon: '📋' },
-    { key: 'standard', label: 'Standard Bracket', desc: '8–32 teams, auto-linked with byes',    icon: '🏆' },
-    { key: 'bigdance', label: 'The Big Dance',    desc: '64 teams · 63 games · 4 regions',      icon: '🏀' },
+    { key: 'blank',    label: 'Blank Slate',      desc: '0 games — build manually',           icon: '📋' },
+    { key: 'standard', label: 'Standard Bracket', desc: '8–32 teams, auto-linked with byes',  icon: '🏆' },
+    { key: 'bigdance', label: 'The Big Dance',    desc: '64 teams · 63 games · 4 regions',    icon: '🏀' },
   ]
 
   const handleCreate = () => {
     if (!name.trim()) return
     const finalTemplate = gameMode === 'survivor' ? 'bigdance' : template
-    const finalGroupId = groupId === 'none' ? null : groupId
+    const finalGroupId  = groupId === 'none' ? null : groupId
     onCreate(name.trim(), finalTemplate, teamCount, gameMode, finalGroupId)
     onClose()
   }
@@ -37,14 +46,18 @@ export function AddTournamentModal({ onClose, onCreate }: Props) {
   return (
     <div
       className="fixed inset-0 z-[250] flex items-center justify-center bg-black/75 backdrop-blur-sm"
-      onClick={onClose}>
+      onClick={onClose}
+    >
       <div
         className={`${theme.panelBg} border border-slate-700 rounded-2xl p-6 max-w-lg w-full mx-4 shadow-2xl max-h-[90vh] overflow-y-auto scrollbar-thin`}
-        onClick={e => e.stopPropagation()}>
+        onClick={e => e.stopPropagation()}
+      >
         <div className="flex items-center justify-between mb-5">
           <h3 className="font-display text-xl font-bold text-white uppercase tracking-wide">New Tournament</h3>
-          <button onClick={onClose}
-            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-all">
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-all"
+          >
             <X size={14} />
           </button>
         </div>
@@ -70,7 +83,9 @@ export function AddTournamentModal({ onClose, onCreate }: Props) {
             <button
               onClick={() => setGameMode('bracket')}
               className={`flex-1 flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all ${
-                gameMode === 'bracket' ? `${theme.border} ${theme.bg}` : 'border-slate-700 bg-slate-800/40 text-slate-400 hover:border-slate-600'
+                gameMode === 'bracket'
+                  ? `${theme.border} ${theme.bg}`
+                  : 'border-slate-700 bg-slate-800/40 text-slate-400 hover:border-slate-600'
               }`}
             >
               <Trophy size={20} className={gameMode === 'bracket' ? theme.accent : ''} />
@@ -79,7 +94,9 @@ export function AddTournamentModal({ onClose, onCreate }: Props) {
             <button
               onClick={() => setGameMode('survivor')}
               className={`flex-1 flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all ${
-                gameMode === 'survivor' ? `${theme.border} ${theme.bg}` : 'border-slate-700 bg-slate-800/40 text-slate-400 hover:border-slate-600'
+                gameMode === 'survivor'
+                  ? `${theme.border} ${theme.bg}`
+                  : 'border-slate-700 bg-slate-800/40 text-slate-400 hover:border-slate-600'
               }`}
             >
               <ShieldAlert size={20} className={gameMode === 'survivor' ? 'text-amber-500' : ''} />
@@ -95,7 +112,8 @@ export function AddTournamentModal({ onClose, onCreate }: Props) {
           <select
             value={groupId}
             onChange={e => setGroupId(e.target.value)}
-            className={`w-full ${theme.inputBg} border border-slate-700 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-slate-500 transition-colors`}>
+            className={`w-full ${theme.inputBg} border border-slate-700 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-slate-500 transition-colors`}
+          >
             <option value="none">None (Global Leaderboard)</option>
             {groups.map(g => (
               <option key={g.id} value={g.id}>{g.name}</option>
@@ -109,12 +127,15 @@ export function AddTournamentModal({ onClose, onCreate }: Props) {
               <label className="block text-xs font-semibold text-slate-400 mb-2 uppercase tracking-wider">Template</label>
               <div className="space-y-2">
                 {templates.map(t => (
-                  <button key={t.key} onClick={() => setTemplate(t.key)}
+                  <button
+                    key={t.key}
+                    onClick={() => setTemplate(t.key)}
                     className={`w-full text-left p-3 rounded-xl border-2 transition-all flex items-center gap-3 ${
                       template === t.key
                         ? `${theme.border} ${theme.bg}`
                         : 'border-slate-700 hover:border-slate-600 bg-slate-800/40'
-                    }`}>
+                    }`}
+                  >
                     <span className="text-xl">{t.icon}</span>
                     <div>
                       <span className={`text-sm font-semibold block ${template === t.key ? theme.accentB : 'text-slate-300'}`}>
@@ -135,7 +156,8 @@ export function AddTournamentModal({ onClose, onCreate }: Props) {
                 <select
                   value={teamCount}
                   onChange={e => setTeamCount(Number(e.target.value))}
-                  className={`w-full ${theme.inputBg} border border-slate-700 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-slate-500 transition-colors`}>
+                  className={`w-full ${theme.inputBg} border border-slate-700 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-slate-500 transition-colors`}
+                >
                   {[8, 16, 32].map(n => (
                     <option key={n} value={n}>{n} teams</option>
                   ))}
@@ -150,12 +172,17 @@ export function AddTournamentModal({ onClose, onCreate }: Props) {
         )}
 
         <div className="flex gap-3 justify-end mt-4">
-          <button onClick={onClose}
-            className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-semibold transition-all">
+          <button
+            onClick={onClose}
+            className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-semibold transition-all"
+          >
             Cancel
           </button>
-          <button onClick={handleCreate} disabled={!name.trim()}
-            className={`px-5 py-2.5 rounded-xl text-white text-sm font-bold transition-all ${theme.btn} disabled:opacity-40`}>
+          <button
+            onClick={handleCreate}
+            disabled={!name.trim()}
+            className={`px-5 py-2.5 rounded-xl text-white text-sm font-bold transition-all ${theme.btn} disabled:opacity-40`}
+          >
             Create Tournament
           </button>
         </div>

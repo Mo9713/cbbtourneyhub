@@ -1,162 +1,95 @@
 // src/entities/group/model/queries.ts
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { supabase } from '../../../shared/infra/supabaseClient'
+import {
+  useQuery,
+  useMutation,
+  useQueryClient,
+  type QueryClient,
+} from '@tanstack/react-query'
+
+import { unwrap }  from '../../../shared/lib/unwrap'
+import * as api    from '../api'
 import type { Group, GroupMember, Profile } from '../../../shared/types'
 
+// ── Query Keys ────────────────────────────────────────────────
+
 export const groupKeys = {
-  all: ['groups'] as const,
-  userGroups: () => [...groupKeys.all, 'user'] as const,
-  details: (id: string) => [...groupKeys.all, 'detail', id] as const,
-  members: (id: string) => [...groupKeys.all, 'members', id] as const,
+  all:        ['groups']                               as const,
+  userGroups: ()           => ['groups', 'user']       as const,
+  details:    (id: string) => ['groups', 'detail', id] as const,
+  members:    (id: string) => ['groups', 'members', id] as const,
 }
 
+// ── safeInvalidate ────────────────────────────────────────────
+
+function safeInvalidate(qc: QueryClient, queryKey: readonly unknown[]): void {
+  if (qc.isMutating() > 0) {
+    setTimeout(() => void qc.invalidateQueries({ queryKey }), 150)
+  } else {
+    void qc.invalidateQueries({ queryKey })
+  }
+}
+
+// ── Queries ───────────────────────────────────────────────────
+
 export function useUserGroupsQuery() {
-  return useQuery({
+  return useQuery<Group[], Error, Group[]>({
     queryKey: groupKeys.userGroups(),
-    queryFn: async () => {
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
-      if (authError || !user) throw new Error('Not authenticated')
-
-      const { data, error } = await supabase
-        .from('group_members')
-        .select(`
-          group_id,
-          groups (*)
-        `)
-        .eq('user_id', user.id)
-
-      if (error) throw new Error(error.message)
-      
-      return data.map((item: any) => item.groups as Group)
-    },
+    queryFn:  () => unwrap(api.fetchUserGroups()),
+    select:   (data) => data ?? ([] as Group[]),
   })
 }
 
 export function useGroupDetailsQuery(groupId: string) {
-  return useQuery({
+  return useQuery<Group, Error>({
     queryKey: groupKeys.details(groupId),
-    queryFn: async () => {
-      if (!groupId) return null
-
-      const { data, error } = await supabase
-        .from('groups')
-        .select('*')
-        .eq('id', groupId)
-        .single()
-
-      if (error) throw new Error(error.message)
-      return data as Group
-    },
-    enabled: !!groupId,
+    queryFn:  () => unwrap(api.fetchGroupDetails(groupId)),
+    enabled:  !!groupId,
   })
 }
 
 export function useGroupMembersQuery(groupId: string) {
-  return useQuery({
+  type MemberWithProfile = GroupMember & { profile: Profile }
+  return useQuery<MemberWithProfile[], Error, MemberWithProfile[]>({
     queryKey: groupKeys.members(groupId),
-    queryFn: async () => {
-      if (!groupId) return []
-
-      const { data, error } = await supabase
-        .from('group_members')
-        .select(`
-          group_id,
-          user_id,
-          joined_at,
-          profiles (*)
-        `)
-        .eq('group_id', groupId)
-
-      if (error) throw new Error(error.message)
-
-      return data.map((item: any): GroupMember & { profile: Profile } => ({
-        group_id: item.group_id,
-        user_id: item.user_id,
-        joined_at: item.joined_at,
-        profile: item.profiles as Profile
-      }))
-    },
-    enabled: !!groupId,
+    queryFn:  () => unwrap(api.fetchGroupMembers(groupId)),
+    enabled:  !!groupId,
+    select:   (data) => data ?? ([] as MemberWithProfile[]),
   })
 }
+
+// ── Mutations ─────────────────────────────────────────────────
 
 export function useJoinGroupMutation() {
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: async (inviteCode: string) => {
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
-      if (authError || !user) throw new Error('Not authenticated')
-
-      const { data: group, error: groupError } = await supabase
-        .from('groups')
-        .select('id')
-        .eq('invite_code', inviteCode)
-        .single()
-
-      if (groupError || !group) throw new Error('Invalid invite code or group not found.')
-
-      const { error: insertError } = await supabase
-        .from('group_members')
-        .insert({ group_id: group.id, user_id: user.id })
-
-      if (insertError) throw new Error(insertError.message)
-      
-      return group.id
-    },
+  const qc = useQueryClient()
+  return useMutation<string, Error, string>({
+    mutationFn: (inviteCode) => unwrap(api.joinGroup(inviteCode)),
     onSuccess: (groupId) => {
-      queryClient.invalidateQueries({ queryKey: groupKeys.userGroups() })
-      queryClient.invalidateQueries({ queryKey: groupKeys.members(groupId) })
+      // `groupId` is correctly typed as string — no longer unknown
+      safeInvalidate(qc, groupKeys.userGroups())
+      safeInvalidate(qc, groupKeys.members(groupId))
     },
   })
 }
 
+type CreateGroupVars = { name: string; invite_code: string }
+
 export function useCreateGroupMutation() {
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: async (params: { name: string; invite_code: string }) => {
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
-      if (authError || !user) throw new Error('Not authenticated')
-
-      const { data: group, error: createError } = await supabase
-        .from('groups')
-        .insert({ 
-          name: params.name, 
-          invite_code: params.invite_code, 
-          owner_id: user.id 
-        })
-        .select()
-        .single()
-
-      if (createError) throw new Error(createError.message)
-
-      const { error: memberError } = await supabase
-        .from('group_members')
-        .insert({ group_id: group.id, user_id: user.id })
-
-      if (memberError) throw new Error(memberError.message)
-
-      return group as Group
-    },
+  const qc = useQueryClient()
+  return useMutation<Group, Error, CreateGroupVars>({
+    mutationFn: (params) => unwrap(api.createGroup(params)),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: groupKeys.userGroups() })
+      safeInvalidate(qc, groupKeys.userGroups())
     },
   })
 }
 
 export function useDeleteGroupMutation() {
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: async (groupId: string) => {
-      const { error } = await supabase.from('groups').delete().eq('id', groupId)
-      if (error) throw new Error(error.message)
-      return groupId
-    },
+  const qc = useQueryClient()
+  return useMutation<string, Error, string>({
+    mutationFn: (groupId) => unwrap(api.deleteGroup(groupId)),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: groupKeys.all })
-    }
+      safeInvalidate(qc, groupKeys.all)
+    },
   })
 }

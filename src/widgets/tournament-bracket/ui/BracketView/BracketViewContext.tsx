@@ -1,12 +1,19 @@
 // src/widgets/tournament-bracket/ui/BracketView/BracketViewContext.tsx
+
 import { createContext, useContext, type ReactNode } from 'react'
 import type { Game } from '../../../../shared/types'
 
+// N-04 FIX: onSurvivorPick is hoisted here from MatchupColumn so the
+// mutation hook is initialised exactly once per BracketView render tree
+// (in index.tsx), not once per round column. The field is optional — it
+// is only populated when tournament.game_type === 'survivor'. Standard
+// bracket columns receive undefined and never render SurvivorGameCard.
 export interface BracketViewContextValue {
-  isLocked:  boolean
-  readOnly:  boolean
-  ownerName: string | undefined
-  onPick:    (game: Game, team: string) => void
+  isLocked:       boolean
+  readOnly:       boolean
+  ownerName:      string | undefined
+  onPick:         (game: Game, team: string) => void
+  onSurvivorPick: ((gameId: string, teamName: string | null, roundNum: number) => void) | undefined
 }
 
 const BracketViewContext = createContext<BracketViewContextValue | null>(null)
