@@ -1,13 +1,16 @@
 // src/entities/pick/model/queries.ts
 
 import {
-  useQuery, useMutation, useQueryClient, type QueryClient,
+  useQuery, useMutation, useQueryClient, type QueryClient, type QueryKey
 } from '@tanstack/react-query'
 
 import { unwrap }                   from '../../../shared/lib/unwrap'
 import { collectDownstreamGameIds } from '../../../shared/lib/bracketMath'
 import * as api                     from '../api'
 import type { Game, Pick }          from '../../../shared/types'
+
+const REALTIME_DEBOUNCE_MS = 150
+const invalidateTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
 // ── Query Keys ────────────────────────────────────────────────
 
@@ -18,9 +21,17 @@ export const pickKeys = {
 
 // ── safeInvalidate ────────────────────────────────────────────
 
-function safeInvalidate(qc: QueryClient, queryKey: readonly unknown[]): void {
+function safeInvalidate(qc: QueryClient, queryKey: QueryKey): void {
+  const keyStr = JSON.stringify(queryKey)
   if (qc.isMutating() > 0) {
-    setTimeout(() => void qc.invalidateQueries({ queryKey }), 150)
+    if (invalidateTimers.has(keyStr)) {
+      clearTimeout(invalidateTimers.get(keyStr)!)
+    }
+    const timer = setTimeout(() => {
+      void qc.invalidateQueries({ queryKey })
+      invalidateTimers.delete(keyStr)
+    }, REALTIME_DEBOUNCE_MS)
+    invalidateTimers.set(keyStr, timer)
   } else {
     void qc.invalidateQueries({ queryKey })
   }
@@ -36,7 +47,6 @@ interface MakePickVars {
   existingPick: Pick | undefined
 }
 
-// Context snapshot for optimistic rollback
 type MakePickContext = { prev: Pick[] | undefined }
 
 type SaveTiebreakerVars = {
@@ -48,10 +58,6 @@ type SaveTiebreakerVars = {
 
 // ── Queries ───────────────────────────────────────────────────
 
-/**
- * C-07 FIX: `gameIds` is included in the query key so any change to the
- * tournament's game set triggers a cache miss and fresh fetch.
- */
 export function useMyPicks(tournamentId: string | null, games: Game[]) {
   const gameIds = games.map((g: Game) => g.id)
   return useQuery<Pick[], Error, Pick[]>({

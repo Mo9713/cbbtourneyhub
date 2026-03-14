@@ -14,6 +14,7 @@ import type { Game, Tournament } from '../../../shared/types'
 import type { CreateTournamentOptions } from '../api'
 
 const REALTIME_DEBOUNCE_MS = 150
+const invalidateTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
 // W-04 FIX: `list` alias removed — identical to `all` with misleading semantics.
 export const tournamentKeys = {
@@ -22,15 +23,22 @@ export const tournamentKeys = {
 } as const
 
 function safeInvalidate(qc: QueryClient, queryKey: QueryKey): void {
+  const keyStr = JSON.stringify(queryKey)
   if (qc.isMutating() > 0) {
-    setTimeout(() => void qc.invalidateQueries({ queryKey }), REALTIME_DEBOUNCE_MS)
+    if (invalidateTimers.has(keyStr)) {
+      clearTimeout(invalidateTimers.get(keyStr)!)
+    }
+    const timer = setTimeout(() => {
+      void qc.invalidateQueries({ queryKey })
+      invalidateTimers.delete(keyStr)
+    }, REALTIME_DEBOUNCE_MS)
+    invalidateTimers.set(keyStr, timer)
   } else {
     void qc.invalidateQueries({ queryKey })
   }
 }
 
 // ── Local variable types ──────────────────────────────────────
-// Defined here so useMutation generics can reference them by name.
 
 type UpdateTournamentVars = {
   id:      string
@@ -81,7 +89,6 @@ export function useCreateTournamentMutation() {
   return useMutation<Tournament, Error, CreateTournamentOptions>({
     mutationFn: (opts) => unwrap(api.createTournament(opts)),
     onSuccess: (tournament) => {
-      // `tournament` is now correctly typed as Tournament
       safeInvalidate(qc, tournamentKeys.all)
       safeInvalidate(qc, tournamentKeys.games(tournament.id))
     },

@@ -5,11 +5,15 @@ import {
   useMutation,
   useQueryClient,
   type QueryClient,
+  type QueryKey,
 } from '@tanstack/react-query'
 
 import { unwrap }  from '../../../shared/lib/unwrap'
 import * as api    from '../api'
 import type { Group, GroupMember, Profile } from '../../../shared/types'
+
+const REALTIME_DEBOUNCE_MS = 150
+const invalidateTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
 // ── Query Keys ────────────────────────────────────────────────
 
@@ -22,9 +26,17 @@ export const groupKeys = {
 
 // ── safeInvalidate ────────────────────────────────────────────
 
-function safeInvalidate(qc: QueryClient, queryKey: readonly unknown[]): void {
+function safeInvalidate(qc: QueryClient, queryKey: QueryKey): void {
+  const keyStr = JSON.stringify(queryKey)
   if (qc.isMutating() > 0) {
-    setTimeout(() => void qc.invalidateQueries({ queryKey }), 150)
+    if (invalidateTimers.has(keyStr)) {
+      clearTimeout(invalidateTimers.get(keyStr)!)
+    }
+    const timer = setTimeout(() => {
+      void qc.invalidateQueries({ queryKey })
+      invalidateTimers.delete(keyStr)
+    }, REALTIME_DEBOUNCE_MS)
+    invalidateTimers.set(keyStr, timer)
   } else {
     void qc.invalidateQueries({ queryKey })
   }
@@ -65,7 +77,6 @@ export function useJoinGroupMutation() {
   return useMutation<string, Error, string>({
     mutationFn: (inviteCode) => unwrap(api.joinGroup(inviteCode)),
     onSuccess: (groupId) => {
-      // `groupId` is correctly typed as string — no longer unknown
       safeInvalidate(qc, groupKeys.userGroups())
       safeInvalidate(qc, groupKeys.members(groupId))
     },

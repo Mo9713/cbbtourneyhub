@@ -54,7 +54,11 @@ export function getActiveSurvivorRound(tournament: Tournament | null): number {
   // Find the first round that locks AFTER the current time
   for (let r = 1; r <= 6; r++) {
     const lockIso = tournament.round_locks[r]
-    if (!lockIso) continue
+    
+    // W-12 FIX: A missing lock time means the round hasn't locked yet.
+    // Previously, this used `continue`, which skipped to the next round,
+    // incorrectly hiding open rounds from the user.
+    if (!lockIso) return r
     
     if (now < parseTournamentTimestamp(lockIso)) {
       return r
