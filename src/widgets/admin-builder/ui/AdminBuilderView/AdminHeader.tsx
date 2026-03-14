@@ -31,7 +31,6 @@ export default function AdminHeader({
   const [locksAtInput,   setLocksAtInput]   = useState(isoToInputCST(tournament.locks_at))
   const [savedTime,      setSavedTime]      = useState(false)
 
-  // Sync date inputs when tournament updates externally (realtime)
   useEffect(() => { setUnlocksAtInput(isoToInputCST(tournament.unlocks_at)) }, [tournament.unlocks_at])
   useEffect(() => { setLocksAtInput(isoToInputCST(tournament.locks_at))     }, [tournament.locks_at])
 
@@ -52,7 +51,6 @@ export default function AdminHeader({
 
   const inputCls = 'bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-amber-500/50 transition-colors'
 
-  // FIX: Check if the tournament is already locked by time (using false for isAdmin so we see the public lock state)
   const isTimeLocked = isPicksLocked(tournament, false)
   const displayStatus = tournament.status === 'draft' ? 'draft' 
     : tournament.status === 'locked' ? 'locked'
@@ -92,7 +90,6 @@ export default function AdminHeader({
               </button>
             )}
             
-            {/* FIX: Badge now reflects time-locked state */}
             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-lg uppercase tracking-widest
               ${displayStatus === 'draft' ? 'bg-amber-500/20 text-amber-400'  :
                 displayStatus === 'open'  ? 'bg-emerald-500/20 text-emerald-400' :
@@ -110,30 +107,32 @@ export default function AdminHeader({
         {/* ── Right: schedule + actions ── */}
         <div className="flex items-start gap-4 flex-wrap">
 
-          {/* Tip-off window */}
-          <div className="flex items-end gap-3 bg-slate-800/60 border border-slate-700 rounded-xl px-3 py-2">
-            <div>
-              <label className="block text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1">
-                Unlocks At (CT)
-              </label>
-              <input type="datetime-local" value={unlocksAtInput}
-                onChange={e => setUnlocksAtInput(e.target.value)}
-                className={inputCls} />
+          {/* FIX: Redundant Global Tip-off window hidden for Survivor mode */}
+          {tournament.game_type !== 'survivor' && (
+            <div className="flex items-end gap-3 bg-slate-800/60 border border-slate-700 rounded-xl px-3 py-2">
+              <div>
+                <label className="block text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1">
+                  Unlocks At (CT)
+                </label>
+                <input type="datetime-local" value={unlocksAtInput}
+                  onChange={e => setUnlocksAtInput(e.target.value)}
+                  className={inputCls} />
+              </div>
+              <div>
+                <label className="block text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1">
+                  Locks At (CT)
+                </label>
+                <input type="datetime-local" value={locksAtInput}
+                  onChange={e => setLocksAtInput(e.target.value)}
+                  className={inputCls} />
+              </div>
+              <button onClick={handleSaveTipOff}
+                className={`px-3 py-1.5 text-white rounded-lg text-[10px] font-bold transition-all self-end
+                  ${savedTime ? 'bg-emerald-600 border border-emerald-500' : 'bg-amber-600/80 hover:bg-amber-600'}`}>
+                {savedTime ? 'Saved!' : 'Save'}
+              </button>
             </div>
-            <div>
-              <label className="block text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1">
-                Locks At (CT)
-              </label>
-              <input type="datetime-local" value={locksAtInput}
-                onChange={e => setLocksAtInput(e.target.value)}
-                className={inputCls} />
-            </div>
-            <button onClick={handleSaveTipOff}
-              className={`px-3 py-1.5 text-white rounded-lg text-[10px] font-bold transition-all self-end
-                ${savedTime ? 'bg-emerald-600 border border-emerald-500' : 'bg-amber-600/80 hover:bg-amber-600'}`}>
-              {savedTime ? 'Saved!' : 'Save'}
-            </button>
-          </div>
+          )}
 
           {/* Action buttons */}
           <div className="flex items-center gap-2 flex-wrap">
@@ -161,7 +160,6 @@ export default function AdminHeader({
               </div>
             )}
 
-            {/* FIX: Hide the manual lock button if it's already locked by time */}
             {tournament.status === 'open' && !isTimeLocked && (
               <button onClick={onLock}
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-600 hover:bg-slate-500 text-white rounded-lg text-xs font-bold transition-all">

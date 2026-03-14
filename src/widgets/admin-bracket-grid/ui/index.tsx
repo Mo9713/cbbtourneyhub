@@ -47,9 +47,6 @@ export default function AdminBracketGrid({
   const isPanning  = useRef(false)
   const panOrigin  = useRef({ x: 0, y: 0, sl: 0, st: 0 })
 
-  // ── SVG line measurement ──
-  // Measured relative to inner container. Padding has been moved to outer scroll wrapper 
-  // so bounding box aligns perfectly with absolute coordinate origin.
   const recomputeLines = useCallback(() => {
     const container = innerBracketRef.current
     if (!container) return
@@ -149,7 +146,7 @@ export default function AdminBracketGrid({
         </div>
       )}
 
-      {/* Outer scrolling viewport with padding applied here to fix SVG offset */}
+      {/* Outer padding guarantees scroll math works without breaking SVGs */}
       <div
         ref={outerScrollRef}
         className="flex-1 overflow-auto p-8 relative scrollbar-thin select-none"
@@ -166,7 +163,6 @@ export default function AdminBracketGrid({
             <p className="text-sm">No games yet. Click "Add Next Round" to start building.</p>
           </div>
         ) : (
-          /* Inner absolute bounds wrapper with NO padding */
           <div
             ref={innerBracketRef}
             className="relative flex gap-10 min-w-max items-start"

@@ -13,17 +13,14 @@ import {
 import type { Game, Pick, Tournament }   from '../../../../shared/types'
 import { useTheme }                      from '../../../../shared/lib/theme'
 
-const BASE_SLOT_H  = 68
-const HEADER_H     = 80
-const MIN_SLOTS    = 8
-const MAX_SLOT_H   = 80
-const MIN_SLOT_H   = 52
+const HEADER_H = 80
 
+// FIX: Fluid dynamic scaling ensures compact 8-team brackets (105px) and non-overlapping 64-team brackets (80px).
 function computeSlotH(numLeafSlots: number): number {
-  if (numLeafSlots <= 4)  return Math.min(MAX_SLOT_H, BASE_SLOT_H)
-  if (numLeafSlots >= 32) return MIN_SLOT_H
-  const t = (numLeafSlots - 4) / (32 - 4)
-  return Math.round(BASE_SLOT_H - t * (BASE_SLOT_H - MIN_SLOT_H))
+  if (numLeafSlots >= 32) return 80 
+  if (numLeafSlots <= 8)  return 105
+  const t = (numLeafSlots - 8) / (32 - 8)
+  return Math.round(105 - t * (105 - 80))
 }
 
 function resolveSlot(
@@ -119,10 +116,10 @@ export default function BracketGrid({
     [rounds, allDisplayGames, gameNumbers],
   )
 
+  // FIX: Properly apply slotH to totalHeight so asymmetrical/smaller brackets neatly compress.
   const rawLeafSlots  = slotGrid.get(minRound)?.length ?? 1
-  const safeLeafSlots = Math.max(rawLeafSlots, MIN_SLOTS)
-  const slotH         = computeSlotH(safeLeafSlots)
-  const totalHeight   = safeLeafSlots * slotH + HEADER_H
+  const slotH         = computeSlotH(rawLeafSlots)
+  const totalHeight   = Math.max(4, rawLeafSlots) * slotH + HEADER_H
 
   const outerScrollRef          = useRef<HTMLDivElement>(null)
   const innerBracketRef         = useRef<HTMLDivElement>(null)
@@ -198,7 +195,7 @@ export default function BracketGrid({
   return (
     <div
       ref={outerScrollRef}
-      className={`flex-1 overflow-auto p-6 scrollbar-thin select-none relative ${theme.appBg} transition-colors duration-300`}
+      className={`flex-1 overflow-auto p-8 relative scrollbar-thin select-none ${theme.appBg} transition-colors duration-300`}
       onMouseDown={handlePanStart}
       onMouseMove={handlePanMove}
       onMouseUp={handlePanEnd}

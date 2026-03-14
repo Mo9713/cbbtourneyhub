@@ -1,22 +1,5 @@
 // src/widgets/tournament-bracket/ui/BracketView/GameCard.tsx
 
-// ── Visual state matrix ───────────────────────────────────────
-//
-//  WINNER (any)        : bg-[#022c22]  ring-2 ring-inset ring-emerald-500
-//                        text-emerald-400 font-black
-//  WINNER + PICKED     : same + ✓ (emerald) on right
-//
-//  ELIMINATED + PICKED : line-through text-rose-600 decoration-rose-600
-//                        ✕ (rose) on right
-//  ELIMINATED + CASCADED (INCORRECT ADVANCEMENT): line-through text-rose-600 decoration-rose-600, NO ✕
-//  ELIMINATED + NOT PICKED (ACTUAL): row bg-black/30 (subtle fade), text-slate-500, NO ✕
-//                        (Applies to base round unpicked teams OR teams correctly predicted to lose)
-//
-//  PENDING + PICKED    : text-slate-200 (unchanged from default)
-//                        emerald dot on right  ← only if NOT eliminated
-//
-//  DEFAULT             : text-slate-200
-
 import { useBracketView } from './BracketViewContext'
 import type { Game, Pick } from '../../../../shared/types'
 
@@ -46,7 +29,6 @@ export default function GameCard({
 
   const hasWinner = !!game.actual_winner
 
-  // Card-level styling based on confirmed results
   const cardBorderCls   = hasWinner ? 'border-emerald-500/50 dark:border-emerald-900/50' : 'border-slate-300 dark:border-slate-800'
   const cardShadowStyle = hasWinner
     ? { boxShadow: '0 0 14px 2px rgba(16, 185, 129, 0.25)' }
@@ -71,16 +53,6 @@ export default function GameCard({
 
   return (
     <div className="relative w-full" style={{ overflow: 'visible' }}>
-
-      {/* Output anchor for SVG connectors */}
-      <div
-        data-out={game.id}
-        className="absolute w-0 h-0 top-1/2"
-        style={{ right: 0 }}
-        aria-hidden
-      />
-
-      {/* Floating game metadata labels */}
       <div className="absolute -top-4 left-0 flex items-center gap-1">
         <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 tracking-widest leading-none">
           #{String(gameNum).padStart(2, '0')}
@@ -89,33 +61,28 @@ export default function GameCard({
         <span className="text-[9px] text-slate-500 dark:text-slate-600 leading-none">{pointValue}pt</span>
       </div>
 
-      {/* Card body */}
       <div
-        className={`flex flex-col w-full bg-white dark:bg-[#11141d] border rounded-none transition-colors duration-150 ${cardBorderCls}`}
+        className={`relative flex flex-col w-full bg-white dark:bg-[#11141d] border rounded-none transition-colors duration-150 ${cardBorderCls}`}
         style={cardShadowStyle}
       >
+        {/* FIX: Perfect Vertical Output Anchoring */}
+        <div className="absolute inset-y-0 right-0 flex flex-col justify-center pointer-events-none z-10">
+          <div data-out={game.id} className="w-0 h-0" aria-hidden />
+        </div>
+
         {rows.map(({ actual, predicted, seed, score, inKey }, idx) => {
           const isTBD = isTBDName(predicted)
 
-          // ── State flags ────────────────────────────────────────────────
           const isWinner = hasWinner && !isTBD && (
             game.actual_winner === actual || game.actual_winner === predicted
           )
           const isPicked     = !isTBD && userPick?.predicted_winner === predicted
           const isEliminated = !isTBD && !isWinner && eliminatedTeams.has(predicted)
 
-          // If the predicted team doesn't match the actual team in this slot, 
-          // their presence here is a cascaded failure from a previous round.
           const isIncorrectAdvancement = isEliminated && actual !== predicted
-
-          // Cross out ONLY if user picked them for THIS game and they were eliminated,
-          // OR if they were incorrectly predicted to reach this slot (cascaded failure).
           const shouldStrikeThrough = isEliminated && (isPicked || isIncorrectAdvancement)
-          
-          // Fade to black if eliminated but they actually reached this slot and the user didn't pick them to advance further.
           const shouldFade = isEliminated && !shouldStrikeThrough
 
-          // ── Row background + ring ──────────────────────────────────────
           const rowBg = isWinner
             ? 'bg-emerald-50 dark:bg-[#022c22]'
             : shouldFade
@@ -123,7 +90,6 @@ export default function GameCard({
               : ''
           const rowRingCls = isWinner ? 'ring-2 ring-inset ring-emerald-500 z-10' : ''
 
-          // ── Name text class ────────────────────────────────────────────
           let nameClass: string
           let seedColorCls: string
 
@@ -140,7 +106,6 @@ export default function GameCard({
             nameClass    = 'text-slate-400 dark:text-slate-600 italic'
             seedColorCls = 'text-slate-300 dark:text-slate-700'
           } else {
-            // DEFAULT / Pending
             nameClass    = 'text-slate-900 dark:text-slate-200 font-bold'
             seedColorCls = 'text-slate-400 dark:text-slate-500'
           }
@@ -148,12 +113,9 @@ export default function GameCard({
           const scoreCls = isWinner ? 'text-emerald-600 dark:text-emerald-400 font-black' : 'text-slate-600 dark:text-slate-400'
           const canPick  = !isTBD && !isLocked && !readOnly
 
-          // ── Right-side indicator ───────────────────────────────────────
           const showCheck = isWinner && isPicked
           const showX     = isEliminated && isPicked
           const showDot   = !showCheck && !showX && isPicked && !isWinner && !isEliminated
-
-          // Advancing Ghost Label
           const showActualAdvancing = !isTBD && actual && actual !== predicted && !isTBDName(actual)
 
           return (
@@ -168,9 +130,11 @@ export default function GameCard({
               `}
               onClick={() => canPick && onPick(game, predicted)}
             >
-              <div {...{ [inKey]: game.id }} className="absolute left-0 top-1/2 w-0 h-0" aria-hidden />
+              {/* FIX: Perfect Vertical Input Anchoring */}
+              <div className="absolute inset-y-0 left-0 flex flex-col justify-center pointer-events-none z-10">
+                <div {...{ [inKey]: game.id }} className="w-0 h-0" aria-hidden />
+              </div>
 
-              {/* Seed badge */}
               {seed != null ? (
                 <span className={`w-3.5 text-[9px] font-bold text-right mr-1.5 flex-shrink-0 tabular-nums ${seedColorCls}`}>
                   {seed}
@@ -179,7 +143,6 @@ export default function GameCard({
                 <span className="w-3.5 mr-1.5 flex-shrink-0" aria-hidden />
               )}
 
-              {/* Names Block */}
               <div className="flex-1 min-w-0 flex flex-col justify-center">
                 <span className={`text-[11px] uppercase tracking-tight truncate leading-tight ${nameClass}`}>
                   {isTBD ? '—' : predicted}
@@ -191,14 +154,12 @@ export default function GameCard({
                 )}
               </div>
 
-              {/* Score */}
               {score != null && (
                 <span className={`text-[11px] font-bold ml-2 flex-shrink-0 tabular-nums ${scoreCls}`}>
                   {score}
                 </span>
               )}
 
-              {/* Indicator */}
               <div className="flex items-center justify-center w-5 flex-shrink-0">
                 {showCheck && (
                   <span className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 leading-none">✓</span>

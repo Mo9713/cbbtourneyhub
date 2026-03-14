@@ -17,10 +17,13 @@ export function SurvivorGameCard({ game, currentPick, usedTeams, activeRound, is
   const theme = useTheme()
   const isLocked = activeRound !== game.round_num || isEliminated
 
-  const renderTeam = (teamName: string | null, seed: number | null | undefined) => {
+  const renderTeam = (teamName: string | null, seed: number | null | undefined, inKey: 'data-in1' | 'data-in2') => {
     if (!teamName || teamName === 'TBD') {
       return (
-        <div className={`flex items-center px-3 py-2 text-xs ${theme.textMuted} opacity-50`}>
+        <div className={`relative flex items-center px-3 py-2 text-xs ${theme.textMuted} opacity-50 min-h-[32px]`}>
+          <div className="absolute inset-y-0 left-0 flex flex-col justify-center pointer-events-none z-10">
+            <div {...{ [inKey]: game.id }} className="w-0 h-0" aria-hidden />
+          </div>
           <span className="w-4 text-right mr-2 opacity-50">-</span>
           <span className="truncate">TBD</span>
         </div>
@@ -28,7 +31,6 @@ export function SurvivorGameCard({ game, currentPick, usedTeams, activeRound, is
     }
 
     const isPicked = currentPick?.predicted_winner === teamName
-    // A team is burned if it exists in the user's historical picks, but is NOT the pick for this current game
     const isBurned = usedTeams.includes(teamName) && !isPicked
 
     let bgClass = ''
@@ -44,11 +46,13 @@ export function SurvivorGameCard({ game, currentPick, usedTeams, activeRound, is
       <div
         onClick={() => {
           if (isLocked || isBurned) return
-          // If already picked, clicking again passes null to toggle it off
           onMakePick(game.id, isPicked ? null : teamName, game.round_num)
         }}
-        className={`flex items-center px-3 py-2 text-xs transition-colors select-none ${bgClass}`}
+        className={`relative flex items-center px-3 py-2 text-xs transition-colors select-none min-h-[32px] ${bgClass}`}
       >
+        <div className="absolute inset-y-0 left-0 flex flex-col justify-center pointer-events-none z-10">
+          <div {...{ [inKey]: game.id }} className="w-0 h-0" aria-hidden />
+        </div>
         <span className={`w-4 text-[10px] font-bold text-right mr-2 ${theme.textMuted}`}>{seed || '-'}</span>
         <span className="truncate flex-1">{teamName}</span>
         {isPicked && <Check size={14} className="ml-1 shrink-0" />}
@@ -58,10 +62,14 @@ export function SurvivorGameCard({ game, currentPick, usedTeams, activeRound, is
   }
 
   return (
-    <div className={`flex flex-col w-full border rounded-lg shadow-sm overflow-hidden ${theme.panelBg} ${theme.borderBase} ${isEliminated ? 'border-red-500/30' : ''}`}>
-      {renderTeam(game.team1_name, game.team1_seed)}
+    <div className={`relative flex flex-col w-full border rounded-lg shadow-sm overflow-visible ${theme.panelBg} ${theme.borderBase} ${isEliminated ? 'border-red-500/30' : ''}`}>
+      <div className="absolute inset-y-0 right-0 flex flex-col justify-center pointer-events-none z-10">
+         <div data-out={game.id} className="w-0 h-0" aria-hidden />
+      </div>
+      
+      {renderTeam(game.team1_name, game.team1_seed, 'data-in1')}
       <div className={`h-px w-full ${theme.borderBase}`} />
-      {renderTeam(game.team2_name, game.team2_seed)}
+      {renderTeam(game.team2_name, game.team2_seed, 'data-in2')}
     </div>
   )
 }

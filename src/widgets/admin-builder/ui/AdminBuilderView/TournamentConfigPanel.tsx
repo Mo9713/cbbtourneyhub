@@ -4,6 +4,7 @@ import { Settings2, Hash, ToggleLeft, ToggleRight, CalendarClock, ShieldAlert } 
 import { useTheme }            from '../../../../shared/lib/theme'
 import { getRoundLabel }       from '../../../../shared/lib/helpers'
 import { isoToInputInTz, inputInTzToISO } from '../../../../shared/lib/time'
+import { useUIStore }          from '../../../../shared/store/uiStore'
 import type { Tournament, Game, ScoringConfig } from '../../../../shared/types'
 
 function fibonacci(r: number): number {
@@ -32,20 +33,22 @@ function buildScoringInput(
 interface Props {
   tournament: Tournament
   games:      Game[]
-  onUpdate:   (updates: Partial<Tournament>) => void
+  onUpdate:   (updates: Partial<Tournament>) => Promise<void>
 }
 
 export default function TournamentConfigPanel({ tournament, games, onUpdate }: Props) {
-  const theme    = useTheme()
-  const maxRound = games.length ? Math.max(...games.map(g => g.round_num)) : 6
+  const theme     = useTheme()
+  const pushToast = useUIStore(s => s.pushToast)
+  const maxRound  = games.length ? Math.max(...games.map(g => g.round_num)) : 6
 
-  const [open, setOpen] = useState(false)
+  const [open, setOpen]     = useState(false)
   const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
+  const [saved, setSaved]   = useState(false)
 
   const [roundNamesInput, setRoundNamesInput] = useState<string[]>(
-    tournament.round_names?.length ? [...tournament.round_names] : []
+    Array.from({ length: maxRound }, (_, i) => tournament.round_names?.[i] || '')
   )
+  
   const [scoringInput, setScoringInput] = useState<Record<string, string>>(() =>
     buildScoringInput(tournament.scoring_config, maxRound)
   )
@@ -63,8 +66,8 @@ export default function TournamentConfigPanel({ tournament, games, onUpdate }: P
   })
 
   useEffect(() => {
-    setRoundNamesInput(tournament.round_names?.length ? [...tournament.round_names] : [])
-  }, [tournament.round_names])
+    setRoundNamesInput(Array.from({ length: maxRound }, (_, i) => tournament.round_names?.[i] || ''))
+  }, [tournament.round_names, maxRound])
 
   useEffect(() => {
     setScoringInput(buildScoringInput(tournament.scoring_config, maxRound))
@@ -73,39 +76,45 @@ export default function TournamentConfigPanel({ tournament, games, onUpdate }: P
   const handleSave = async () => {
     setSaving(true)
     
-    if (tournament.game_type === 'survivor') {
-      const packedLocks: Record<number, string> = {}
-      for (let i = 1; i <= 6; i++) {
-        const iso = inputInTzToISO(roundLocksInput[i], null)
-        if (iso) packedLocks[i] = iso
+    try {
+      // FIX: Prevent trim() crash on empty array slots
+      const payload: Partial<Tournament> = {
+        round_names: Array.from({ length: maxRound }, (_, i) => {
+          const n = roundNamesInput[i]
+          return n ? n.trim() : ''
+        }),
       }
 
-      await onUpdate({
-        round_names: roundNamesInput.map(n => n.trim()),
-        survivor_elimination_rule: survivorRuleInput,
-        round_locks: packedLocks
-      })
-    } else {
-      const config: ScoringConfig = {}
-      let isCustom = false
-      Object.entries(scoringInput).forEach(([r, val]) => {
-        const parsed     = parseInt(val, 10)
-        const defaultVal = fibonacci(parseInt(r, 10) + 1)
-        if (!isNaN(parsed)) {
-          config[r] = parsed
-          if (parsed !== defaultVal) isCustom = true
+      if (tournament.game_type === 'survivor') {
+        const packedLocks: Record<number, string> = {}
+        for (let i = 1; i <= 6; i++) {
+          const iso = inputInTzToISO(roundLocksInput[i], null)
+          if (iso) packedLocks[i] = iso
         }
-      })
-      
-      await onUpdate({
-        round_names:    roundNamesInput.map(n => n.trim()),
-        scoring_config: isCustom ? config : null,
-      })
+        payload.survivor_elimination_rule = survivorRuleInput
+        payload.round_locks = packedLocks
+      } else {
+        const config: ScoringConfig = {}
+        let isCustom = false
+        Object.entries(scoringInput).forEach(([r, val]) => {
+          const parsed     = parseInt(val, 10)
+          const defaultVal = fibonacci(parseInt(r, 10) + 1)
+          if (!isNaN(parsed)) {
+            config[r] = parsed
+            if (parsed !== defaultVal) isCustom = true
+          }
+        })
+        payload.scoring_config = isCustom ? config : null
+      }
+
+      await onUpdate(payload)
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+    } catch (e: any) {
+      pushToast(e.message || 'Failed to save tournament config.', 'error')
+    } finally {
+      setSaving(false)
     }
-    
-    setSaving(false)
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
   }
 
   const resetToFibonacci = () => {
@@ -117,7 +126,6 @@ export default function TournamentConfigPanel({ tournament, games, onUpdate }: P
   }
 
   const inputCls = `${theme.inputBg} border ${theme.borderBase} rounded-lg px-2 py-1 ${theme.textBase} text-xs focus:outline-none focus:border-slate-500 transition-colors`
-
   const isSurvivor = tournament.game_type === 'survivor'
 
   return (
@@ -137,7 +145,6 @@ export default function TournamentConfigPanel({ tournament, games, onUpdate }: P
       {open && (
         <div className="pb-4 grid grid-cols-1 md:grid-cols-3 gap-4">
 
-          {/* SHARED: ROUND NAMES */}
           <div className={`${theme.panelBg} border ${theme.borderBase} rounded-xl p-3`}>
             <h4 className={`text-[10px] font-bold ${theme.textMuted} uppercase tracking-widest mb-1`}>
               Custom Round Names
@@ -164,7 +171,6 @@ export default function TournamentConfigPanel({ tournament, games, onUpdate }: P
 
           {!isSurvivor && (
             <>
-              {/* STANDARD: SCORING */}
               <div className={`${theme.panelBg} border ${theme.borderBase} rounded-xl p-3`}>
                 <h4 className={`text-[10px] font-bold ${theme.textMuted} uppercase tracking-widest mb-2 flex items-center gap-1.5`}>
                   <Hash size={9} /> Points per Round
@@ -194,7 +200,6 @@ export default function TournamentConfigPanel({ tournament, games, onUpdate }: P
                 )}
               </div>
 
-              {/* STANDARD: TIEBREAKER */}
               <div className={`${theme.panelBg} border ${theme.borderBase} rounded-xl p-3`}>
                 <h4 className={`text-[10px] font-bold ${theme.textMuted} uppercase tracking-widest mb-2`}>
                   Tie-Breaker
@@ -219,7 +224,6 @@ export default function TournamentConfigPanel({ tournament, games, onUpdate }: P
 
           {isSurvivor && (
             <>
-              {/* SURVIVOR: ROUND LOCKS */}
               <div className={`${theme.panelBg} border ${theme.borderBase} rounded-xl p-3`}>
                 <h4 className={`text-[10px] font-bold ${theme.textMuted} uppercase tracking-widest mb-2 flex items-center gap-1.5`}>
                   <CalendarClock size={11} /> Discrete Round Locks
@@ -227,17 +231,20 @@ export default function TournamentConfigPanel({ tournament, games, onUpdate }: P
                 <p className={`text-[10px] ${theme.textMuted} mb-2`}>
                   Round N+1 opens the moment Round N locks.
                 </p>
-                <div className="space-y-2 h-40 overflow-y-auto scrollbar-thin pr-1">
+                <div className="space-y-2 h-40 overflow-y-auto scrollbar-thin pr-2">
                   {Array.from({ length: 6 }, (_, i) => {
                     const r = i + 1
                     return (
-                      <div key={r} className="flex flex-col">
-                        <label className={`text-[9px] font-bold ${theme.textMuted} uppercase`}>Lock Round {r} At (CT)</label>
+                      <div key={r} className="flex flex-col p-2 bg-slate-800/50 border border-slate-700/50 rounded-lg gap-1">
+                        <label className={`text-[9px] font-bold text-slate-400 uppercase tracking-widest`}>
+                          Lock Round {r} At (CT)
+                        </label>
+                        {/* FIX: min-w-[180px] ensures the browser does not clip the time picker segment */}
                         <input
                           type="datetime-local"
                           value={roundLocksInput[r] ?? ''}
                           onChange={e => setRoundLocksInput(prev => ({ ...prev, [r]: e.target.value }))}
-                          className={inputCls}
+                          className="w-full min-w-[180px] bg-slate-900 border border-slate-700 rounded-md px-2 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500/50 transition-colors"
                         />
                       </div>
                     )
@@ -245,7 +252,6 @@ export default function TournamentConfigPanel({ tournament, games, onUpdate }: P
                 </div>
               </div>
 
-              {/* SURVIVOR: ELIMINATION RULE */}
               <div className={`${theme.panelBg} border ${theme.borderBase} rounded-xl p-3`}>
                 <h4 className={`text-[10px] font-bold ${theme.textMuted} uppercase tracking-widest mb-2 flex items-center gap-1.5`}>
                   <ShieldAlert size={11} /> Mass Elimination Rule

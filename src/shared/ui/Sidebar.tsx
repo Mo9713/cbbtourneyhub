@@ -1,15 +1,14 @@
 // src/shared/ui/Sidebar.tsx
 
 import {
-  Trophy, Home, Settings, LogOut, Plus, PanelLeftClose, Users, UserPlus, Settings2, Trash2, LayoutList
+  Trophy, Home, Settings, LogOut, Plus, PanelLeftClose, Users, UserPlus, Settings2, LayoutList
 } from 'lucide-react'
 import { supabase }               from '../infra/supabaseClient'
 import { useTheme }               from '../lib/theme'
 import { useAuth }                from '../../features/auth/model/useAuth'
 import { useTournamentListQuery } from '../../entities/tournament/model/queries'
-import { useUserGroupsQuery, useDeleteGroupMutation } from '../../entities/group/api'
+import { useUserGroupsQuery }     from '../../entities/group/api'
 import { useUIStore }             from '../store/uiStore'
-import type { Group }             from '../types'
 
 interface SidebarProps {
   onClose: () => void
@@ -30,15 +29,12 @@ export default function Sidebar({ onClose, onOpenAddTournament, onToggleDesktop 
   
   const openCreateGroup      = useUIStore(s => s.openCreateGroup)
   const openJoinGroup        = useUIStore(s => s.openJoinGroup)
-  const setConfirmModal      = useUIStore(s => s.setConfirmModal)
 
   const { data: allTournaments = [], isLoading } = useTournamentListQuery()
   const { data: groups = [] }                    = useUserGroupsQuery()
-  const deleteGroupM                             = useDeleteGroupMutation()
 
   const isAdmin = profile?.is_admin
 
-  // Contextual Filtering: Only show tournaments belonging to the active group, or global if none.
   const tournaments = activeGroupId 
     ? allTournaments.filter(t => t.group_id === activeGroupId)
     : allTournaments.filter(t => !t.group_id)
@@ -52,25 +48,6 @@ export default function Sidebar({ onClose, onOpenAddTournament, onToggleDesktop 
     setActiveView(view)
     window.location.hash = hash
     onClose()
-  }
-
-  const handleDeleteGroup = (e: React.MouseEvent, group: Group) => {
-    e.stopPropagation()
-    setConfirmModal({
-      title: 'Delete Group',
-      message: `Are you sure you want to delete "${group.name}"? This action cannot be undone.`,
-      dangerous: true,
-      confirmLabel: 'Delete',
-      onConfirm: () => {
-        deleteGroupM.mutate(group.id)
-        setConfirmModal(null)
-        if (activeView === 'group' && window.location.hash.includes(group.id)) {
-          setActiveGroup(null)
-          navigateTo('home', 'home')
-        }
-      },
-      onCancel: () => setConfirmModal(null)
-    })
   }
 
   const navItemCls = `w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-bold text-sm transition-all duration-200`
@@ -135,29 +112,19 @@ export default function Sidebar({ onClose, onOpenAddTournament, onToggleDesktop 
           <div className="space-y-1">
             {groups.map((group) => {
               const isActive = activeGroupId === group.id
-              const isOwner = group.owner_id === profile?.id
 
               return (
                 <div key={group.id} className="group flex items-center justify-between">
                   <button
                     onClick={() => { setActiveGroup(group.id); selectTournament(null); navigateTo('group', `#/group/${group.id}`) }}
-                    className={`flex-1 flex items-center gap-3 px-3 py-2.5 rounded-xl font-bold text-sm transition-all duration-200 ${isActive
+                    className={`flex-1 flex items-center gap-3 px-3 py-2.5 rounded-xl font-bold text-sm transition-all duration-200 min-w-0 ${isActive
                       ? `${theme.bgMd} ${theme.textBase} shadow-sm ring-1 ring-slate-200 dark:ring-white/10`
                       : `${theme.textMuted} hover:${theme.bg} hover:${theme.textBase}`
                     }`}
                   >
                     <Users size={16} className={isActive ? theme.accent : 'opacity-70'} />
-                    <span className="truncate flex-1 text-left">{group.name}</span>
+                    <span className="truncate flex-1 text-left">My Group</span>
                   </button>
-                  {isOwner && (
-                    <button
-                      onClick={(e) => handleDeleteGroup(e, group)}
-                      className="p-2 ml-1 opacity-0 group-hover:opacity-100 text-rose-400 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all"
-                      title="Delete Group"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  )}
                 </div>
               )
             })}
@@ -213,7 +180,7 @@ export default function Sidebar({ onClose, onOpenAddTournament, onToggleDesktop 
                   <div key={t.id} className="group flex items-center justify-between">
                     <button
                       onClick={() => { selectTournament(t.id); navigateTo('bracket', 'bracket') }}
-                      className={`flex-1 flex items-center gap-3 px-3 py-2.5 rounded-xl font-bold text-sm transition-all duration-200 ${isSelected
+                      className={`flex-1 flex items-center gap-3 px-3 py-2.5 rounded-xl font-bold text-sm transition-all duration-200 min-w-0 ${isSelected
                         ? `${theme.bgMd} ${theme.textBase} shadow-sm ring-1 ring-slate-200 dark:ring-white/10` 
                         : `${theme.textMuted} hover:${theme.bg} hover:${theme.textBase}`
                       }`}

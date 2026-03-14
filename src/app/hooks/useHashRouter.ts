@@ -26,7 +26,6 @@ export function useHashRouter(): void {
       return
     }
     
-    // Construct the correct target hash based on both store variables
     const target = activeView === 'group' && activeGroupId 
       ? `#/group/${activeGroupId}` 
       : `#/${activeView}`
@@ -38,19 +37,16 @@ export function useHashRouter(): void {
 
   // ── popstate (Back/Forward or Direct Entry) → activeView ────
   useEffect(() => {
-    // FIX: Removed unused 'e' parameter to resolve TS6133
     const onPop = () => {
       const hash = window.location.hash
       const match = hash.match(/#\/?group\/([^/?]+)/)
       
       fromPopState.current = true
       
-      // If we landed on a group route, parse the ID and set both
       if (match && match[1]) {
         setActiveGroup(match[1])
         setActiveView('group')
       } else {
-        // Otherwise parse normal views
         const view = fromHash(hash)
         if (view) setActiveView(view)
       }

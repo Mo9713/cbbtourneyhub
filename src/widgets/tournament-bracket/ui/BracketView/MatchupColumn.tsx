@@ -75,23 +75,15 @@ export default function MatchupColumn({
 
           return (
             <div key={game.id} className="flex-1 flex items-center min-h-0 px-1 pt-5 relative">
-              {/* Output anchor for SVG connectors */}
-              <div data-out={game.id} className="absolute right-1 top-[calc(50%+10px)] w-0 h-0" aria-hidden />
-              
               {isSurvivor ? (
-                <div className="w-full relative">
-                  {/* Input anchors for SVG connectors */}
-                  <div data-in1={game.id} className="absolute left-0 top-1/4 w-0 h-0" aria-hidden />
-                  <div data-in2={game.id} className="absolute left-0 top-3/4 w-0 h-0" aria-hidden />
-                  <SurvivorGameCard
-                    game={game}
-                    currentPick={pickMap.get(game.id)}
-                    usedTeams={usedTeams}
-                    activeRound={activeRound}
-                    isEliminated={isEliminated}
-                    onMakePick={handleSurvivorPick}
-                  />
-                </div>
+                <SurvivorGameCard
+                  game={game}
+                  currentPick={pickMap.get(game.id)}
+                  usedTeams={usedTeams}
+                  activeRound={activeRound}
+                  isEliminated={isEliminated}
+                  onMakePick={handleSurvivorPick}
+                />
               ) : (
                 <GameCard
                   game={game}
