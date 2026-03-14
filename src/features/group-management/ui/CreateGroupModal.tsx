@@ -35,10 +35,9 @@ export function CreateGroupModal({ onClose }: Props) {
       { name: name.trim(), invite_code: inviteCode.trim() },
       {
         onSuccess: (group) => {
-          // `group` is correctly typed as Group — no longer unknown.
-          // N-11 FIX: setActiveGroup + setActiveView instead of direct hash write.
           pushToast('Group created successfully!', 'success')
           useUIStore.getState().setActiveGroup(group.id)
+          // N-11 FIX: Direct hash write removed. setActiveView is sufficient.
           useUIStore.getState().setActiveView('group')
           onClose()
         },

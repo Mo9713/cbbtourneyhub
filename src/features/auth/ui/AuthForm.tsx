@@ -6,7 +6,8 @@ import * as authService from '../../../shared/infra/authService'
 
 type AuthMode = 'signin' | 'signup' | 'forgot'
 
-export default function AuthForm({ onAuth }: { onAuth: () => void }) {
+// N-07 FIX: Removed dead onAuth prop
+export default function AuthForm() {
   const [mode,     setMode]     = useState<AuthMode>('signin')
   const [email,    setEmail]    = useState('')
   const [password, setPassword] = useState('')
@@ -36,7 +37,7 @@ export default function AuthForm({ onAuth }: { onAuth: () => void }) {
       } else if (mode === 'signin') {
         const result = await authService.signInWithPassword(email, password)
         if (!result.ok) { setError(result.error); return }
-        onAuth()
+        // Auth flow handled globally via onAuthStateChange listener
 
       } else {
         const result = await authService.resetPasswordForEmail(email)

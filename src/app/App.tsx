@@ -33,7 +33,7 @@ function RootOrchestrator() {
 
   // 3. The Login Gatekeeper
   if (!user || !profile) {
-    return <AuthForm onAuth={() => {}} />
+    return <AuthForm />
   }
 
   // 4. Resolve the Active Theme

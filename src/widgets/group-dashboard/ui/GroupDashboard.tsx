@@ -34,8 +34,8 @@ export function GroupDashboard({ groupId }: GroupDashboardProps) {
         deleteGroupM.mutate(group.id, {
           onSuccess: () => {
             setActiveGroup(null)
+            // N-11 FIX: Direct hash write removed. setActiveView is the single source of truth.
             setActiveView('home')
-            window.location.hash = '#/home'
             setConfirmModal(null)
           }
         })
