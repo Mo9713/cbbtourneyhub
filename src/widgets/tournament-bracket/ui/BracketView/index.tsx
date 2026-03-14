@@ -46,7 +46,6 @@ export default function BracketView({
   const { data: tournaments = [] } = useTournamentListQuery()
   const selectedTournamentId       = useUIStore((s) => s.selectedTournamentId)
 
-  // Contextual Tabs State
   const [viewMode, setViewMode] = useState<'bracket' | 'standings'>('bracket')
 
   const selectedTournament = useMemo(
@@ -117,12 +116,13 @@ export default function BracketView({
   ): Promise<string | null> => {
     if (!tournament) return 'No active tournament'
     try {
-      await saveTiebreaker({ gameId, predictedWinner, score, tournamentId: tournament.id })
+      // FIX: Claude's TS contract requires gameIds to be passed here for the exact cache key!
+      await saveTiebreaker({ gameId, predictedWinner, score, tournamentId: tournament.id, gameIds })
       return null
     } catch (err: unknown) {
       return err instanceof Error ? err.message : 'Failed to save tiebreaker'
     }
-  }, [saveTiebreaker, tournament])
+  }, [saveTiebreaker, tournament, gameIds])
 
   const bracketViewValue = useMemo(() => ({
     isLocked:       isLocked || readOnly,
@@ -146,7 +146,6 @@ export default function BracketView({
           score={score}
         />
 
-        {/* Tabs - Only show if not in ReadOnly (Snoop) mode */}
         {!readOnly && (
           <div className={`flex justify-center border-b ${theme.borderBase} bg-black/10 flex-shrink-0 pt-2`}>
             <div className="flex gap-2 px-4 mb-2">

@@ -1,12 +1,15 @@
 // src/features/tournament/ui/AddTournamentModal.tsx
 
-import { useState }             from 'react'
+import { useState }               from 'react'
 import { X, ShieldAlert, Trophy } from 'lucide-react'
-import { useTheme }             from '../../../shared/lib/theme'
+import { useTheme }               from '../../../shared/lib/theme'
 // C-03 cascade: useUserGroupsQuery is a hook — it must be imported from
 // the model public API (entities/group), not from the api/ sublayer.
-import { useUserGroupsQuery }   from '../../../entities/group'
-import type { TemplateKey }     from '../../../shared/types'
+import { useUserGroupsQuery }     from '../../../entities/group'
+// FIX (Defect 2): Modal must read activeGroupId from Zustand so tournaments
+// created inside a group dashboard are correctly scoped to that group.
+import { useUIStore }             from '../../../shared/store/uiStore'
+import type { TemplateKey }       from '../../../shared/types'
 
 interface Props {
   onClose:  () => void
@@ -23,11 +26,17 @@ export function AddTournamentModal({ onClose, onCreate }: Props) {
   const theme = useTheme()
   const { data: groups = [] } = useUserGroupsQuery()
 
+  // Read context at mount time. If the admin is inside a group dashboard,
+  // activeGroupId will be set and the dropdown pre-selects that group,
+  // preventing tournaments from being orphaned to the Global pool.
+  const activeGroupId = useUIStore(s => s.activeGroupId)
+
   const [name,      setName]      = useState('')
   const [template,  setTemplate]  = useState<TemplateKey>('blank')
   const [teamCount, setTeamCount] = useState(16)
   const [gameMode,  setGameMode]  = useState<'bracket' | 'survivor'>('bracket')
-  const [groupId,   setGroupId]   = useState<string>('none')
+  // Seed from Zustand context; falls back to 'none' (Global) when no group is active.
+  const [groupId,   setGroupId]   = useState<string>(activeGroupId ?? 'none')
 
   const templates: { key: TemplateKey; label: string; desc: string; icon: string }[] = [
     { key: 'blank',    label: 'Blank Slate',      desc: '0 games — build manually',           icon: '📋' },

@@ -2,7 +2,7 @@
 
 import { useMemo }              from 'react'
 import { Trash2, LogOut, Skull, Eye } from 'lucide-react'
-import { useGroupDetailsQuery, useDeleteGroupMutation, useLeaveGroupMutation } from '../../../entities/group'
+import { useGroupDetailsQuery, useGroupMembersQuery, useDeleteGroupMutation, useLeaveGroupMutation } from '../../../entities/group'
 import { useTournamentListQuery } from '../../../entities/tournament/model/queries'
 import { useLeaderboardRaw }    from '../../../entities/leaderboard/model/queries'
 import { computeLeaderboard }   from '../../../features/leaderboard/model/selectors'
@@ -23,6 +23,8 @@ export function GroupDashboard({ groupId }: GroupDashboardProps) {
   const { profile } = useAuth()
   
   const { data: group, isLoading, error } = useGroupDetailsQuery(groupId)
+  // FIX: Fetch the actual group members to strictly scope the leaderboards
+  const { data: members = [] }            = useGroupMembersQuery(groupId)
   const { data: allTournaments = [] }     = useTournamentListQuery()
   const { data: rawData }                 = useLeaderboardRaw()
   
@@ -38,10 +40,13 @@ export function GroupDashboard({ groupId }: GroupDashboardProps) {
 
   const isOwner          = profile?.id === group?.owner_id
   const isAdmin          = profile?.is_admin ?? false
-  const groupTournaments = allTournaments.filter((t: Tournament) => t.group_id === groupId)
+  // Hide drafts from normal users, but show them to Admins so you can click & edit them
+  const groupTournaments = allTournaments.filter((t: Tournament) => 
+    t.group_id === groupId && (isAdmin || t.status !== 'draft')
+  )
 
-  const standardTourneys = groupTournaments.filter(t => t.game_type !== 'survivor' && t.status !== 'draft')
-  const survivorTourneys = groupTournaments.filter(t => t.game_type === 'survivor' && t.status !== 'draft')
+  const standardTourneys = groupTournaments.filter(t => t.game_type !== 'survivor')
+  const survivorTourneys = groupTournaments.filter(t => t.game_type === 'survivor')
 
   const handleDelete = () => {
     if (!group) return
@@ -89,8 +94,13 @@ export function GroupDashboard({ groupId }: GroupDashboardProps) {
     const games = rawData.allGames.filter(g => tMap.has(g.tournament_id))
     const gameIds = new Set(games.map(g => g.id))
     const picks = rawData.allPicks.filter(p => gameIds.has(p.game_id))
-    return computeLeaderboard(picks, games, rawData.allGames, rawData.allProfiles, tMap)
-  }, [rawData, standardTourneys])
+
+    // FIX: Filter allProfiles to ONLY include people who actually joined this group
+    const memberUserIds = new Set(members.map(m => m.user_id))
+    const groupProfiles = rawData.allProfiles.filter(p => memberUserIds.has(p.id))
+
+    return computeLeaderboard(picks, games, rawData.allGames, groupProfiles, tMap)
+  }, [rawData, standardTourneys, members])
 
   const survivorBoard = useMemo(() => {
     if (!rawData || !survivorTourneys.length) return []
@@ -98,8 +108,13 @@ export function GroupDashboard({ groupId }: GroupDashboardProps) {
     const games = rawData.allGames.filter(g => tMap.has(g.tournament_id))
     const gameIds = new Set(games.map(g => g.id))
     const picks = rawData.allPicks.filter(p => gameIds.has(p.game_id))
-    return computeLeaderboard(picks, games, rawData.allGames, rawData.allProfiles, tMap)
-  }, [rawData, survivorTourneys])
+
+    // FIX: Filter allProfiles to ONLY include people who actually joined this group
+    const memberUserIds = new Set(members.map(m => m.user_id))
+    const groupProfiles = rawData.allProfiles.filter(p => memberUserIds.has(p.id))
+
+    return computeLeaderboard(picks, games, rawData.allGames, groupProfiles, tMap)
+  }, [rawData, survivorTourneys, members])
 
   if (isLoading) {
     return (
@@ -145,7 +160,6 @@ export function GroupDashboard({ groupId }: GroupDashboardProps) {
       <button
         key={t.id}
         onClick={() => { selectTournament(t.id); setActiveView('bracket') }}
-        // FIX: Strict h-[180px] ensures Standard and Survivor cards match height exactly regardless of contents
         className={`text-left p-5 rounded-2xl border transition-all hover:scale-[1.02] active:scale-[0.99] w-full flex flex-col h-[180px] ${theme.panelBg} ${theme.borderBase} hover:border-amber-500/50`}
       >
         <div className="flex items-start justify-between gap-3 w-full mb-2">
@@ -161,10 +175,9 @@ export function GroupDashboard({ groupId }: GroupDashboardProps) {
           <Countdown tournament={t} isAdmin={profile?.is_admin ?? false} timezone={profile?.timezone ?? null} />
         </div>
 
-        {/* FIX: Centered, symmetrical bottom row for active statuses */}
         <div className="mt-auto w-full pt-4 flex items-center justify-center border-t border-slate-200 dark:border-slate-800/50 text-[10px] sm:text-[11px] uppercase tracking-widest font-bold">
-           <div className="flex-1 text-center pr-2 border-r border-slate-200 dark:border-slate-800/50">{statusLeft}</div>
-           <div className="flex-1 text-center pl-2">{statusRight}</div>
+           <div className="flex-1 text-left pr-2 border-r border-slate-200 dark:border-slate-800/50">{statusLeft}</div>
+           <div className="flex-1 text-right pl-2">{statusRight}</div>
         </div>
       </button>
     )
@@ -234,7 +247,6 @@ export function GroupDashboard({ groupId }: GroupDashboardProps) {
                       Bracket Standings
                     </h3>
                   </div>
-                  {/* FIX: Removed max-h and scrollbar so table expands naturally */}
                   <div className="flex-1 p-4">
                     {standardBoard.length === 0 ? (
                       <p className={`text-sm text-center py-8 ${theme.textMuted}`}>No active players.</p>
@@ -253,7 +265,6 @@ export function GroupDashboard({ groupId }: GroupDashboardProps) {
                                 <p className={`font-bold ${theme.accent}`}>{entry.points} pts</p>
                                 <p className={`text-[10px] ${theme.textMuted}`}>Max {entry.maxPossible}</p>
                               </div>
-                              {/* FIX: Explicit w-10 ensures empty alignment when icon is missing */}
                               {isAdmin && (
                                 <div className="w-10 flex items-center justify-center flex-shrink-0">
                                   {!isMe && (
@@ -285,7 +296,6 @@ export function GroupDashboard({ groupId }: GroupDashboardProps) {
                       Survivor Standings
                     </h3>
                   </div>
-                  {/* FIX: Removed max-h and scrollbar so table expands naturally */}
                   <div className="flex-1 p-4">
                     {survivorBoard.length === 0 ? (
                       <p className={`text-sm text-center py-8 ${theme.textMuted}`}>No active players.</p>
@@ -309,7 +319,6 @@ export function GroupDashboard({ groupId }: GroupDashboardProps) {
                                 <p className={`font-bold ${theme.textBase}`}>{entry.seedScore}</p>
                                 <p className={`text-[10px] ${theme.textMuted}`}>Seed Score</p>
                               </div>
-                              {/* FIX: Explicit w-10 ensures empty alignment when icon is missing */}
                               {isAdmin && (
                                 <div className="w-10 flex items-center justify-center flex-shrink-0">
                                   {!isMe && (

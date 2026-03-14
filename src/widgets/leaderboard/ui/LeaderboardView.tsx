@@ -28,11 +28,16 @@ export default function LeaderboardView({ tournament }: LeaderboardViewProps) {
     const scopedGameIds = new Set(scopedGames.map(g => g.id))
     const scopedPicks = raw.allPicks.filter((p: Pick) => scopedGameIds.has(p.game_id))
 
+    // FIX: Filter allProfiles so we ONLY score and display users who have actively made picks.
+    // Without this, every global leaderboard shows every single user in the app with 0 points.
+    const activeParticipantIds = new Set(scopedPicks.map(p => p.user_id))
+    const participants = raw.allProfiles.filter(p => activeParticipantIds.has(p.id))
+
     return computeLeaderboard(
       scopedPicks,
       scopedGames,
       raw.allGames,
-      raw.allProfiles,
+      participants,
       tournamentMap,
     )
   }, [raw, tournament])
