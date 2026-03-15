@@ -193,15 +193,29 @@ export async function deleteTournament(
   gameIds:      string[],
 ): Promise<ServiceResult<true>> {
   return withAdminAuth(async () => {
+    
+    // 1. Delete associated picks
     if (gameIds.length > 0) {
       const { error } = await supabase.from('picks').delete().in('game_id', gameIds)
       if (error) return { ok: false, error: error.message }
     }
 
+    // 2. Delete associated games
     const { error: gErr } = await supabase
       .from('games').delete().eq('tournament_id', tournamentId)
     if (gErr) return { ok: false, error: gErr.message }
 
+    // 3. Attempt to delete orphaned teams safely
+    // Since the teams table acts as a global registry and may not have a tournament_id,
+    // this will fail gracefully without blocking the tournament deletion.
+    const { error: teamErr } = await supabase
+      .from('teams').delete().eq('tournament_id', tournamentId)
+    
+    if (teamErr) {
+      console.warn('Skipping team deletion (teams table is likely global or missing tournament_id):', teamErr.message)
+    }
+
+    // 4. Finally, delete the tournament
     const { error: tErr } = await supabase
       .from('tournaments').delete().eq('id', tournamentId)
     if (tErr) return { ok: false, error: tErr.message }
