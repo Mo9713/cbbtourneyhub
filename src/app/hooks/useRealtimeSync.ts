@@ -14,7 +14,6 @@
 import { useEffect, useRef }       from 'react'
 import { useQueryClient }          from '@tanstack/react-query'
 import type {
-  RealtimePostgresChangesPayload,
   RealtimeChannel,
 }                                  from '@supabase/supabase-js'
 
@@ -27,8 +26,6 @@ import { groupKeys }               from '../../entities/group/model/queries'
 // MOD-03 FIX: Import from the public slice API, not the internal model file.
 import { useAuth }                 from '../../features/auth'
 import { useUIStore }              from '../../shared/store/uiStore'
-
-type GameRow = { tournament_id: string }
 
 export function useRealtimeSync(): void {
   const qc          = useQueryClient()
@@ -83,29 +80,25 @@ export function useRealtimeSync(): void {
 
       .on('postgres_changes', {
         event: '*', schema: 'public', table: 'games',
-      }, (payload: RealtimePostgresChangesPayload<GameRow>) => {
-        const tid    = (payload.new as Partial<GameRow>).tournament_id
-                    ?? (payload.old as Partial<GameRow>).tournament_id
-        const target = tid ?? selectedIdRef.current
-        if (target) safeInvalidate(qc, tournamentKeys.games(target))
+      }, () => {
+        // FIX: Ignore the realtime echo if the user is actively spam-clicking picks
+        if (qc.isMutating({ mutationKey: ['makePick'] }) > 0) return
 
-        // C-01 FIX: Leaderboard invalidation is unconditional.
-        // Any game result change is always leaderboard-relevant data.
-        // The previous guard (activeView === 'leaderboard') was a dead
-        // condition — that view state no longer exists after M-03.
+        // FIX: Replaced broken ['games'] key with tournamentKeys.all. 
+        // Because TanStack Query keys are arrays (e.g., ['tournaments', 'games', id]), 
+        // we must target the root 'tournaments' level to flush them all!
+        safeInvalidate(qc, tournamentKeys.all)
         safeInvalidate(qc, leaderboardKeys.raw)
       })
 
       .on('postgres_changes', {
         event: '*', schema: 'public', table: 'picks',
       }, () => {
-        // ['picks', 'mine'] is a deliberate PREFIX key. With exact: false,
-        // TanStack Query's prefix matching covers all active compound
-        // observer keys of the form ['picks', 'mine', tournamentId, gameIds[]].
+        // FIX: Ignore the realtime echo if the user is actively spam-clicking
+        if (qc.isMutating({ mutationKey: ['makePick'] }) > 0) return
+
         safeInvalidate(qc, ['picks', 'mine'])
         safeInvalidate(qc, pickKeys.allMine())
-
-        // C-01 FIX: Same as games — pick changes always update standings.
         safeInvalidate(qc, leaderboardKeys.raw)
       })
 

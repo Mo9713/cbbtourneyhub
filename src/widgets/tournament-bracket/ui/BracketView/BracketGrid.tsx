@@ -1,15 +1,9 @@
 // src/widgets/tournament-bracket/ui/BracketView/BracketGrid.tsx
-import {
-  useRef, useState, useCallback, useLayoutEffect, useMemo,
-} from 'react'
-import MatchupColumn, { type SlotItem } from './MatchupColumn'
+import { useRef, useState, useCallback, useLayoutEffect, useMemo, useEffect } from 'react'
+import MatchupColumn, { type SlotItem }  from './MatchupColumn'
 import ChampionCallout                   from './ChampionCallout'
 import SvgConnectors                     from '../../../../shared/ui/SvgConnectors'
-import {
-  computeConnectorLines,
-  type ConnectorLine,
-  type EffectiveNames,
-}                                        from '../../../../shared/lib/bracketMath'
+import { computeConnectorLines, type ConnectorLine, type EffectiveNames } from '../../../../shared/lib/bracketMath'
 import type { Game, Pick, Tournament }   from '../../../../shared/types'
 import { useTheme }                      from '../../../../shared/lib/theme'
 
@@ -22,11 +16,7 @@ function computeSlotH(numLeafSlots: number): number {
   return Math.round(105 - t * (105 - 80))
 }
 
-function resolveSlot(
-  feeder:      Game,
-  allGames:    Game[],
-  gameNumbers: Record<string, number>,
-): 'in1' | 'in2' {
+function resolveSlot(feeder: Game, allGames: Game[], gameNumbers: Record<string, number>): 'in1' | 'in2' {
   if (!feeder.next_game_id) return 'in1'
   const siblings = allGames
     .filter(g => g.next_game_id === feeder.next_game_id)
@@ -34,11 +24,7 @@ function resolveSlot(
   return siblings.length === 0 || siblings[0].id === feeder.id ? 'in1' : 'in2'
 }
 
-function buildSlotGrid(
-  rounds:      [number, Game[]][],
-  allGames:    Game[],
-  gameNumbers: Record<string, number>,
-): Map<number, SlotItem[]> {
+function buildSlotGrid(rounds: [number, Game[]][], allGames: Game[], gameNumbers: Record<string, number>): Map<number, SlotItem[]> {
   if (!rounds.length) return new Map()
 
   const roundNums    = rounds.map(([r]) => r).sort((a, b) => a - b)
@@ -46,8 +32,7 @@ function buildSlotGrid(
   const gamesByRound = new Map(rounds)
   const grid         = new Map<number, SlotItem[]>()
 
-  const lastGames = [...(gamesByRound.get(maxRound) ?? [])]
-    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+  const lastGames = [...(gamesByRound.get(maxRound) ?? [])].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
   grid.set(maxRound, lastGames.map(g => ({ type: 'game', game: g } as SlotItem)))
 
   for (let ri = roundNums.length - 2; ri >= 0; ri--) {
@@ -74,10 +59,7 @@ function buildSlotGrid(
           ? newSlots.push({ type: 'game', game: feeders[0] }, { type: 'ghost' })
           : newSlots.push({ type: 'ghost' }, { type: 'game', game: feeders[0] })
       } else {
-        newSlots.push(
-          { type: 'game', game: feeders[0] },
-          { type: 'game', game: feeders[1] },
-        )
+        newSlots.push({ type: 'game', game: feeders[0] }, { type: 'game', game: feeders[1] })
       }
     }
     grid.set(thisRound, newSlots)
@@ -96,25 +78,21 @@ interface Props {
   actualChampion:  string | null
   readOnly:        boolean
   ownerName?:      string
+  selectedRegion?: string | null
+  onRegionSelect?: (region: string) => void
 }
 
 export default function BracketGrid({
   rounds, pickMap, effectiveNames, tournament, gameNumbers,
   eliminatedTeams, champion, actualChampion, readOnly, ownerName,
+  selectedRegion, onRegionSelect
 }: Props) {
   const theme = useTheme()
   const maxRound = rounds.length > 0 ? Math.max(...rounds.map(([r]) => r)) : 1
   const minRound = rounds.length > 0 ? Math.min(...rounds.map(([r]) => r)) : 1
 
-  const allDisplayGames = useMemo(
-    () => rounds.flatMap(([, gs]) => gs),
-    [rounds],
-  )
-
-  const slotGrid = useMemo(
-    () => buildSlotGrid(rounds, allDisplayGames, gameNumbers),
-    [rounds, allDisplayGames, gameNumbers],
-  )
+  const allDisplayGames = useMemo(() => rounds.flatMap(([, gs]) => gs), [rounds])
+  const slotGrid = useMemo(() => buildSlotGrid(rounds, allDisplayGames, gameNumbers), [rounds, allDisplayGames, gameNumbers])
 
   const rawLeafSlots  = slotGrid.get(minRound)?.length ?? 1
   const slotH         = computeSlotH(rawLeafSlots)
@@ -128,6 +106,13 @@ export default function BracketGrid({
   const isPanning = useRef(false)
   const panOrigin = useRef({ x: 0, y: 0, sl: 0, st: 0 })
 
+  useEffect(() => {
+    if (outerScrollRef.current) {
+      outerScrollRef.current.scrollTop = 0
+      outerScrollRef.current.scrollLeft = 0
+    }
+  }, [selectedRegion])
+
   const recomputeLines = useCallback(() => {
     const container = innerBracketRef.current
     if (!container) return
@@ -139,33 +124,21 @@ export default function BracketGrid({
     const getInRect = (gameId: string, slot: 'in1' | 'in2'): DOMRect | null =>
       container.querySelector<HTMLElement>(`[data-${slot}="${gameId}"]`)?.getBoundingClientRect() ?? null
 
-    const lines = computeConnectorLines(
-      allDisplayGames, gameNumbers,
-      getOutRect, getInRect,
-      cRect, 0, 0,
-    )
+    const lines = computeConnectorLines(allDisplayGames, gameNumbers, getOutRect, getInRect, cRect, 0, 0)
     setSvgLines(lines)
     setSvgDims({ w: container.scrollWidth, h: container.scrollHeight })
   }, [allDisplayGames, gameNumbers])
 
   useLayoutEffect(() => {
-    let rafA = 0
-    let rafB = 0
-    rafA = requestAnimationFrame(() => {
-      rafB = requestAnimationFrame(recomputeLines)
-    })
+    let rafA = 0; let rafB = 0
+    rafA = requestAnimationFrame(() => { rafB = requestAnimationFrame(recomputeLines) })
     const container = innerBracketRef.current
     if (!container) return () => { cancelAnimationFrame(rafA); cancelAnimationFrame(rafB) }
     const ro = new ResizeObserver(() => {
-      cancelAnimationFrame(rafB)
-      rafB = requestAnimationFrame(recomputeLines)
+      cancelAnimationFrame(rafB); rafB = requestAnimationFrame(recomputeLines)
     })
     ro.observe(container)
-    return () => {
-      cancelAnimationFrame(rafA)
-      cancelAnimationFrame(rafB)
-      ro.disconnect()
-    }
+    return () => { cancelAnimationFrame(rafA); cancelAnimationFrame(rafB); ro.disconnect() }
   }, [recomputeLines])
 
   const handlePanStart = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
@@ -190,6 +163,8 @@ export default function BracketGrid({
     isPanning.current = false
     if (outerScrollRef.current) outerScrollRef.current.style.cursor = ''
   }, [])
+
+  const isRegionalView = selectedRegion && selectedRegion !== 'Final Four'
 
   return (
     <div
@@ -223,21 +198,38 @@ export default function BracketGrid({
         ))}
 
         <div className="flex flex-col h-full w-52 flex-shrink-0 relative z-10">
-          <div
-            className={`flex-shrink-0 flex items-center justify-center border-b ${theme.borderBase}`}
-            style={{ height: HEADER_H }}
-          >
+          <div className={`flex-shrink-0 flex items-center justify-center border-b ${theme.borderBase}`} style={{ height: HEADER_H }}>
             <span className={`text-[10px] font-black uppercase tracking-widest ${theme.accent}`}>
-              Champion
+              {isRegionalView ? 'Advances To' : 'Champion'}
             </span>
           </div>
+          
           <div className="flex-1 flex items-center justify-center px-1">
-            <ChampionCallout
-              champion={champion}
-              actualChampion={actualChampion}
-              readOnly={readOnly}
-              ownerName={ownerName}
-            />
+            {isRegionalView ? (
+              <button 
+                onClick={() => onRegionSelect && onRegionSelect('Final Four')}
+                className={`${theme.panelBg} border-2 border-emerald-500/50 rounded-2xl overflow-hidden w-full flex-shrink-0 shadow-lg flex flex-col items-center justify-center p-4 min-h-[8rem] hover:border-emerald-500 hover:bg-emerald-500/5 transition-all group active:scale-95`}
+              >
+                <div className="bg-emerald-500/20 text-emerald-500 p-3 rounded-full mb-3 group-hover:scale-110 group-hover:bg-emerald-500/30 transition-all">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
+                  </svg>
+                </div>
+                <p className={`font-display text-xl font-black uppercase tracking-widest ${theme.textBase}`}>
+                  Final Four
+                </p>
+                <div className="mt-2 text-[10px] font-bold text-emerald-500 uppercase tracking-widest px-3 py-1 rounded-full border border-emerald-500/30 bg-emerald-500/10">
+                  Click to Advance
+                </div>
+              </button>
+            ) : (
+              <ChampionCallout
+                champion={champion}
+                actualChampion={actualChampion}
+                readOnly={readOnly}
+                ownerName={ownerName}
+              />
+            )}
           </div>
         </div>
       </div>

@@ -40,7 +40,7 @@ export default function AppShell() {
   useHashRouter()
 
   const handleCreateTournament = useCallback(async (
-    name: string, template: TemplateKey, teamCount?: number, gameType?: 'bracket' | 'survivor', groupId?: string | null
+    name: string, template: TemplateKey, teamCount?: number, gameType?: 'bracket' | 'survivor', groupId?: string | null, teamsData?: any[]
   ) => {
     pushToast('Creating tournament…', 'info')
     try {
@@ -49,7 +49,8 @@ export default function AppShell() {
         template, 
         teamCount,
         game_type: gameType,
-        group_id: groupId
+        group_id: groupId,
+        teamsData
       })
       useUIStore.getState().selectTournament(tournament.id)
       useUIStore.getState().setActiveView('admin')

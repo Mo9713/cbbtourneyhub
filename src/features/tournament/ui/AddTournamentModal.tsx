@@ -1,7 +1,7 @@
 // src/features/tournament/ui/AddTournamentModal.tsx
 
 import { useState }               from 'react'
-import { X, ShieldAlert, Trophy } from 'lucide-react'
+import { X, ShieldAlert, Trophy, UploadCloud, CheckCircle2 } from 'lucide-react'
 import { useTheme }               from '../../../shared/lib/theme'
 // C-03 cascade: useUserGroupsQuery is a hook — it must be imported from
 // the model public API (entities/group), not from the api/ sublayer.
@@ -19,6 +19,7 @@ interface Props {
     teamCount?: number,
     gameType?:  'bracket' | 'survivor',
     groupId?:   string | null,
+    teamsData?: any[]
   ) => void
 }
 
@@ -38,17 +39,49 @@ export function AddTournamentModal({ onClose, onCreate }: Props) {
   // Seed from Zustand context; falls back to 'none' (Global) when no group is active.
   const [groupId,   setGroupId]   = useState<string>(activeGroupId ?? 'none')
 
+  const [jsonFile, setJsonFile] = useState<File | null>(null)
+  const [parsedTeams, setParsedTeams] = useState<any[] | null>(null)
+  const [jsonError, setJsonError] = useState<string | null>(null)
+
   const templates: { key: TemplateKey; label: string; desc: string; icon: string }[] = [
     { key: 'blank',    label: 'Blank Slate',      desc: '0 games — build manually',           icon: '📋' },
     { key: 'standard', label: 'Standard Bracket', desc: '8–32 teams, auto-linked with byes',  icon: '🏆' },
     { key: 'bigdance', label: 'The Big Dance',    desc: '64 teams · 63 games · 4 regions',    icon: '🏀' },
   ]
 
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    setJsonError(null)
+    if (!file) return
+
+    if (file.type !== 'application/json' && !file.name.endsWith('.json')) {
+      setJsonError('Please upload a valid .json file.')
+      return
+    }
+
+    const reader = new FileReader()
+    reader.onload = (event) => {
+      try {
+        const result = JSON.parse(event.target?.result as string)
+        if (!result.teams || !Array.isArray(result.teams)) {
+          setJsonError('JSON must contain a "teams" array.')
+          return
+        }
+        setParsedTeams(result.teams)
+        setJsonFile(file)
+        if (result.tournament && !name) setName(result.tournament)
+      } catch (err) {
+        setJsonError('Failed to parse JSON file.')
+      }
+    }
+    reader.readAsText(file)
+  }
+
   const handleCreate = () => {
     if (!name.trim()) return
     const finalTemplate = gameMode === 'survivor' ? 'bigdance' : template
     const finalGroupId  = groupId === 'none' ? null : groupId
-    onCreate(name.trim(), finalTemplate, teamCount, gameMode, finalGroupId)
+    onCreate(name.trim(), finalTemplate, teamCount, gameMode, finalGroupId, parsedTeams ?? undefined)
     onClose()
   }
 
@@ -177,6 +210,32 @@ export function AddTournamentModal({ onClose, onCreate }: Props) {
         ) : (
           <div className="mb-4 p-4 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-500 text-sm font-medium">
             Survivor pools are automatically locked to the 64-team Big Dance template.
+          </div>
+        )}
+
+        {(template === 'bigdance' || gameMode === 'survivor') && (
+          <div className="mb-4 mt-2">
+            <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase tracking-wider">
+              Auto-Fill Teams (JSON)
+            </label>
+            <div className={`relative border-2 border-dashed rounded-xl p-6 text-center transition-colors ${
+              parsedTeams ? 'border-emerald-500/50 bg-emerald-500/5' : 'border-slate-700 bg-slate-800/40 hover:border-slate-500'
+            }`}>
+              <input type="file" accept=".json" onChange={handleFileUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+              {parsedTeams ? (
+                <div className="flex flex-col items-center gap-2 text-emerald-500">
+                  <CheckCircle2 size={24} />
+                  <span className="text-sm font-bold">{parsedTeams.length} teams loaded successfully!</span>
+                  <span className="text-[10px] text-slate-400">{jsonFile?.name}</span>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center gap-2 text-slate-400">
+                  <UploadCloud size={24} />
+                  <span className="text-sm font-medium">Click or drag a .json file to auto-populate teams</span>
+                </div>
+              )}
+            </div>
+            {jsonError && <p className="text-xs text-rose-500 mt-2 font-bold">{jsonError}</p>}
           </div>
         )}
 

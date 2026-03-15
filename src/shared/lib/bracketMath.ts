@@ -4,6 +4,25 @@
 import type { Game, Pick, Tournament } from '../types'
 import { isTBDName, getScore }         from './helpers'
 
+// ── Smart String Matching (First Four Support) ─────────────────────
+export function isTeamMatch(teamName: string | null | undefined, actualWinner: string | null | undefined): boolean {
+  if (!teamName || !actualWinner) return false
+  const t = teamName.trim().toLowerCase()
+  const a = actualWinner.trim().toLowerCase()
+  if (t === a) return true
+  
+  // Break apart First Four slash strings (e.g. "7 Florida / 10 COLO")
+  if (t.includes('/')) {
+    const parts = t.split('/').map(p => p.trim())
+    // If "10 Colorado" includes "10 COLO", it's a match!
+    if (parts.some(p => p === a || p.includes(a) || a.includes(p))) return true
+  }
+  
+  // Standard substring fallback
+  if (t.includes(a) || a.includes(t)) return true
+  return false
+}
+
 // ─────────────────────────────────────────────────────────────
 // § 0. Cascade Delete Helper
 // ─────────────────────────────────────────────────────────────
@@ -58,8 +77,8 @@ export function resolveAdvancingSlot(
     if (nextGame.team2_name === winnerText) return 'in2'
 
     if (game.actual_winner) {
-      if (nextGame.team1_name === game.actual_winner) return 'in1'
-      if (nextGame.team2_name === game.actual_winner) return 'in2'
+      if (isTeamMatch(nextGame.team1_name, game.actual_winner)) return 'in1'
+      if (isTeamMatch(nextGame.team2_name, game.actual_winner)) return 'in2'
     }
   }
 
@@ -74,7 +93,13 @@ export function resolveAdvancingSlot(
 // § 3. Effective Name Derivation (DUAL-TRACK PREDICTION)
 // ─────────────────────────────────────────────────────────────
 
-export type DualSlot     = { actual: string; predicted: string }
+// FIX: Added actualSeed and predictedSeed tracking so seeds travel with teams
+export type DualSlot = { 
+  actual: string; 
+  predicted: string;
+  actualSeed?: number | null;
+  predictedSeed?: number | null;
+}
 export type EffectiveNames = Record<string, { team1: DualSlot; team2: DualSlot }>
 
 export function deriveEffectiveNames(
@@ -85,8 +110,8 @@ export function deriveEffectiveNames(
   const names: EffectiveNames = {}
   games.forEach(g => {
     names[g.id] = {
-      team1: { actual: g.team1_name, predicted: g.team1_name },
-      team2: { actual: g.team2_name, predicted: g.team2_name },
+      team1: { actual: g.team1_name, predicted: g.team1_name, actualSeed: g.team1_seed, predictedSeed: g.team1_seed },
+      team2: { actual: g.team2_name, predicted: g.team2_name, actualSeed: g.team2_seed, predictedSeed: g.team2_seed },
     }
   })
 
@@ -103,18 +128,45 @@ export function deriveEffectiveNames(
     if (!game.next_game_id) continue
 
     const eff      = names[game.id]
-    const curTeam1 = eff?.team1 ?? { actual: game.team1_name, predicted: game.team1_name }
-    const curTeam2 = eff?.team2 ?? { actual: game.team2_name, predicted: game.team2_name }
+    const curTeam1 = eff?.team1 ?? { actual: game.team1_name, predicted: game.team1_name, actualSeed: game.team1_seed, predictedSeed: game.team1_seed }
+    const curTeam2 = eff?.team2 ?? { actual: game.team2_name, predicted: game.team2_name, actualSeed: game.team2_seed, predictedSeed: game.team2_seed }
 
-    const actualWinner      = game.actual_winner
-    const predSlotsAreReal  = !isTBDName(curTeam1.predicted) && !isTBDName(curTeam2.predicted)
+    const actualWinner = game.actual_winner
+    
+    let userPickString = pickMap.get(game.id)
+    let predictedWinningSeed: number | null | undefined = null
 
-    let userPick = pickMap.get(game.id)
-    if (userPick && userPick !== curTeam1.predicted && userPick !== curTeam2.predicted) {
-      userPick = undefined
+    // Safe extraction of name and seed
+    if (userPickString === 'team1') {
+      userPickString = curTeam1.predicted
+      predictedWinningSeed = curTeam1.predictedSeed
+    } else if (userPickString === 'team2') {
+      userPickString = curTeam2.predicted
+      predictedWinningSeed = curTeam2.predictedSeed
+    } else if (userPickString) {
+      if (userPickString === curTeam1.predicted) predictedWinningSeed = curTeam1.predictedSeed
+      else if (userPickString === curTeam2.predicted) predictedWinningSeed = curTeam2.predictedSeed
     }
 
-    const predictedWinner = (predSlotsAreReal ? userPick : undefined) ?? actualWinner
+    // Automatically nullify pick if it doesn't match the current slot contents (cascading unselect)
+    if (userPickString && userPickString !== curTeam1.predicted && userPickString !== curTeam2.predicted) {
+      userPickString = undefined
+      predictedWinningSeed = null
+    }
+
+    // Prevent TBD names from advancing
+    if (userPickString && isTBDName(userPickString)) {
+      userPickString = undefined
+      predictedWinningSeed = null
+    }
+
+    const predictedWinner = userPickString ?? actualWinner
+    
+    let actualWinningSeed: number | null | undefined = null
+    if (actualWinner) {
+       if (isTeamMatch(curTeam1.actual, actualWinner)) actualWinningSeed = curTeam1.actualSeed
+       else if (isTeamMatch(curTeam2.actual, actualWinner)) actualWinningSeed = curTeam2.actualSeed
+    }
 
     if (!actualWinner && !predictedWinner) continue
 
@@ -124,11 +176,11 @@ export function deriveEffectiveNames(
     const slot = resolveAdvancingSlot(game, games, gameNums)
 
     if (slot === 'in1') {
-      if (actualWinner)    nextGame.team1.actual    = actualWinner
-      if (predictedWinner) nextGame.team1.predicted = predictedWinner
+      if (actualWinner)    { nextGame.team1.actual = actualWinner; nextGame.team1.actualSeed = actualWinningSeed }
+      if (predictedWinner) { nextGame.team1.predicted = predictedWinner; nextGame.team1.predictedSeed = predictedWinningSeed }
     } else {
-      if (actualWinner)    nextGame.team2.actual    = actualWinner
-      if (predictedWinner) nextGame.team2.predicted = predictedWinner
+      if (actualWinner)    { nextGame.team2.actual = actualWinner; nextGame.team2.actualSeed = actualWinningSeed }
+      if (predictedWinner) { nextGame.team2.predicted = predictedWinner; nextGame.team2.predictedSeed = predictedWinningSeed }
     }
   }
 
@@ -149,8 +201,8 @@ export function deriveEliminatedTeams(
       const eff = effectiveNames[game.id]
       const t1  = eff?.team1.actual ?? game.team1_name
       const t2  = eff?.team2.actual ?? game.team2_name
-      if (t1 && t1 !== game.actual_winner && !isTBDName(t1)) eliminated.add(t1)
-      if (t2 && t2 !== game.actual_winner && !isTBDName(t2)) eliminated.add(t2)
+      if (t1 && !isTeamMatch(t1, game.actual_winner) && !isTBDName(t1)) eliminated.add(t1)
+      if (t2 && !isTeamMatch(t2, game.actual_winner) && !isTBDName(t2)) eliminated.add(t2)
     }
   }
   return eliminated
@@ -169,13 +221,22 @@ export function calculateLocalScore(
 
   for (const game of games) {
     const pts      = tournament.scoring_config?.[String(game.round_num)] ?? getScore(game.round_num)
-    const userPick = pickMap.get(game.id)
-    if (!userPick || isTBDName(userPick)) continue
+    
+    let userPickString = pickMap.get(game.id)
+    if (!userPickString) continue
+
+    const eff = effectiveNames[game.id]
+    if (eff) {
+      if (userPickString === 'team1') userPickString = eff.team1.predicted
+      else if (userPickString === 'team2') userPickString = eff.team2.predicted
+    }
+
+    if (isTBDName(userPickString)) continue
 
     if (game.actual_winner) {
-      if (game.actual_winner === userPick) { current += pts; max += pts }
+      if (isTeamMatch(userPickString, game.actual_winner)) { current += pts; max += pts }
     } else {
-      if (!eliminated.has(userPick)) max += pts
+      if (!eliminated.has(userPickString)) max += pts
     }
   }
 
@@ -189,7 +250,7 @@ export function calculateLocalScore(
 export function deriveChampion(
   games:           Game[],
   picks:           Pick[],
-  _effectiveNames: EffectiveNames // FIX: Prefixed with underscore to ignore unused warning
+  effectiveNames:  EffectiveNames
 ): string | null {
   if (games.length === 0) return null
 
@@ -200,13 +261,16 @@ export function deriveChampion(
 
   if (!champGame) return null
 
-  // FIX: Prioritize the user's explicit pick. Do NOT allow real-life results to overwrite the user's prediction.
   const directPick = picks.find(p => p.game_id === champGame.id)?.predicted_winner
-  if (directPick && !isTBDName(directPick)) {
-    return directPick
+  if (directPick) {
+    let pickStr = directPick
+    if (directPick === 'team1' || directPick === 'team2') {
+      const eff = effectiveNames[champGame.id]
+      pickStr = directPick === 'team1' ? eff?.team1.predicted || '' : eff?.team2.predicted || ''
+    }
+    if (!isTBDName(pickStr)) return pickStr
   }
 
-  // Fallback: If no prediction was made, show the real-world champion for read-only accuracy
   if (champGame.actual_winner) return champGame.actual_winner
 
   return null
@@ -293,15 +357,4 @@ export function computeAdminConnectorLines(
   }
 
   return lines
-}
-
-// ─────────────────────────────────────────────────────────────
-// § 7. Leaderboard Scoring Resolution
-// ─────────────────────────────────────────────────────────────
-
-export function resolveScore(
-  roundNum: number,
-  config?:  Record<string, number> | null,
-): number {
-  return config?.[String(roundNum)] ?? getScore(roundNum)
 }

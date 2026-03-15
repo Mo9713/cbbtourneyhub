@@ -47,6 +47,7 @@ export interface CreateTournamentOptions {
   teamCount?: number
   group_id?:  string | null
   game_type?: 'bracket' | 'survivor'
+  teamsData?: any[]
 }
 
 export async function createTournament(
@@ -77,7 +78,7 @@ export async function createTournament(
       const link = await linkTemplateSlots(t.id)
       if (!link.ok) return link
     } else if (opts.template === 'bigdance') {
-      const gen = await generateBigDanceTemplate(t.id)
+      const gen = await generateBigDanceTemplate(t.id, opts.teamsData)
       if (!gen.ok) return gen
       const link = await linkTemplateSlots(t.id)
       if (!link.ok) return link

@@ -51,6 +51,7 @@ export async function generateStandardTemplate(
 
 export async function generateBigDanceTemplate(
   tournamentId: string,
+  teamsData?: any[]
 ): Promise<ServiceResult<true>> {
   const regions = BD_REGIONS.slice(0, 4) // East, West, South, Midwest
 
@@ -126,19 +127,46 @@ export async function generateBigDanceTemplate(
   const r32Ids = (r32 as { id: string; sort_order: number }[]).sort((a, b) => a.sort_order - b.sort_order).map(g => g.id)
 
   // ── Round 1: Round of 64 (32 games → Round of 32) ────────────
+  // FIX: NCAA Standard Seed Matchup Matrix
+  const SEED_MATCHUPS = [
+    [1, 16], [8, 9], [5, 12], [4, 13], 
+    [6, 11], [3, 14], [7, 10], [2, 15]
+  ]
+
+  const getTeamName = (region: string, seed: number) => {
+    if (!teamsData) return 'TBD'
+    const matches = teamsData.filter(t => t.region?.toLowerCase() === region.toLowerCase() && t.seed === seed)
+    if (!matches.length) return 'TBD'
+    const main = matches.find(t => !t.team.includes('(First Four)')) || matches[0]
+    return main.team
+  }
+
   const { error: r64Err } = await supabase
     .from('games')
     .insert(
       regions.flatMap((region, ri) =>
         Array.from({ length: 8 }, (_, j) => ({
           tournament_id: tournamentId, round_num: 1,
-          team1_name: 'TBD', team2_name: 'TBD',
+          team1_name: getTeamName(region, SEED_MATCHUPS[j][0]), 
+          team2_name: getTeamName(region, SEED_MATCHUPS[j][1]),
+          team1_seed: SEED_MATCHUPS[j][0], 
+          team2_seed: SEED_MATCHUPS[j][1],
           next_game_id: r32Ids[ri * 4 + Math.floor(j / 2)],
           region, sort_order: ri * 8 + j,
         }))
       )
     )
   if (r64Err) return { ok: false, error: r64Err.message }
+
+  // FIX: Automatically update the Tournament record with official Big Dance round names
+  const { error: updateErr } = await supabase
+    .from('tournaments')
+    .update({
+      round_names: ['Round of 64', 'Round of 32', 'Sweet Sixteen', 'Elite Eight', 'Final Four', 'National Championship']
+    })
+    .eq('id', tournamentId)
+
+  if (updateErr) return { ok: false, error: updateErr.message }
 
   return { ok: true, data: true }
 }

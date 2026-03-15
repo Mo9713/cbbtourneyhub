@@ -145,7 +145,9 @@ export default function BracketView({
     onPick:             handlePick,
     onSurvivorPick:     isSurvivor ? handleSurvivorPick : undefined,
     allTournamentPicks,
-  }), [isLocked, readOnly, ownerName, handlePick, isSurvivor, handleSurvivorPick, allTournamentPicks])
+    showGameNumbers:    tournament?.show_game_numbers ?? false,
+    theme               // NEW: Pass the active theme to the context provider!
+  }), [isLocked, readOnly, ownerName, handlePick, isSurvivor, handleSurvivorPick, allTournamentPicks, tournament, theme])
 
   if (!tournament || !profile) return null
 
@@ -225,12 +227,15 @@ export default function BracketView({
               actualChampion={actualChampion}
               readOnly={readOnly}
               ownerName={ownerName}
+              selectedRegion={selectedRegion}
+              onRegionSelect={setSelectedRegion}
             />
 
             {!readOnly && tournament.requires_tiebreaker && champGame && champPick && (
               <TiebreakerPanel
                 champGame={champGame}
                 champPick={champPick}
+                championName={champion}
                 isLocked={isLocked}
                 onSave={handleTiebreaker}
               />

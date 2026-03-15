@@ -1,6 +1,7 @@
 // src/widgets/tournament-bracket/ui/BracketView/GameCard.tsx
 
 import { useBracketView } from './BracketViewContext'
+import { isTeamMatch }    from '../../../../shared/lib/bracketMath'
 import type { Game, Pick } from '../../../../shared/types'
 
 const isTBDName = (n: string) =>
@@ -12,8 +13,8 @@ interface GameCardProps {
   pointValue:      number
   eliminatedTeams: Set<string>
   userPick:        Pick | undefined
-  effectiveTeam1:  { actual: string; predicted: string }
-  effectiveTeam2:  { actual: string; predicted: string }
+  effectiveTeam1:  { actual: string; predicted: string; predictedSeed?: number | null }
+  effectiveTeam2:  { actual: string; predicted: string; predictedSeed?: number | null }
 }
 
 export default function GameCard({
@@ -25,7 +26,7 @@ export default function GameCard({
   effectiveTeam1,
   effectiveTeam2,
 }: GameCardProps) {
-  const { isLocked, readOnly, onPick } = useBracketView()
+  const { isLocked, readOnly, onPick, showGameNumbers, theme } = useBracketView()
 
   const hasWinner = !!game.actual_winner
 
@@ -34,18 +35,22 @@ export default function GameCard({
     ? { boxShadow: '0 0 14px 2px rgba(16, 185, 129, 0.25)' }
     : undefined
 
+  const showGameNumber = showGameNumbers 
+
   const rows = [
     {
+      slotKey:   'team1' as const,
       actual:    effectiveTeam1.actual,
       predicted: effectiveTeam1.predicted,
-      seed:      game.team1_seed,
+      seed:      effectiveTeam1.predictedSeed ?? game.team1_seed,
       score:     game.team1_score,
       inKey:     'data-in1' as const,
     },
     {
+      slotKey:   'team2' as const,
       actual:    effectiveTeam2.actual,
       predicted: effectiveTeam2.predicted,
-      seed:      game.team2_seed,
+      seed:      effectiveTeam2.predictedSeed ?? game.team2_seed,
       score:     game.team2_score,
       inKey:     'data-in2' as const,
     },
@@ -53,13 +58,15 @@ export default function GameCard({
 
   return (
     <div className="relative w-full" style={{ overflow: 'visible' }}>
-      <div className="absolute -top-4 left-0 flex items-center gap-1">
-        <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 tracking-widest leading-none">
-          #{String(gameNum).padStart(2, '0')}
-        </span>
-        <span className="text-[9px] text-slate-300 dark:text-slate-700 leading-none">·</span>
-        <span className="text-[9px] text-slate-500 dark:text-slate-600 leading-none">{pointValue}pt</span>
-      </div>
+      {showGameNumber && (
+        <div className="absolute -top-4 left-0 flex items-center gap-1">
+          <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 tracking-widest leading-none">
+            #{String(gameNum).padStart(2, '0')}
+          </span>
+          <span className="text-[9px] text-slate-300 dark:text-slate-700 leading-none">·</span>
+          <span className="text-[9px] text-slate-500 dark:text-slate-600 leading-none">{pointValue}pt</span>
+        </div>
+      )}
 
       <div
         className={`relative flex flex-col w-full bg-white dark:bg-[#11141d] border rounded-none transition-colors duration-150 ${cardBorderCls}`}
@@ -69,25 +76,28 @@ export default function GameCard({
           <div data-out={game.id} className="w-0 h-0" aria-hidden />
         </div>
 
-        {rows.map(({ actual, predicted, seed, score, inKey }, idx) => {
+        {rows.map(({ slotKey, actual, predicted, seed, score, inKey }, idx) => {
           const isTBD = isTBDName(predicted)
 
-          // FIX: Strictly bind isWinner to the PREDICTED team slot. 
-          // A dead prediction will no longer steal a green background just because the real team won.
-          const isWinner = hasWinner && !isTBD && game.actual_winner === predicted
+          const slotName = game[`${slotKey}_name` as keyof Game] as string | undefined
+          const isWinner = hasWinner && !isTBD && isTeamMatch(slotName, game.actual_winner)
           
-          const isPicked     = !isTBD && userPick?.predicted_winner === predicted
+          const isPicked     = !isTBD && userPick?.predicted_winner === slotKey
           const isEliminated = !isTBD && !isWinner && eliminatedTeams.has(predicted)
 
           const isIncorrectAdvancement = isEliminated && actual !== predicted
           const shouldStrikeThrough = isEliminated && (isPicked || isIncorrectAdvancement)
           const shouldFade = isEliminated && !shouldStrikeThrough
 
+          // FIX: Now ACTUALLY using the dynamic theme variable for the color fill!
           const rowBg = isWinner
             ? 'bg-emerald-50 dark:bg-[#022c22]'
             : shouldFade
               ? 'bg-slate-100/50 dark:bg-black/30'
-              : ''
+              : isPicked
+                ? `${theme.bgMd}` 
+                : ''
+                
           const rowRingCls = isWinner ? 'ring-2 ring-inset ring-emerald-500 z-10' : ''
 
           let nameClass: string
@@ -128,7 +138,7 @@ export default function GameCard({
                 ${canPick ? 'cursor-pointer hover:bg-emerald-50 dark:hover:bg-[#022c22]' : 'cursor-default'}
                 transition-all duration-75
               `}
-              onClick={() => canPick && onPick(game, predicted)}
+              onClick={() => canPick && onPick(game, slotKey)}
             >
               <div className="absolute inset-y-0 left-0 flex flex-col justify-center pointer-events-none z-10">
                 <div {...{ [inKey]: game.id }} className="w-0 h-0" aria-hidden />
@@ -167,7 +177,7 @@ export default function GameCard({
                   <span className="text-[10px] font-black text-rose-600 dark:text-rose-500 leading-none">✕</span>
                 )}
                 {showDot && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500 flex-shrink-0" />
                 )}
               </div>
             </div>

@@ -82,6 +82,7 @@ export interface Tournament {
   game_type?:                'bracket' | 'survivor'
   round_locks?:              Record<number, string>
   survivor_elimination_rule?: 'end_early' | 'revive_all'
+  show_game_numbers?:        boolean // NEW
 }
 
 export interface Game {

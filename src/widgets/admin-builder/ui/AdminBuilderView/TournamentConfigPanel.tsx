@@ -209,6 +209,25 @@ export default function TournamentConfigPanel({ tournament, games, onUpdate }: P
                   {tournament.requires_tiebreaker ? <ToggleRight size={16} /> : <ToggleLeft size={16} />}
                   {tournament.requires_tiebreaker ? 'Enabled' : 'Disabled'}
                 </button>
+
+                {/* NEW: Game Number Toggle */}
+                <h4 className={`text-[10px] font-bold ${theme.textMuted} uppercase tracking-widest mb-2 mt-4`}>
+                  Show Game Numbers
+                </h4>
+                <p className={`text-[10px] ${theme.textMuted} mb-3`}>
+                  Display game numbers (e.g. #01) above bracket slots.
+                </p>
+                <button
+                  onClick={() => onUpdate({ show_game_numbers: !tournament.show_game_numbers })}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-xl border transition-all text-sm font-bold
+                    ${tournament.show_game_numbers
+                      ? `${theme.bg} ${theme.border} ${theme.accent}`
+                      : `${theme.inputBg} ${theme.borderBase} ${theme.textMuted} hover:brightness-95 dark:hover:brightness-110`
+                    }`}
+                >
+                  {tournament.show_game_numbers ? <ToggleRight size={16} /> : <ToggleLeft size={16} />}
+                  {tournament.show_game_numbers ? 'Visible' : 'Hidden'}
+                </button>
               </div>
             </>
           )}

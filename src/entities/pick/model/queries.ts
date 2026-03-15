@@ -11,13 +11,6 @@
 // setQueryData are EXACT-MATCH only and will silently miss the compound
 // key if only the base is supplied. MakePickContext carries exactKey
 // so both onMutate and onError target the live cache entry.
-//
-// C-04 FIX: safeInvalidate is now imported from shared/lib/queryUtils.
-// The isolated module-level timer Map that previously lived here has been
-// removed. All three callers now share one Map, eliminating the
-// cross-file race condition where a Realtime echo and mutation onSettled
-// could both fire within the 150ms window for the same key into different,
-// non-deduplicating Maps.
 
 import {
   useQuery, useMutation, useQueryClient,
@@ -46,9 +39,6 @@ interface MakePickVars {
   existingPick: Pick | undefined
 }
 
-// exactKey is the compound key used by the active useMyPicks observer.
-// It is stored in context so onError can restore the snapshot to the
-// same key that onMutate wrote to.
 type MakePickContext = {
   prev:     Pick[] | undefined
   exactKey: readonly unknown[]
@@ -59,8 +49,6 @@ type SaveTiebreakerVars = {
   predictedWinner: string
   score:           number
   tournamentId:    string
-  // gameIds is required to construct the exact compound key for
-  // getQueryData / setQueryData in the optimistic block.
   gameIds:         string[]
 }
 
@@ -74,8 +62,6 @@ type SaveTiebreakerContext = {
 export function useMyPicks(tournamentId: string | null, games: Game[]) {
   const gameIds = games.map((g: Game) => g.id)
   return useQuery<Pick[], Error, Pick[]>({
-    // Compound key: mutations must target this full structure for
-    // getQueryData / setQueryData to reach the live cache entry.
     queryKey: [...pickKeys.mine(tournamentId ?? ''), gameIds] as const,
     queryFn:  () => unwrap(api.fetchMyPicksForTournament(gameIds)),
     enabled:  !!tournamentId && games.length > 0,
@@ -97,37 +83,46 @@ export function useMakePick() {
   const qc = useQueryClient()
 
   return useMutation<Pick | null, Error, MakePickVars, MakePickContext>({
+    mutationKey: ['makePick'], // Tracks inflight click spamming
     mutationFn: async ({ game, team, games, existingPick }) => {
       const downstreamIds = collectDownstreamGameIds(game, games)
 
-      if (existingPick?.predicted_winner === team) {
-        await unwrap(api.deletePick(existingPick.id))
-        await unwrap(api.deletePicksForGames(downstreamIds))
-        return null
+      if (existingPick) {
+        if (existingPick.predicted_winner === team) {
+          await unwrap(api.deletePick(existingPick.id))
+          if (downstreamIds.length > 0) {
+            await unwrap(api.deletePicksForGames(downstreamIds))
+          }
+          return null
+        } else {
+          if (downstreamIds.length > 0) {
+            await unwrap(api.deletePicksForGames(downstreamIds))
+          }
+          return unwrap(api.savePick(game.id, team))
+        }
       }
-
-      await unwrap(api.deletePicksForGames(downstreamIds))
+      
       return unwrap(api.savePick(game.id, team))
     },
 
     onMutate: async ({ game, team, tournamentId, games, existingPick }): Promise<MakePickContext> => {
-      // Derive the full compound key that matches the active useMyPicks observer.
-      // getQueryData and setQueryData require exact key matches — the base key
-      // pickKeys.mine(tournamentId) alone would miss the live cache entry.
       const gameIds  = games.map((g: Game) => g.id)
       const exactKey = [...pickKeys.mine(tournamentId), gameIds] as const
 
-      // cancelQueries uses prefix matching — the base key correctly reaches the observer.
       await qc.cancelQueries({ queryKey: pickKeys.mine(tournamentId) })
 
       const prev           = qc.getQueryData<Pick[]>(exactKey)
       const downstreamIds  = new Set(collectDownstreamGameIds(game, games))
       const isToggle       = existingPick?.predicted_winner === team
+      const isChange       = !!existingPick && !isToggle
 
       qc.setQueryData<Pick[]>(exactKey, (old = []) => {
-        const filtered = old.filter(
-          (p: Pick) => p.game_id !== game.id && !downstreamIds.has(p.game_id),
-        )
+        const filtered = old.filter((p: Pick) => {
+          if (p.game_id === game.id) return false
+          if ((isToggle || isChange) && downstreamIds.has(p.game_id)) return false
+          return true
+        })
+
         if (isToggle) return filtered
 
         const optimistic: Pick = {
@@ -150,8 +145,15 @@ export function useMakePick() {
     },
 
     onSettled: (_data, _err, vars) => {
-      safeInvalidate(qc, pickKeys.mine(vars.tournamentId))
-      safeInvalidate(qc, pickKeys.allMine())
+      // FIX: Only trigger a network cache flush if the user has STOPPED clicking.
+      // This stops the UI from wiping out uncommitted optimistic updates mid-click!
+      setTimeout(() => {
+        if (qc.isMutating({ mutationKey: ['makePick'] }) === 0) {
+          qc.invalidateQueries({ queryKey: pickKeys.mine(vars.tournamentId) })
+          qc.invalidateQueries({ queryKey: pickKeys.allMine() })
+          qc.invalidateQueries({ queryKey: ['leaderboard', 'raw'] }) // Instant Standings updates!
+        }
+      }, 50)
     },
   })
 }
@@ -160,6 +162,7 @@ export function useSaveTiebreaker() {
   const qc = useQueryClient()
 
   return useMutation<Pick, Error, SaveTiebreakerVars, SaveTiebreakerContext>({
+    mutationKey: ['saveTiebreaker'],
     mutationFn: ({ gameId, predictedWinner, score }) =>
       unwrap(api.saveTiebreakerScore(gameId, predictedWinner, score)),
 

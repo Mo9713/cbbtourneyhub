@@ -17,6 +17,10 @@ function advancingSlotToDbColumn(
     : 'team2_name'
 }
 
+// Inline helper to prevent Auto-Mirroring generic unpopulated slots
+const isGeneric = (name: string | null | undefined) => 
+  !name || name === 'TBD' || name === 'BYE' || name.startsWith('Winner of Game')
+
 export async function addGameToRound(
   tournamentId: string,
   round:        number,
@@ -50,6 +54,9 @@ export async function updateGame(
   >>,
 ): Promise<ServiceResult<Game>> {
   return withAdminAuth(async () => {
+    // Fetch pre-update state for Auto-Mirror matching
+    const { data: existingGame } = await supabase.from('games').select('*').eq('id', id).single()
+
     const { data, error } = await supabase
       .from('games')
       .update(updates)
@@ -58,6 +65,29 @@ export async function updateGame(
       .single()
 
     if (error || !data) return { ok: false, error: error?.message ?? 'Update failed' }
+
+    // AUTO-MIRROR LOGIC for scores and team updates
+    if (existingGame) {
+      const matchTeam1 = existingGame.team1_name
+      const matchTeam2 = existingGame.team2_name
+      
+      // Only mirror if the game features two real teams (prevents updating all 'TBD' games)
+      if (!isGeneric(matchTeam1) && !isGeneric(matchTeam2)) {
+         const safeUpdates = { ...updates }
+         delete safeUpdates.next_game_id // Never mirror structural links
+         delete safeUpdates.sort_order   // Never mirror structural positions
+         
+         if (Object.keys(safeUpdates).length > 0) {
+           await supabase.from('games')
+             .update(safeUpdates)
+             .eq('team1_name', matchTeam1)
+             .eq('team2_name', matchTeam2)
+             .eq('round_num', existingGame.round_num)
+             .neq('id', id) // Don't update the one we just updated
+         }
+      }
+    }
+
     return { ok: true, data: data as Game }
   })
 }
@@ -70,11 +100,15 @@ export async function setWinner(
 ): Promise<ServiceResult<true>> {
   return withAdminAuth(async () => {
     
-    // 1. If we are CLEARING the winner, reset the next game's slot and seed
-    if (!winner && game.actual_winner && game.next_game_id) {
-      const slot     = advancingSlotToDbColumn(game, allGames, gameNumbers)
-      const seedSlot = slot === 'team1_name' ? 'team1_seed' : 'team2_seed'
+    const slot     = game.next_game_id ? advancingSlotToDbColumn(game, allGames, gameNumbers) : null
+    const seedSlot = slot === 'team1_name' ? 'team1_seed' : 'team2_seed'
+    
+    let winnerSeed: number | null = null
+    if (winner === game.team1_name) winnerSeed = game.team1_seed ?? null
+    else if (winner === game.team2_name) winnerSeed = game.team2_seed ?? null
 
+    // 1. If we are CLEARING the winner, reset the next game's slot and seed
+    if (!winner && game.actual_winner && game.next_game_id && slot && seedSlot) {
       const { error } = await supabase
         .from('games')
         .update({ 
@@ -93,14 +127,7 @@ export async function setWinner(
     if (winErr) return { ok: false, error: winErr.message }
 
     // 3. If a winner was chosen, push their name AND SEED to the NEXT game
-    if (winner && game.next_game_id) {
-      const slot     = advancingSlotToDbColumn(game, allGames, gameNumbers)
-      const seedSlot = slot === 'team1_name' ? 'team1_seed' : 'team2_seed'
-      
-      let winnerSeed: number | null = null
-      if (winner === game.team1_name) winnerSeed = game.team1_seed ?? null
-      else if (winner === game.team2_name) winnerSeed = game.team2_seed ?? null
-
+    if (winner && game.next_game_id && slot && seedSlot) {
       const { error } = await supabase
         .from('games')
         .update({ 
@@ -109,6 +136,40 @@ export async function setWinner(
         })
         .eq('id', game.next_game_id)
       if (error) return { ok: false, error: error.message }
+    }
+
+    // 4. AUTO-MIRROR LOGIC
+    // Finds equivalent games in other tournaments and automatically advances the winner there too
+    if (!isGeneric(game.team1_name) && !isGeneric(game.team2_name)) {
+      const { data: mirroredGames } = await supabase
+        .from('games')
+        .select('id, next_game_id')
+        .eq('team1_name', game.team1_name)
+        .eq('team2_name', game.team2_name)
+        .eq('round_num', game.round_num)
+        .neq('id', game.id)
+
+      if (mirroredGames && mirroredGames.length > 0) {
+        for (const mGame of mirroredGames) {
+          // Set winner on mirrored game
+          await supabase.from('games').update({ actual_winner: winner || null }).eq('id', mGame.id)
+
+          // Advance winner to the mirrored next_game_id
+          if (mGame.next_game_id && slot && seedSlot) {
+            if (!winner) {
+              await supabase.from('games').update({ 
+                [slot]: 'TBD', 
+                [seedSlot]: null 
+              }).eq('id', mGame.next_game_id)
+            } else {
+              await supabase.from('games').update({ 
+                [slot]: winner, 
+                [seedSlot]: winnerSeed 
+              }).eq('id', mGame.next_game_id)
+            }
+          }
+        }
+      }
     }
 
     return { ok: true, data: true }
