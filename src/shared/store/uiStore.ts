@@ -6,6 +6,12 @@
 // increasing counter (_toastId) replaces Date.now() to prevent ID
 // collisions on rapid back-to-back toast calls within the same
 // event-loop tick.
+//
+// INVITE LINK: pendingInviteCode / setPendingInviteCode added.
+// useHashRouter sets this when it detects a #/join/CODE URL on mount.
+// AppShell reads it, opens JoinGroupModal with the code pre-filled,
+// and clears it after the modal opens so it doesn't re-trigger on
+// subsequent renders.
 
 import { create } from 'zustand'
 import type { ActiveView, ToastMsg, ConfirmModalCfg } from '../types'
@@ -40,6 +46,12 @@ export interface UIStore {
   closeCreateGroup:  () => void
   openJoinGroup:     () => void
   closeJoinGroup:    () => void
+
+  // Invite-link auto-join: set by useHashRouter when #/join/CODE is
+  // detected. AppShell opens JoinGroupModal with this pre-filled and
+  // clears it immediately so it only fires once.
+  pendingInviteCode:    string | null
+  setPendingInviteCode: (code: string | null) => void
 
   // Snoop
   snoopTargetId: string | null
@@ -79,6 +91,10 @@ export const useUIStore = create<UIStore>((set) => ({
   closeCreateGroup:  () => set({ isCreateGroupOpen: false }),
   openJoinGroup:     () => set({ isJoinGroupOpen: true }),
   closeJoinGroup:    () => set({ isJoinGroupOpen: false }),
+
+  // Invite-link pending code — cleared by AppShell after consumption.
+  pendingInviteCode:    null,
+  setPendingInviteCode: (code) => set({ pendingInviteCode: code }),
 
   snoopTargetId: null,
   openSnoop:     (id) => set({ snoopTargetId: id }),

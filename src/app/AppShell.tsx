@@ -1,6 +1,12 @@
 // src/app/AppShell.tsx
+//
+// INVITE LINK: reads pendingInviteCode from UIStore (set by useHashRouter
+// when a #/join/CODE URL is detected on mount). When present, the Join
+// Group modal is opened automatically with the code pre-filled. The pending
+// code is cleared immediately after consumption so it doesn't re-trigger.
+// All original prop signatures preserved (Sidebar, MobileHeader, AddTournamentModal).
 
-import { useCallback }                  from 'react'
+import { useCallback, useEffect }       from 'react'
 import { PanelLeftOpen }                from 'lucide-react'
 
 import { SnoopModal }                   from '../widgets/snoop-modal'
@@ -28,10 +34,12 @@ export default function AppShell() {
     mobileMenuOpen,    setMobileMenuOpen,
     showAddTournament, closeAddTournament,
     isCreateGroupOpen, closeCreateGroup,
-    isJoinGroupOpen,   closeJoinGroup,
+    isJoinGroupOpen,   closeJoinGroup,   openJoinGroup,
     snoopTargetId,     closeSnoop,
     confirmModal,
     toasts,            pushToast,
+    // Invite-link auto-join
+    pendingInviteCode, setPendingInviteCode,
   } = useUIStore()
 
   const createTournamentM = useCreateTournamentMutation()
@@ -39,18 +47,36 @@ export default function AppShell() {
   useRealtimeSync()
   useHashRouter()
 
+  // ── Invite-link auto-join ──────────────────────────────────
+  // When useHashRouter detects #/join/CODE on mount it stores the code
+  // in pendingInviteCode. Consume it here: open the modal once and
+  // immediately clear the pending value so it never re-fires.
+  useEffect(() => {
+    if (pendingInviteCode) {
+      openJoinGroup()
+      // Clear immediately — JoinGroupModal received initialCode as a prop
+      // snapshot and will auto-submit from there.
+      setPendingInviteCode(null)
+    }
+  }, [pendingInviteCode, openJoinGroup, setPendingInviteCode])
+
   const handleCreateTournament = useCallback(async (
-    name: string, template: TemplateKey, teamCount?: number, gameType?: 'bracket' | 'survivor', groupId?: string | null, teamsData?: any[]
+    name:       string,
+    template:   TemplateKey,
+    teamCount?: number,
+    gameType?:  'bracket' | 'survivor',
+    groupId?:   string | null,
+    teamsData?: any[],
   ) => {
     pushToast('Creating tournament…', 'info')
     try {
-      const tournament = await createTournamentM.mutateAsync({ 
-        name, 
-        template, 
+      const tournament = await createTournamentM.mutateAsync({
+        name,
+        template,
         teamCount,
         game_type: gameType,
-        group_id: groupId,
-        teamsData
+        group_id:  groupId,
+        teamsData,
       })
       useUIStore.getState().selectTournament(tournament.id)
       useUIStore.getState().setActiveView('admin')
@@ -118,25 +144,33 @@ export default function AppShell() {
         </main>
       </div>
 
-      {/* Global overlays */}
+      {/* ── Global overlays ── */}
       {snoopTargetId && (
-        <SnoopModal
-          targetId={snoopTargetId}
-          onClose={closeSnoop}
-        />
+        <SnoopModal targetId={snoopTargetId} onClose={closeSnoop} />
       )}
+
       {showAddTournament && (
         <AddTournamentModal
           onClose={closeAddTournament}
           onCreate={handleCreateTournament}
         />
       )}
+
       {isCreateGroupOpen && (
         <CreateGroupModal onClose={closeCreateGroup} />
       )}
+
+      {/* Pass pendingInviteCode snapshot as initialCode before it is cleared.
+          The value is captured via closure at the moment the modal mounts.
+          After the useEffect above clears pendingInviteCode in the store, the
+          already-mounted modal retains its initialCode prop value unchanged.  */}
       {isJoinGroupOpen && (
-        <JoinGroupModal onClose={closeJoinGroup} />
+        <JoinGroupModal
+          onClose={closeJoinGroup}
+          initialCode={pendingInviteCode ?? undefined}
+        />
       )}
+
       {confirmModal && <ConfirmModal {...confirmModal} />}
       <Toaster toasts={toasts} />
     </div>

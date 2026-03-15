@@ -1,14 +1,11 @@
 // src/widgets/group-dashboard/ui/GroupDashboard.tsx
 //
-// M-NEW-2 integration: the standard mini-leaderboard now shows a tiebreaker
-// chip on each row when any of the group's standard bracket tournaments has
-// requires_tiebreaker enabled. The derived flag `anyStandardTbEnabled` drives
-// the column so it never appears for groups with no tiebreaker tournaments.
-// The survivor mini-leaderboard is unchanged — tiebreaker is not relevant to
-// survivor mode. All original layout, styling, and card structure preserved.
+// INVITE LINK: invite URL row added to group header with one-click copy.
+// MEMBER COUNT: displayed in the header below the group name.
+// M-NEW-2: tiebreaker chip in standard mini-leaderboard rows when relevant.
 
-import { useMemo }              from 'react'
-import { Trash2, LogOut, Skull, Eye, Target } from 'lucide-react'
+import { useMemo, useState }    from 'react'
+import { Trash2, LogOut, Skull, Eye, Target, Copy, Check, Link, Users } from 'lucide-react'
 import { useGroupDetailsQuery, useGroupMembersQuery, useDeleteGroupMutation, useLeaveGroupMutation } from '../../../entities/group'
 import { useTournamentListQuery } from '../../../entities/tournament/model/queries'
 import { useLeaderboardRaw }    from '../../../entities/leaderboard/model/queries'
@@ -28,15 +25,15 @@ interface GroupDashboardProps {
 export function GroupDashboard({ groupId }: GroupDashboardProps) {
   const theme = useTheme()
   const { profile } = useAuth()
-  
+
   const { data: group, isLoading, error } = useGroupDetailsQuery(groupId)
   const { data: members = [] }            = useGroupMembersQuery(groupId)
   const { data: allTournaments = [] }     = useTournamentListQuery()
   const { data: rawData }                 = useLeaderboardRaw()
-  
+
   const deleteGroupM = useDeleteGroupMutation()
   const leaveGroupM  = useLeaveGroupMutation()
-  
+
   const openAddTournament = useUIStore(s => s.openAddTournament)
   const setConfirmModal   = useUIStore(s => s.setConfirmModal)
   const setActiveView     = useUIStore(s => s.setActiveView)
@@ -46,16 +43,38 @@ export function GroupDashboard({ groupId }: GroupDashboardProps) {
 
   const isOwner          = profile?.id === group?.owner_id
   const isAdmin          = profile?.is_admin ?? false
-  const groupTournaments = allTournaments.filter((t: Tournament) => 
+  const groupTournaments = allTournaments.filter((t: Tournament) =>
     t.group_id === groupId && (isAdmin || t.status !== 'draft')
   )
 
   const standardTourneys = groupTournaments.filter(t => t.game_type !== 'survivor')
   const survivorTourneys = groupTournaments.filter(t => t.game_type === 'survivor')
 
-  // Show the tiebreaker chip column in the standard mini-leaderboard if any
-  // standard tournament in this group has the tiebreaker feature enabled.
   const anyStandardTbEnabled = standardTourneys.some(t => t.requires_tiebreaker === true)
+
+  // ── Copy-link button state ────────────────────────────────
+  const [copied, setCopied] = useState(false)
+
+  const inviteUrl = group
+    ? `${window.location.origin}${window.location.pathname}#/join/${group.invite_code}`
+    : ''
+
+  const handleCopyLink = async () => {
+    if (!inviteUrl) return
+    try {
+      await navigator.clipboard.writeText(inviteUrl)
+    } catch {
+      // Clipboard API requires HTTPS; fallback for plain HTTP environments.
+      const el = document.createElement('textarea')
+      el.value = inviteUrl
+      document.body.appendChild(el)
+      el.select()
+      document.execCommand('copy')
+      document.body.removeChild(el)
+    }
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
 
   const handleDelete = () => {
     if (!group) return
@@ -99,34 +118,30 @@ export function GroupDashboard({ groupId }: GroupDashboardProps) {
 
   const standardBoard = useMemo(() => {
     if (!rawData || !standardTourneys.length) return []
-    const tMap = new Map(standardTourneys.map(t => [t.id, t]))
-    const games = rawData.allGames.filter(g => tMap.has(g.tournament_id))
+    const tMap    = new Map(standardTourneys.map(t => [t.id, t]))
+    const games   = rawData.allGames.filter(g => tMap.has(g.tournament_id))
     const gameIds = new Set(games.map(g => g.id))
-    const picks = rawData.allPicks.filter(p => gameIds.has(p.game_id))
-
+    const picks   = rawData.allPicks.filter(p => gameIds.has(p.game_id))
     const memberUserIds = new Set(members.map(m => m.user_id))
     const groupProfiles = rawData.allProfiles.filter(p => memberUserIds.has(p.id))
-
     return computeLeaderboard(picks, games, rawData.allGames, groupProfiles, tMap)
   }, [rawData, standardTourneys, members])
 
   const survivorBoard = useMemo(() => {
     if (!rawData || !survivorTourneys.length) return []
-    const tMap = new Map(survivorTourneys.map(t => [t.id, t]))
-    const games = rawData.allGames.filter(g => tMap.has(g.tournament_id))
+    const tMap    = new Map(survivorTourneys.map(t => [t.id, t]))
+    const games   = rawData.allGames.filter(g => tMap.has(g.tournament_id))
     const gameIds = new Set(games.map(g => g.id))
-    const picks = rawData.allPicks.filter(p => gameIds.has(p.game_id))
-
+    const picks   = rawData.allPicks.filter(p => gameIds.has(p.game_id))
     const memberUserIds = new Set(members.map(m => m.user_id))
     const groupProfiles = rawData.allProfiles.filter(p => memberUserIds.has(p.id))
-
     return computeLeaderboard(picks, games, rawData.allGames, groupProfiles, tMap)
   }, [rawData, survivorTourneys, members])
 
   if (isLoading) {
     return (
       <div className={`flex items-center justify-center w-full h-full p-8 ${theme.textMuted}`}>
-        <div className="w-12 h-12 rounded-full border-4 border-t-transparent animate-spin border-amber-500"></div>
+        <div className="w-12 h-12 rounded-full border-4 border-t-transparent animate-spin border-amber-500" />
       </div>
     )
   }
@@ -134,36 +149,34 @@ export function GroupDashboard({ groupId }: GroupDashboardProps) {
   if (error || !group) return null
 
   const renderTournamentCard = (t: Tournament, isSurvivor: boolean) => {
-    const locked = isPicksLocked(t, profile?.is_admin ?? false)
+    const locked      = isPicksLocked(t, profile?.is_admin ?? false)
     const isCompleted = t.status === 'completed'
 
-    let statusLeft = null
+    let statusLeft  = null
     let statusRight = null
 
     if (isCompleted) {
-      statusLeft = <span className="text-slate-500">Status</span>
+      statusLeft  = <span className="text-slate-500">Status</span>
       statusRight = <span className="text-violet-500 dark:text-violet-400 font-black">Finished</span>
     } else if (t.status === 'draft') {
-      statusLeft = <span className="text-slate-500">Status</span>
+      statusLeft  = <span className="text-slate-500">Status</span>
       statusRight = <span className="text-amber-500 font-black">Draft</span>
     } else if (isSurvivor) {
       const activeRound = getActiveSurvivorRound(t)
       if (activeRound === 0) {
-        statusLeft = <span className="text-slate-500">Status</span>
+        statusLeft  = <span className="text-slate-500">Status</span>
         statusRight = <span className="text-slate-500 font-black">Locked</span>
+      } else if (activeRound === 1) {
+        statusLeft  = <span className="text-slate-500">Status</span>
+        statusRight = <span className="text-emerald-600 dark:text-emerald-500 font-black shadow-[0_0_8px_rgba(16,185,129,0.8)]">Round 1 Open</span>
       } else {
-        if (activeRound === 1) {
-          statusLeft = <span className="text-slate-500">Status</span>
-          statusRight = <span className="text-emerald-600 dark:text-emerald-500 font-black shadow-[0_0_8px_rgba(16,185,129,0.8)]">Round 1 Open</span>
-        } else {
-          statusLeft = <span className="text-slate-500">Round {activeRound - 1} Locked</span>
-          statusRight = <span className="text-emerald-600 dark:text-emerald-500 font-black shadow-[0_0_8px_rgba(16,185,129,0.8)]">Round {activeRound} Open</span>
-        }
+        statusLeft  = <span className="text-slate-500">Round {activeRound - 1} Locked</span>
+        statusRight = <span className="text-emerald-600 dark:text-emerald-500 font-black shadow-[0_0_8px_rgba(16,185,129,0.8)]">Round {activeRound} Open</span>
       }
     } else {
-      statusLeft = <span className="text-slate-500">Status</span>
-      statusRight = locked 
-        ? <span className="text-slate-500 font-black">Locked</span> 
+      statusLeft  = <span className="text-slate-500">Status</span>
+      statusRight = locked
+        ? <span className="text-slate-500 font-black">Locked</span>
         : <span className="text-emerald-600 dark:text-emerald-500 font-black shadow-[0_0_8px_rgba(16,185,129,0.8)]">Open</span>
     }
 
@@ -185,14 +198,14 @@ export function GroupDashboard({ groupId }: GroupDashboardProps) {
             {isSurvivor ? 'Survivor' : 'Bracket'}
           </span>
         </div>
-        
+
         <div className="mt-2 flex items-center justify-start w-full empty:hidden">
           <Countdown tournament={t} isAdmin={profile?.is_admin ?? false} timezone={profile?.timezone ?? null} />
         </div>
 
         <div className="mt-auto w-full pt-4 flex items-center justify-center border-t border-slate-200 dark:border-slate-800/50 text-[10px] sm:text-[11px] uppercase tracking-widest font-bold">
-           <div className="flex-1 text-left pr-2 border-r border-slate-200 dark:border-slate-800/50">{statusLeft}</div>
-           <div className="flex-1 text-right pl-2">{statusRight}</div>
+          <div className="flex-1 text-left pr-2 border-r border-slate-200 dark:border-slate-800/50">{statusLeft}</div>
+          <div className="flex-1 text-right pl-2">{statusRight}</div>
         </div>
       </button>
     )
@@ -200,21 +213,58 @@ export function GroupDashboard({ groupId }: GroupDashboardProps) {
 
   return (
     <div className="flex flex-col w-full max-w-7xl mx-auto p-4 md:p-8 gap-8">
+
       {/* ── Group Header ── */}
       <header className={`relative overflow-hidden rounded-2xl border p-8 md:p-10 shadow-sm ${theme.panelBg} ${theme.borderBase} flex flex-col items-center text-center gap-5`}>
-        <div className={`absolute top-0 left-0 w-full h-2 ${theme.bgMd}`}></div>
-        <div>
+        <div className={`absolute top-0 left-0 w-full h-2 ${theme.bgMd}`} />
+
+        <div className="w-full flex flex-col items-center gap-4">
           <h1 className={`text-4xl md:text-5xl font-extrabold tracking-tight ${theme.textBase}`}>
             {group.name}
           </h1>
-          <div className={`flex items-center justify-center gap-2 mt-4 ${theme.textMuted}`}>
-            <span className="text-sm font-medium">Invite Code:</span>
-            <span className={`px-3 py-1 rounded-md text-xs font-mono font-bold tracking-widest ${theme.bgMd} ${theme.textBase}`}>
-              {group.invite_code}
-            </span>
+
+          {/* Member count + invite code row */}
+          <div className="flex items-center justify-center gap-4 flex-wrap">
+            {/* Member count */}
+            <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${theme.bgMd} ${theme.textMuted}`}>
+              <Users size={12} />
+              {members.length} {members.length === 1 ? 'member' : 'members'}
+            </div>
+
+            {/* Invite code pill */}
+            <div className={`flex items-center gap-2 ${theme.textMuted}`}>
+              <span className="text-sm font-medium">Code:</span>
+              <span className={`px-3 py-1 rounded-md text-xs font-mono font-bold tracking-widest ${theme.bgMd} ${theme.textBase}`}>
+                {group.invite_code}
+              </span>
+            </div>
           </div>
+
+          {/* Invite link row */}
+          <div className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border ${theme.borderBase} ${theme.bgMd} w-full max-w-lg`}>
+            <Link size={13} className={`flex-shrink-0 ${theme.textMuted}`} />
+            <span className={`text-xs font-mono truncate flex-1 text-left ${theme.textMuted} select-all`}>
+              {inviteUrl}
+            </span>
+            <button
+              onClick={handleCopyLink}
+              className={`flex-shrink-0 flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                copied
+                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                  : `${theme.btn}`
+              }`}
+            >
+              {copied ? <><Check size={11} /> Copied!</> : <><Copy size={11} /> Copy Link</>}
+            </button>
+          </div>
+
+          <p className={`text-xs ${theme.textMuted}`}>
+            Share this link — friends click it and land straight in the join flow.
+          </p>
         </div>
-        <div className="flex items-center justify-center gap-3 mt-2">
+
+        {/* Owner / member actions */}
+        <div className="flex items-center justify-center gap-3">
           {isOwner ? (
             <button onClick={handleDelete} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold text-rose-500 hover:bg-rose-500/10 border border-rose-500/20 transition-all">
               <Trash2 size={16} /> Delete Group
@@ -229,7 +279,7 @@ export function GroupDashboard({ groupId }: GroupDashboardProps) {
 
       {/* ── Tournaments & Standings ── */}
       <section className="flex flex-col gap-6">
-        
+
         <div className="relative flex flex-col md:flex-row items-center justify-center w-full mb-2">
           <h2 className={`text-3xl font-black uppercase tracking-wider ${theme.textBase}`}>Tournaments</h2>
           {isAdmin && (
@@ -238,7 +288,7 @@ export function GroupDashboard({ groupId }: GroupDashboardProps) {
             </button>
           )}
         </div>
-        
+
         {groupTournaments.length === 0 ? (
           <div className={`w-full p-12 rounded-xl border-2 border-dashed flex flex-col items-center justify-center text-center gap-3 ${theme.borderBase} ${theme.panelBg}`}>
             <div className="text-4xl opacity-50">🏆</div>
@@ -249,7 +299,7 @@ export function GroupDashboard({ groupId }: GroupDashboardProps) {
           </div>
         ) : (
           <div className={`grid grid-cols-1 ${(standardTourneys.length > 0 && survivorTourneys.length > 0) ? 'xl:grid-cols-2' : 'max-w-4xl mx-auto'} gap-8 items-start w-full`}>
-            
+
             {/* ── LEFT COLUMN: STANDARD BRACKETS ── */}
             {standardTourneys.length > 0 && (
               <div className="flex flex-col gap-6 w-full">
@@ -257,12 +307,10 @@ export function GroupDashboard({ groupId }: GroupDashboardProps) {
                   {standardTourneys.map(t => renderTournamentCard(t, false))}
                 </div>
                 <div className={`flex flex-col rounded-2xl border ${theme.panelBg} ${theme.borderBase} overflow-hidden shadow-sm`}>
-                  {/* Panel header — tiebreaker badge added when relevant, layout otherwise identical */}
                   <div className={`px-5 py-4 border-b ${theme.borderBase} bg-slate-100/50 dark:bg-black/20 flex items-center justify-between gap-3`}>
                     <h3 className={`font-display text-lg font-black uppercase tracking-widest ${theme.textBase}`}>
                       Bracket Standings
                     </h3>
-                    {/* Tiebreaker badge — only shown when at least one standard tournament uses it */}
                     {anyStandardTbEnabled && (
                       <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-widest border border-violet-500/30 text-violet-400 bg-violet-500/10">
                         <Target size={9} />
@@ -284,7 +332,6 @@ export function GroupDashboard({ groupId }: GroupDashboardProps) {
                               <span className={`flex-1 font-semibold text-sm truncate ${theme.textBase}`}>
                                 {entry.profile.display_name} {isMe && <span className="text-[10px] font-normal text-slate-500 ml-1">(you)</span>}
                               </span>
-                              {/* Tiebreaker chip — only rendered when anyStandardTbEnabled is true */}
                               {anyStandardTbEnabled && (
                                 <div className="flex-shrink-0 text-right w-12">
                                   {entry.tiebreakerScore != null ? (
@@ -302,7 +349,7 @@ export function GroupDashboard({ groupId }: GroupDashboardProps) {
                               {isAdmin && (
                                 <div className="w-10 flex items-center justify-center flex-shrink-0">
                                   {!isMe && (
-                                    <button onClick={(e) => { e.stopPropagation(); openSnoop(entry.profile.id); }} className="p-1.5 text-slate-400 hover:text-amber-500 transition-colors rounded-md hover:bg-slate-100 dark:hover:bg-slate-800">
+                                    <button onClick={(e) => { e.stopPropagation(); openSnoop(entry.profile.id) }} className="p-1.5 text-slate-400 hover:text-amber-500 transition-colors rounded-md hover:bg-slate-100 dark:hover:bg-slate-800">
                                       <Eye size={16} />
                                     </button>
                                   )}
@@ -356,7 +403,7 @@ export function GroupDashboard({ groupId }: GroupDashboardProps) {
                               {isAdmin && (
                                 <div className="w-10 flex items-center justify-center flex-shrink-0">
                                   {!isMe && (
-                                    <button onClick={(e) => { e.stopPropagation(); openSnoop(entry.profile.id); }} className="p-1.5 text-slate-400 hover:text-amber-500 transition-colors rounded-md hover:bg-slate-100 dark:hover:bg-slate-800">
+                                    <button onClick={(e) => { e.stopPropagation(); openSnoop(entry.profile.id) }} className="p-1.5 text-slate-400 hover:text-amber-500 transition-colors rounded-md hover:bg-slate-100 dark:hover:bg-slate-800">
                                       <Eye size={16} />
                                     </button>
                                   )}
