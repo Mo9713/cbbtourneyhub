@@ -50,7 +50,14 @@ export function useTournamentListQuery() {
 export function useGames(tournamentId: string | null) {
   return useQuery<Game[], Error, Game[]>({
     queryKey: tournamentKeys.games(tournamentId ?? ''),
-    queryFn:  () => unwrap(api.fetchGames(tournamentId!)),
+    // FIX (Type Assertion Danger): Previously called api.fetchGames(tournamentId!)
+    // which asserts non-null without a runtime guard. In React Strict Mode,
+    // effects run twice and this can fire with a null id before `enabled`
+    // suppresses it, crashing with a runtime TypeError. The conditional
+    // resolves to an empty array instead of asserting null away.
+    queryFn:  () => tournamentId
+      ? unwrap(api.fetchGames(tournamentId))
+      : Promise.resolve([] as Game[]),
     enabled:  !!tournamentId,
     select:   (data) => data ?? ([] as Game[]),
   })

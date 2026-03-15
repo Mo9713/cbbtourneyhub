@@ -1,25 +1,32 @@
 // src/features/survivor/model/selectors.ts
 //
-// BUG FIX (this PR): getUsedTeams now accepts `games` and decodes slot
-// keys ('team1'/'team2') to actual team name strings before returning.
+// BUG FIX: getUsedTeams now accepts `games` and decodes slot keys
+// ('team1'/'team2') to actual team name strings before returning.
 // Without decoding, usedTeams.includes(teamName) in SurvivorGameCard
 // always returned false — burned teams appeared available to re-pick.
 //
-// BUG FIX (this PR): getIsEliminated's user-elimination detection loop
-// now decodes slot keys before comparing against actual_winner, using
-// isTeamMatch for case-insensitive normalization. Previously, comparing
-// 'team1' against 'Duke' always yielded inequality, flagging every pick
-// as wrong regardless of outcome.
+// BUG FIX: getIsEliminated's user-elimination detection loop now decodes
+// slot keys before comparing against actual_winner, using isTeamMatch for
+// case-insensitive normalization. Previously, comparing 'team1' against
+// 'Duke' always yielded inequality, flagging every pick as wrong.
 //
-// NEW: isEndEarlyResolved — determines whether the entire pool is dead
-// under the 'end_early' rule. Used by BracketView/MatchupColumn and
-// SurvivorBracketView to lock all participants out of future rounds
-// when every active picker was eliminated in the same resolved round.
-// This is data-derived (picks + games), never from tournament.status,
-// so it cannot be accidentally triggered by an admin status write.
+// FIX C-2: Ghost Loophole — getIsEliminated now checks whether a user
+// skipped a mandatory picking window. A user with no losing picks but
+// also no picks for a fully-resolved round is flagged as eliminated.
+// Previously, iterating only over existing picks meant a user with zero
+// picks could survive indefinitely.
+//
+// FIX M-NEW-3: revive_all mass-elimination checks in both getIsEliminated
+// and isEndEarlyResolved now delegate to isMassRevivalRound from
+// shared/lib/bracketMath, eliminating the duplicate implementation that
+// previously lived in this file AND the leaderboard selector.
+//
+// isEndEarlyResolved — determines whether the entire pool is dead under
+// the 'end_early' rule. Data-derived (picks + games), never from
+// tournament.status, to avoid the admin-status-write false-lock bug.
 
-import { isTeamMatch }              from '../../../shared/lib/bracketMath'
-import type { Pick, Game, Tournament } from '../../../shared/types'
+import { isTeamMatch, isMassRevivalRound } from '../../../shared/lib/bracketMath'
+import type { Pick, Game, Tournament }     from '../../../shared/types'
 
 // ── Internal helper ───────────────────────────────────────────
 
@@ -77,6 +84,11 @@ export function getAggregateSeedScore(userPicks: Pick[], games: Game[]): number 
  * For 'revive_all', returns false if every other active participant was
  * also eliminated in the same round (mass elimination = mass revival).
  *
+ * FIX C-2: Ghost Loophole — after verifying no picks were wrong, the
+ * function now also checks that the user submitted picks for every
+ * fully-resolved round. A user who skipped a mandatory picking window
+ * is correctly flagged as eliminated rather than treated as surviving.
+ *
  * @param userPicks  - The current user's picks for this tournament.
  * @param games      - All games for this tournament.
  * @param allPicks   - All participants' picks (required for revive_all).
@@ -108,8 +120,31 @@ export function getIsEliminated(
     }
   }
 
-  // User has not lost any pick — still alive.
-  if (userFirstElimRound === null) return false
+  // FIX C-2: Ghost Loophole — if no picks were wrong, verify the user
+  // actually submitted picks for every fully-resolved round. Walk rounds
+  // in ascending order and stop at the first unresolved one. If a resolved
+  // round has no pick from this user, they missed a mandatory window and
+  // must be flagged as eliminated.
+  if (userFirstElimRound === null) {
+    const pickedRoundNums = new Set(
+      userPicks
+        .map(p => gameMap.get(p.game_id)?.round_num)
+        .filter((r): r is number => r !== undefined),
+    )
+
+    const sortedRoundNums = [...new Set(games.map(g => g.round_num))].sort((a, b) => a - b)
+
+    for (const r of sortedRoundNums) {
+      const roundGames = games.filter(g => g.round_num === r)
+      // Stop at the first round that is not yet fully resolved.
+      if (!roundGames.every(g => !!g.actual_winner)) break
+      // If this resolved round has no pick from this user, they are out.
+      if (!pickedRoundNums.has(r)) return true
+    }
+
+    // No wrong picks and no skipped resolved rounds — still alive.
+    return false
+  }
 
   // User is out under the default rule.
   if (tournament.survivor_elimination_rule !== 'revive_all') return true
@@ -117,19 +152,14 @@ export function getIsEliminated(
   // ── REVIVE_ALL check ────────────────────────────────────────
   // Evaluate whether the elimination round was a mass-elimination event.
   const eliminationRound = userFirstElimRound
-  const roundGames = games.filter(g => g.round_num === eliminationRound)
+  const roundGames       = games.filter(g => g.round_num === eliminationRound)
 
   // Cannot confirm a mass revival if the round is not fully resolved.
   if (!roundGames.every(g => !!g.actual_winner)) return true
 
-  const roundGameIds = new Set(roundGames.map(g => g.id))
-
-  // Build per-player loss data, skipping users already eliminated in prior rounds.
+  // Build the set of users already eliminated in rounds BEFORE this one,
+  // so they are excluded from the active-picker count.
   const priorEliminated = new Set<string>()
-  const activePickers   = new Set<string>()
-  const lostThisRound   = new Set<string>()
-
-  // First pass: find who was already out before this round.
   for (const pick of allPicks) {
     const game = gameMap.get(pick.game_id)
     if (!game?.actual_winner || game.round_num >= eliminationRound) continue
@@ -139,22 +169,11 @@ export function getIsEliminated(
     }
   }
 
-  // Second pass: evaluate this round for non-prior-eliminated pickers.
-  for (const pick of allPicks) {
-    if (!roundGameIds.has(pick.game_id)) continue
-    if (priorEliminated.has(pick.user_id)) continue
-
-    activePickers.add(pick.user_id)
-
-    const game    = gameMap.get(pick.game_id)!
-    const decoded = decodePickedTeam(pick.predicted_winner, game)
-    if (!isTeamMatch(decoded, game.actual_winner ?? '')) {
-      lostThisRound.add(pick.user_id)
-    }
-  }
-
-  // Mass revival: every active picker was eliminated in the same round.
-  if (activePickers.size > 0 && lostThisRound.size === activePickers.size) return false
+  // FIX M-NEW-3: Delegate to the shared isMassRevivalRound utility from
+  // bracketMath rather than re-implementing the active-picker / eliminated
+  // counting logic inline. The leaderboard selector uses the same function,
+  // ensuring both paths stay in sync.
+  if (isMassRevivalRound(roundGames, allPicks, priorEliminated)) return false
 
   return true
 }
@@ -195,8 +214,6 @@ export function isEndEarlyResolved(
   // The round must be 100% resolved — a partial round cannot confirm mass elimination.
   if (!roundGames.every(g => !!g.actual_winner)) return false
 
-  const roundGameIds = new Set(roundGames.map(g => g.id))
-
   // Track who was already eliminated before this round.
   const priorEliminated = new Set<string>()
   for (const pick of allPicks) {
@@ -208,21 +225,7 @@ export function isEndEarlyResolved(
     }
   }
 
-  const activePickers    = new Set<string>()
-  const eliminatedLatest = new Set<string>()
-
-  for (const pick of allPicks) {
-    if (!roundGameIds.has(pick.game_id)) continue
-    if (priorEliminated.has(pick.user_id)) continue
-
-    activePickers.add(pick.user_id)
-
-    const game    = gameMap.get(pick.game_id)!
-    const decoded = decodePickedTeam(pick.predicted_winner, game)
-    if (!isTeamMatch(decoded, game.actual_winner ?? '')) {
-      eliminatedLatest.add(pick.user_id)
-    }
-  }
-
-  return activePickers.size > 0 && eliminatedLatest.size === activePickers.size
+  // FIX M-NEW-3: Delegate to shared isMassRevivalRound rather than
+  // duplicating the active-picker counting logic here.
+  return isMassRevivalRound(roundGames, allPicks, priorEliminated)
 }

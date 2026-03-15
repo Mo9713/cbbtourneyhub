@@ -8,9 +8,20 @@
 //
 // STATUS CHANGE: 'completed' now treated identically to 'locked' for
 // all pick-submission purposes. A completed tournament is always locked.
+//
+// FIX C-3: The global unlocks_at / locks_at time-window checks have been
+// hoisted to the TOP of isPicksLocked, BEFORE the survivor early-return.
+// Previously, the survivor branch returned early from getActiveSurvivorRound
+// before these checks could run, meaning an admin-configured unlocks_at or
+// locks_at on a survivor tournament was silently ignored. All game types
+// now respect the global time-lock window equally.
 // ─────────────────────────────────────────────────────────────
 
 import type { Tournament } from '../types'
+
+// ─────────────────────────────────────────────────────────────
+// § 1. Timezone Registry
+// ─────────────────────────────────────────────────────────────
 
 export interface TimezoneOption { label: string; value: string }
 
@@ -38,10 +49,16 @@ export const TIMEZONE_OPTIONS: TimezoneOption[] = [
   { label: 'Auckland (NZST / NZDT)',             value: 'Pacific/Auckland'    },
 ]
 
+export const DEFAULT_DISPLAY_TZ = 'America/Chicago'
+
 export function timezoneLabelFor(value: string | null): string {
   if (!value) return 'Central Time — Chicago (CT)'
   return TIMEZONE_OPTIONS.find(o => o.value === value)?.label ?? value
 }
+
+// ─────────────────────────────────────────────────────────────
+// § 2. Core Timestamp Parsing
+// ─────────────────────────────────────────────────────────────
 
 /**
  * Converts a Supabase UTC ISO 8601 string to epoch milliseconds.
@@ -49,6 +66,10 @@ export function timezoneLabelFor(value: string | null): string {
 export function parseTournamentTimestamp(iso: string): number {
   return Date.parse(iso)
 }
+
+// ─────────────────────────────────────────────────────────────
+// § 3. Survivor Round Lock Utilities
+// ─────────────────────────────────────────────────────────────
 
 /**
  * Evaluates the active picking round for a Survivor tournament based on discrete lock times.
@@ -62,7 +83,7 @@ export function getActiveSurvivorRound(tournament: Tournament | null): number {
 
   for (let r = 1; r <= 6; r++) {
     const lockIso = tournament.round_locks[r]
-    // W-12 FIX: A missing lock time means the round hasn't locked yet.
+    // A missing lock time means the round hasn't locked yet.
     if (!lockIso) return r
     if (now < parseTournamentTimestamp(lockIso)) return r
   }
@@ -70,25 +91,38 @@ export function getActiveSurvivorRound(tournament: Tournament | null): number {
   return 0 // All configured rounds are in the past
 }
 
+// ─────────────────────────────────────────────────────────────
+// § 4. Pick-Lock Gate
+// ─────────────────────────────────────────────────────────────
+
 /**
  * Returns true if picks should currently be locked for the tournament.
  * 'completed' is treated identically to 'locked' — both permanently close picking.
  * Strict Integrity: Admins do NOT bypass time locks.
+ *
+ * FIX C-3: Global unlocks_at / locks_at checks are evaluated BEFORE the
+ * survivor branch. Previously the survivor early-return prevented these
+ * checks from ever running for survivor tournaments, so an admin-configured
+ * global time window was silently ignored for all survivor pools.
  */
 export function isPicksLocked(tournament: Tournament, _isAdmin = false): boolean {
+  // Status-based locks apply to all game types — check first.
   if (
     tournament.status === 'draft'     ||
     tournament.status === 'locked'    ||
     tournament.status === 'completed'
   ) return true
 
-  if (tournament.game_type === 'survivor') {
-    return getActiveSurvivorRound(tournament) === 0
-  }
-
+  // FIX C-3: Global time locks hoisted above the survivor branch so all
+  // game types respect an admin-configured unlock/lock window equally.
   const now = Date.now()
   if (tournament.unlocks_at && now < parseTournamentTimestamp(tournament.unlocks_at)) return true
   if (tournament.locks_at   && now >= parseTournamentTimestamp(tournament.locks_at))  return true
+
+  // Survivor round-based lock — returns locked when no active round is open.
+  if (tournament.game_type === 'survivor') {
+    return getActiveSurvivorRound(tournament) === 0
+  }
 
   return false
 }
@@ -100,6 +134,10 @@ export function isBeforeUnlock(tournament: Tournament): boolean {
   if (!tournament.unlocks_at) return false
   return Date.now() < parseTournamentTimestamp(tournament.unlocks_at)
 }
+
+// ─────────────────────────────────────────────────────────────
+// § 5. Countdown Helpers
+// ─────────────────────────────────────────────────────────────
 
 /**
  * Returns the milliseconds until a tournament's picks window opens.
@@ -140,7 +178,9 @@ export function formatCountdown(ms: number): string {
   return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
 }
 
-export const DEFAULT_DISPLAY_TZ = 'America/Chicago'
+// ─────────────────────────────────────────────────────────────
+// § 6. Timezone-Aware Display Formatting
+// ─────────────────────────────────────────────────────────────
 
 /**
  * Formats a UTC ISO timestamp for display in the user's preferred timezone.
@@ -163,6 +203,14 @@ export function formatCSTDisplay(iso: string): string {
   return formatInUserTz(iso, null)
 }
 
+// ─────────────────────────────────────────────────────────────
+// § 7. Timezone-Aware Input Conversion
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Internal helper — extracts wall-clock date parts for a given IANA timezone
+ * using Intl.DateTimeFormat. Used by isoToInputInTz and inputInTzToISO.
+ */
 function getDatePartsInTz(date: Date, tz: string) {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: tz, year: 'numeric', month: 'numeric', day: 'numeric',
@@ -171,16 +219,23 @@ function getDatePartsInTz(date: Date, tz: string) {
 
   const get = (type: string) => parseInt(parts.find(p => p.type === type)?.value ?? '0', 10)
   return {
-    year: get('year'), month: get('month'), day: get('day'),
-    hour: get('hour') % 24, minute: get('minute'), second: get('second'),
+    year:   get('year'),
+    month:  get('month'),
+    day:    get('day'),
+    hour:   get('hour') % 24, // Normalise midnight representation
+    minute: get('minute'),
+    second: get('second'),
   }
 }
 
-/** Converts a UTC ISO string to a `datetime-local` input value */
+/**
+ * Converts a UTC ISO string to a `datetime-local` input value expressed in
+ * the given IANA timezone. Falls back to DEFAULT_DISPLAY_TZ when null.
+ */
 export function isoToInputInTz(iso: string | null, timezone: string | null): string {
   if (!iso) return ''
-  const tz = timezone ?? DEFAULT_DISPLAY_TZ
-  const p  = getDatePartsInTz(new Date(iso), tz)
+  const tz  = timezone ?? DEFAULT_DISPLAY_TZ
+  const p   = getDatePartsInTz(new Date(iso), tz)
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${p.year}-${pad(p.month)}-${pad(p.day)}T${pad(p.hour)}:${pad(p.minute)}`
 }
@@ -190,12 +245,16 @@ export function isoToInputCST(iso: string | null): string {
   return isoToInputInTz(iso, null)
 }
 
-/** Converts a `datetime-local` input value to a UTC ISO 8601 string */
+/**
+ * Converts a `datetime-local` input value (expressed in the given IANA
+ * timezone) to a UTC ISO 8601 string. Falls back to DEFAULT_DISPLAY_TZ
+ * when timezone is null.
+ */
 export function inputInTzToISO(local: string, timezone: string | null): string | null {
   if (!local) return null
-  const tz = timezone ?? DEFAULT_DISPLAY_TZ
-  const naiveUtc   = new Date(`${local}:00Z`)
-  const p          = getDatePartsInTz(naiveUtc, tz)
+  const tz          = timezone ?? DEFAULT_DISPLAY_TZ
+  const naiveUtc    = new Date(`${local}:00Z`)
+  const p           = getDatePartsInTz(naiveUtc, tz)
   const wallAsUtcMs = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second)
   const offsetMs    = naiveUtc.getTime() - wallAsUtcMs
   const localAsUtc  = new Date(`${local}:00Z`)

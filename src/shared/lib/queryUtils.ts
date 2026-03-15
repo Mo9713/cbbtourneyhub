@@ -9,8 +9,8 @@
 // This meant a Supabase Realtime "echo" event and a mutation's
 // onSettled handler could both fire safeInvalidate for the same key
 // within the 150ms window — into different Maps — with no deduplication
-// between them. The race condition the debounce was designed to
-// prevent could still occur cross-file.
+// between them. The race condition the debounce was designed to prevent
+// could still occur cross-file.
 //
 // This singleton fixes that: all three callers share one Map.
 //
@@ -19,6 +19,15 @@
 // default). A key like ['picks', 'mine'] will match ALL compound
 // observer keys of the form ['picks', 'mine', tid, gameIds[]].
 // This is intentional and must be preserved by all callers.
+//
+// FIX N-NEW-3: stableKeyString now wraps JSON.stringify in a try/catch.
+// If a query key contains non-JSON-serializable values (functions, class
+// instances, circular refs), the fallback uses String() coercion, which
+// is still deterministic per value but produces less-unique keys for
+// complex objects. All current key shapes in the app are plain
+// string/array-of-strings and take the JSON.stringify path. The guard
+// prevents a future non-JSON key from silently collapsing multiple
+// distinct keys into the same timer slot and breaking deduplication.
 
 import { type QueryClient, type QueryKey } from '@tanstack/react-query'
 
@@ -26,6 +35,26 @@ const REALTIME_DEBOUNCE_MS = 150
 
 // Module-level singleton — shared across all consumers.
 const invalidateTimers = new Map<string, ReturnType<typeof setTimeout>>()
+
+/**
+ * Produces a stable string representation of a TanStack Query key for use
+ * as a Map key in the debounce timer registry.
+ *
+ * FIX N-NEW-3: Wrapped in try/catch so that future query keys containing
+ * non-JSON-serializable values (functions, class instances) do not throw.
+ * The fallback String() coercion is deterministic for primitives and
+ * produces a best-effort key for complex objects.
+ */
+function stableKeyString(queryKey: QueryKey): string {
+  try {
+    // Primary path — correct and unique for all plain-value key shapes.
+    return JSON.stringify(queryKey)
+  } catch {
+    // Fallback for non-JSON-serializable values. Less unique for complex
+    // objects but safe — will never throw and always returns a string.
+    return String(queryKey)
+  }
+}
 
 /**
  * Defers cache invalidation by 150ms when a local mutation is in-flight
@@ -37,7 +66,8 @@ const invalidateTimers = new Map<string, ReturnType<typeof setTimeout>>()
  * @param queryKey  - The key (or prefix) to invalidate.
  */
 export function safeInvalidate(qc: QueryClient, queryKey: QueryKey): void {
-  const keyStr = JSON.stringify(queryKey)
+  // FIX N-NEW-3: Use stableKeyString instead of bare JSON.stringify.
+  const keyStr = stableKeyString(queryKey)
 
   if (qc.isMutating() > 0) {
     // Clear any pending timer for this key before setting a new one.

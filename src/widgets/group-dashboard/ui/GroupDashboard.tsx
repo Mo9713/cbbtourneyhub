@@ -1,7 +1,14 @@
 // src/widgets/group-dashboard/ui/GroupDashboard.tsx
+//
+// M-NEW-2 integration: the standard mini-leaderboard now shows a tiebreaker
+// chip on each row when any of the group's standard bracket tournaments has
+// requires_tiebreaker enabled. The derived flag `anyStandardTbEnabled` drives
+// the column so it never appears for groups with no tiebreaker tournaments.
+// The survivor mini-leaderboard is unchanged — tiebreaker is not relevant to
+// survivor mode. All original layout, styling, and card structure preserved.
 
 import { useMemo }              from 'react'
-import { Trash2, LogOut, Skull, Eye } from 'lucide-react'
+import { Trash2, LogOut, Skull, Eye, Target } from 'lucide-react'
 import { useGroupDetailsQuery, useGroupMembersQuery, useDeleteGroupMutation, useLeaveGroupMutation } from '../../../entities/group'
 import { useTournamentListQuery } from '../../../entities/tournament/model/queries'
 import { useLeaderboardRaw }    from '../../../entities/leaderboard/model/queries'
@@ -45,6 +52,10 @@ export function GroupDashboard({ groupId }: GroupDashboardProps) {
 
   const standardTourneys = groupTournaments.filter(t => t.game_type !== 'survivor')
   const survivorTourneys = groupTournaments.filter(t => t.game_type === 'survivor')
+
+  // Show the tiebreaker chip column in the standard mini-leaderboard if any
+  // standard tournament in this group has the tiebreaker feature enabled.
+  const anyStandardTbEnabled = standardTourneys.some(t => t.requires_tiebreaker === true)
 
   const handleDelete = () => {
     if (!group) return
@@ -246,10 +257,18 @@ export function GroupDashboard({ groupId }: GroupDashboardProps) {
                   {standardTourneys.map(t => renderTournamentCard(t, false))}
                 </div>
                 <div className={`flex flex-col rounded-2xl border ${theme.panelBg} ${theme.borderBase} overflow-hidden shadow-sm`}>
-                  <div className={`px-5 py-4 border-b ${theme.borderBase} bg-slate-100/50 dark:bg-black/20`}>
+                  {/* Panel header — tiebreaker badge added when relevant, layout otherwise identical */}
+                  <div className={`px-5 py-4 border-b ${theme.borderBase} bg-slate-100/50 dark:bg-black/20 flex items-center justify-between gap-3`}>
                     <h3 className={`font-display text-lg font-black uppercase tracking-widest ${theme.textBase}`}>
                       Bracket Standings
                     </h3>
+                    {/* Tiebreaker badge — only shown when at least one standard tournament uses it */}
+                    {anyStandardTbEnabled && (
+                      <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-widest border border-violet-500/30 text-violet-400 bg-violet-500/10">
+                        <Target size={9} />
+                        Tiebreaker On
+                      </span>
+                    )}
                   </div>
                   <div className="flex-1 p-4">
                     {standardBoard.length === 0 ? (
@@ -257,7 +276,7 @@ export function GroupDashboard({ groupId }: GroupDashboardProps) {
                     ) : (
                       <div className="flex flex-col gap-2">
                         {standardBoard.map((entry, i) => {
-                          const isMe = entry.profile.id === profile?.id;
+                          const isMe = entry.profile.id === profile?.id
                           return (
                             <div key={entry.profile.id} className={`flex items-center gap-3 p-3 rounded-xl border ${theme.borderBase} ${isMe ? `${theme.bgMd} border-amber-500/30` : 'bg-white dark:bg-[#11141d]'}`}>
                               <span className="w-6 text-center font-bold text-slate-500 text-xs">#{i + 1}</span>
@@ -265,6 +284,17 @@ export function GroupDashboard({ groupId }: GroupDashboardProps) {
                               <span className={`flex-1 font-semibold text-sm truncate ${theme.textBase}`}>
                                 {entry.profile.display_name} {isMe && <span className="text-[10px] font-normal text-slate-500 ml-1">(you)</span>}
                               </span>
+                              {/* Tiebreaker chip — only rendered when anyStandardTbEnabled is true */}
+                              {anyStandardTbEnabled && (
+                                <div className="flex-shrink-0 text-right w-12">
+                                  {entry.tiebreakerScore != null ? (
+                                    <p className="font-bold text-xs text-violet-400">{entry.tiebreakerScore}</p>
+                                  ) : (
+                                    <p className={`text-xs ${theme.textMuted} opacity-40`}>—</p>
+                                  )}
+                                  <p className={`text-[9px] ${theme.textMuted} uppercase tracking-widest`}>TB</p>
+                                </div>
+                              )}
                               <div className="text-right w-16 flex-shrink-0">
                                 <p className={`font-bold ${theme.accent}`}>{entry.points} pts</p>
                                 <p className={`text-[10px] ${theme.textMuted}`}>Max {entry.maxPossible}</p>
@@ -306,7 +336,7 @@ export function GroupDashboard({ groupId }: GroupDashboardProps) {
                     ) : (
                       <div className="flex flex-col gap-2">
                         {survivorBoard.map((entry, i) => {
-                          const isMe = entry.profile.id === profile?.id;
+                          const isMe = entry.profile.id === profile?.id
                           return (
                             <div key={entry.profile.id} className={`flex items-center gap-3 p-3 rounded-xl border ${theme.borderBase} ${entry.isEliminated ? 'opacity-50 grayscale' : ''} ${isMe && !entry.isEliminated ? `${theme.bgMd} border-amber-500/30` : 'bg-white dark:bg-[#11141d]'}`}>
                               <span className="w-6 text-center font-bold text-slate-500 text-xs">

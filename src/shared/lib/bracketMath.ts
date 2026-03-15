@@ -4,27 +4,48 @@
 import type { Game, Pick, Tournament } from '../types'
 import { isTBDName, getScore }         from './helpers'
 
-// ── Smart String Matching (First Four Support) ─────────────────────
-export function isTeamMatch(teamName: string | null | undefined, actualWinner: string | null | undefined): boolean {
+// ─────────────────────────────────────────────────────────────
+// § 0. Smart String Matching (First Four Support)
+// ─────────────────────────────────────────────────────────────
+
+// FIX C-1 / C-NEW-1: Removed the general substring fallback entirely.
+// Previously, `t.includes(a) || a.includes(t)` caused "Kansas" to match
+// "Kansas State" (and any other prefix/suffix pair), corrupting survivor
+// elimination checks, bracket scoring, slot resolution, and the leaderboard.
+//
+// The First Four slash-string branch (e.g. "7 Florida / 10 COLO") has also
+// been tightened to use per-part EXACT equality only — the old branch used
+// .includes() internally, creating a second substring path that would have
+// caused "Florida" to match "Florida State" in the same way.
+export function isTeamMatch(
+  teamName:     string | null | undefined,
+  actualWinner: string | null | undefined,
+): boolean {
   if (!teamName || !actualWinner) return false
   const t = teamName.trim().toLowerCase()
   const a = actualWinner.trim().toLowerCase()
+
+  // Exact case-insensitive match — the primary and preferred path.
   if (t === a) return true
-  
-  // Break apart First Four slash strings (e.g. "7 Florida / 10 COLO")
+
+  // FIX C-1: First Four slash strings only — exact equality per part, no substrings.
+  // "7 Florida / 10 COLO" splits to ["7 florida", "10 colo"]; each is tested
+  // against the actual winner string for exact equality only.
   if (t.includes('/')) {
     const parts = t.split('/').map(p => p.trim())
-    // If "10 Colorado" includes "10 COLO", it's a match!
-    if (parts.some(p => p === a || p.includes(a) || a.includes(p))) return true
+    if (parts.some(p => p === a)) return true
   }
-  
-  // Standard substring fallback
-  if (t.includes(a) || a.includes(t)) return true
+  if (a.includes('/')) {
+    const parts = a.split('/').map(p => p.trim())
+    if (parts.some(p => p === t)) return true
+  }
+
+  // No substring fallback — exact match only.
   return false
 }
 
 // ─────────────────────────────────────────────────────────────
-// § 0. Cascade Delete Helper
+// § 1. Cascade Delete Helper
 // ─────────────────────────────────────────────────────────────
 
 export function collectDownstreamGameIds(
@@ -44,7 +65,7 @@ export function collectDownstreamGameIds(
 }
 
 // ─────────────────────────────────────────────────────────────
-// § 1. Game Numbering
+// § 2. Game Numbering
 // ─────────────────────────────────────────────────────────────
 
 export function computeGameNumbers(games: Game[]): Record<string, number> {
@@ -59,7 +80,7 @@ export function computeGameNumbers(games: Game[]): Record<string, number> {
 }
 
 // ─────────────────────────────────────────────────────────────
-// § 2. Slot Resolution
+// § 3. Slot Resolution
 // ─────────────────────────────────────────────────────────────
 
 export function resolveAdvancingSlot(
@@ -76,12 +97,23 @@ export function resolveAdvancingSlot(
     if (nextGame.team1_name === winnerText) return 'in1'
     if (nextGame.team2_name === winnerText) return 'in2'
 
+    // FIX C-NEW-1: This branch calls isTeamMatch, which previously had the
+    // substring fallback. Now that isTeamMatch is fixed to exact-only, this
+    // path is safe. "Florida" will no longer match "Florida State" here,
+    // preventing mis-slotted advancement that would corrupt all downstream
+    // scoring, deriveEliminatedTeams, and the leaderboard.
     if (game.actual_winner) {
       if (isTeamMatch(nextGame.team1_name, game.actual_winner)) return 'in1'
       if (isTeamMatch(nextGame.team2_name, game.actual_winner)) return 'in2'
     }
   }
 
+  // N-NEW-1: sort_order is the primary signal for feeder order. id.localeCompare
+  // is a stable deterministic tiebreak — for the same pair of games the result
+  // is always identical, but it does NOT guarantee insertion order. If admin-built
+  // brackets are assigning slots incorrectly, ensure every game in the bracket
+  // has a unique sort_order value. Template-generated brackets always write
+  // explicit sequential sort_order values and are not affected.
   const feeders = games
     .filter(g => g.next_game_id === game.next_game_id)
     .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.id.localeCompare(b.id))
@@ -90,15 +122,15 @@ export function resolveAdvancingSlot(
 }
 
 // ─────────────────────────────────────────────────────────────
-// § 3. Effective Name Derivation (DUAL-TRACK PREDICTION)
+// § 4. Effective Name Derivation (DUAL-TRACK PREDICTION)
 // ─────────────────────────────────────────────────────────────
 
 // FIX: Added actualSeed and predictedSeed tracking so seeds travel with teams
-export type DualSlot = { 
-  actual: string; 
-  predicted: string;
-  actualSeed?: number | null;
-  predictedSeed?: number | null;
+export type DualSlot = {
+  actual:        string
+  predicted:     string
+  actualSeed?:   number | null
+  predictedSeed?: number | null
 }
 export type EffectiveNames = Record<string, { team1: DualSlot; team2: DualSlot }>
 
@@ -132,40 +164,40 @@ export function deriveEffectiveNames(
     const curTeam2 = eff?.team2 ?? { actual: game.team2_name, predicted: game.team2_name, actualSeed: game.team2_seed, predictedSeed: game.team2_seed }
 
     const actualWinner = game.actual_winner
-    
+
     let userPickString = pickMap.get(game.id)
     let predictedWinningSeed: number | null | undefined = null
 
     // Safe extraction of name and seed
     if (userPickString === 'team1') {
-      userPickString = curTeam1.predicted
-      predictedWinningSeed = curTeam1.predictedSeed
+      userPickString        = curTeam1.predicted
+      predictedWinningSeed  = curTeam1.predictedSeed
     } else if (userPickString === 'team2') {
-      userPickString = curTeam2.predicted
-      predictedWinningSeed = curTeam2.predictedSeed
+      userPickString        = curTeam2.predicted
+      predictedWinningSeed  = curTeam2.predictedSeed
     } else if (userPickString) {
-      if (userPickString === curTeam1.predicted) predictedWinningSeed = curTeam1.predictedSeed
+      if (userPickString === curTeam1.predicted)      predictedWinningSeed = curTeam1.predictedSeed
       else if (userPickString === curTeam2.predicted) predictedWinningSeed = curTeam2.predictedSeed
     }
 
     // Automatically nullify pick if it doesn't match the current slot contents (cascading unselect)
     if (userPickString && userPickString !== curTeam1.predicted && userPickString !== curTeam2.predicted) {
-      userPickString = undefined
+      userPickString       = undefined
       predictedWinningSeed = null
     }
 
     // Prevent TBD names from advancing
     if (userPickString && isTBDName(userPickString)) {
-      userPickString = undefined
+      userPickString       = undefined
       predictedWinningSeed = null
     }
 
     const predictedWinner = userPickString ?? actualWinner
-    
+
     let actualWinningSeed: number | null | undefined = null
     if (actualWinner) {
-       if (isTeamMatch(curTeam1.actual, actualWinner)) actualWinningSeed = curTeam1.actualSeed
-       else if (isTeamMatch(curTeam2.actual, actualWinner)) actualWinningSeed = curTeam2.actualSeed
+      if (isTeamMatch(curTeam1.actual, actualWinner))      actualWinningSeed = curTeam1.actualSeed
+      else if (isTeamMatch(curTeam2.actual, actualWinner)) actualWinningSeed = curTeam2.actualSeed
     }
 
     if (!actualWinner && !predictedWinner) continue
@@ -188,11 +220,11 @@ export function deriveEffectiveNames(
 }
 
 // ─────────────────────────────────────────────────────────────
-// § 4. Deep Elimination & Local Scoring
+// § 5. Deep Elimination & Local Scoring
 // ─────────────────────────────────────────────────────────────
 
 export function deriveEliminatedTeams(
-  games:         Game[],
+  games:          Game[],
   effectiveNames: EffectiveNames
 ): Set<string> {
   const eliminated = new Set<string>()
@@ -220,14 +252,14 @@ export function calculateLocalScore(
   const pickMap    = new Map(picks.map(p => [p.game_id, p.predicted_winner]))
 
   for (const game of games) {
-    const pts      = tournament.scoring_config?.[String(game.round_num)] ?? getScore(game.round_num)
-    
+    const pts = tournament.scoring_config?.[String(game.round_num)] ?? getScore(game.round_num)
+
     let userPickString = pickMap.get(game.id)
     if (!userPickString) continue
 
     const eff = effectiveNames[game.id]
     if (eff) {
-      if (userPickString === 'team1') userPickString = eff.team1.predicted
+      if (userPickString === 'team1')      userPickString = eff.team1.predicted
       else if (userPickString === 'team2') userPickString = eff.team2.predicted
     }
 
@@ -244,13 +276,13 @@ export function calculateLocalScore(
 }
 
 // ─────────────────────────────────────────────────────────────
-// § 5. Champion Derivation
+// § 6. Champion Derivation
 // ─────────────────────────────────────────────────────────────
 
 export function deriveChampion(
-  games:           Game[],
-  picks:           Pick[],
-  effectiveNames:  EffectiveNames
+  games:          Game[],
+  picks:          Pick[],
+  effectiveNames: EffectiveNames
 ): string | null {
   if (games.length === 0) return null
 
@@ -277,7 +309,58 @@ export function deriveChampion(
 }
 
 // ─────────────────────────────────────────────────────────────
-// § 6. SVG Connector Line Data
+// § 7. Survivor Mass-Revival Utility
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Returns true when every active picker was eliminated in this round —
+ * the shared condition for both the 'revive_all' and 'end_early' rules.
+ *
+ * FIX M-NEW-3: Extracted from duplicate implementations in
+ * features/survivor/model/selectors.ts and features/leaderboard/model/selectors.ts
+ * into this single shared/lib function. Both callers now import from here,
+ * eliminating the risk of the two implementations silently diverging.
+ *
+ * "Active" means the user_id is not already in priorEliminated.
+ * Slot keys ('team1'/'team2') are decoded to team name strings before
+ * comparison so isTeamMatch receives real team names, not storage keys.
+ *
+ * @param roundGames      - All games belonging to the round under evaluation.
+ * @param allPicks        - All participants' picks for this tournament.
+ * @param priorEliminated - Set of user_ids already eliminated before this round.
+ */
+export function isMassRevivalRound(
+  roundGames:      Game[],
+  allPicks:        Pick[],
+  priorEliminated: Set<string>,
+): boolean {
+  const roundGameMap = new Map(roundGames.map(g => [g.id, g]))
+  const roundGameIds = new Set(roundGames.map(g => g.id))
+  const activePickers       = new Set<string>()
+  const eliminatedThisRound = new Set<string>()
+
+  for (const pick of allPicks) {
+    if (!roundGameIds.has(pick.game_id))        continue
+    if (priorEliminated.has(pick.user_id))      continue
+
+    activePickers.add(pick.user_id)
+
+    const game = roundGameMap.get(pick.game_id)!
+    // Decode slot key to actual team name before comparison.
+    let predictedString = pick.predicted_winner
+    if (predictedString === 'team1')      predictedString = game.team1_name
+    else if (predictedString === 'team2') predictedString = game.team2_name
+
+    if (!isTeamMatch(predictedString, game.actual_winner)) {
+      eliminatedThisRound.add(pick.user_id)
+    }
+  }
+
+  return activePickers.size > 0 && eliminatedThisRound.size === activePickers.size
+}
+
+// ─────────────────────────────────────────────────────────────
+// § 8. SVG Connector Line Data
 // ─────────────────────────────────────────────────────────────
 
 export interface ConnectorLine {
@@ -344,10 +427,10 @@ export function computeAdminConnectorLines(
     const feeders = games
       .filter(g => g.next_game_id === game.next_game_id)
       .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.id.localeCompare(b.id))
-      
+
     const slot = feeders.findIndex(f => f.id === game.id) === 0 ? 'in1' : 'in2'
 
-    const inR  = getInRect(game.next_game_id, slot)
+    const inR = getInRect(game.next_game_id, slot)
     if (!inR) continue
 
     const inX = inR.left + inR.width  / 2 - containerRect.left + scrollLeft

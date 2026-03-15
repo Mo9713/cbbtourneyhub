@@ -1,12 +1,19 @@
 // src/entities/tournament/api/index.ts
 //
-// completeTournament added (this PR) — sets status to 'completed',
-// signalling results are final. Distinct from lockTournament ('locked')
-// so the UI can show a "Finished" badge and the admin can clearly
-// distinguish an in-progress lock from a resolved tournament.
+// completeTournament added — sets status to 'completed', signalling results
+// are final. Distinct from lockTournament ('locked') so the UI can show a
+// "Finished" badge and the admin can clearly distinguish an in-progress lock
+// from a resolved tournament.
 //
-// updateTournament's Partial Pick now includes 'status' so the mutation
-// layer can drive status transitions generically if needed.
+// updateTournament's Partial Pick includes 'status' so the mutation layer
+// can drive status transitions generically if needed.
+//
+// FIX (Faulty Seed Arithmetic): fetchGames now coerces team1_seed and
+// team2_seed to integers at the data boundary using parseInt. If the
+// database stores a legacy string-based seed like "11a" (First Four play-in
+// notation), parseInt("11a", 10) returns 11 rather than propagating NaN
+// into all downstream arithmetic (seed scores, leaderboard, bracket display).
+// Seeds that cannot be parsed to a valid number are coerced to null.
 
 import { supabase, withAdminAuth } from '../../../shared/infra/supabaseClient'
 import {
@@ -38,7 +45,23 @@ export async function fetchGames(tournamentId: string): Promise<ServiceResult<Ga
     .order('round_num', { ascending: true })
     .order('sort_order', { ascending: true })
   if (error) return { ok: false, error: error.message }
-  return { ok: true, data: data as Game[] }
+
+  // FIX (Faulty Seed Arithmetic): Coerce seed values to integers at the data
+  // boundary. parseInt handles both numeric columns (DB returns number → String()
+  // is a no-op) and legacy string seeds like "11a" (First Four) returning 11.
+  // Values that fail to parse (NaN) are normalised to null so no downstream
+  // arithmetic receives NaN and no string concatenation can occur.
+  const games = (data as Game[]).map(g => ({
+    ...g,
+    team1_seed: g.team1_seed != null
+      ? (parseInt(String(g.team1_seed), 10) || null)
+      : null,
+    team2_seed: g.team2_seed != null
+      ? (parseInt(String(g.team2_seed), 10) || null)
+      : null,
+  }))
+
+  return { ok: true, data: games }
 }
 
 // ── Mutations ─────────────────────────────────────────────────
