@@ -1,10 +1,12 @@
 // src/entities/tournament/api/index.ts
 //
-// Raw Supabase DB calls for the tournament entity.
-// No TanStack hooks, no React, no Context. Pure async functions only.
-// All admin-write operations are guarded via `withAdminAuth`.
+// completeTournament added (this PR) — sets status to 'completed',
+// signalling results are final. Distinct from lockTournament ('locked')
+// so the UI can show a "Finished" badge and the admin can clearly
+// distinguish an in-progress lock from a resolved tournament.
 //
-// Co-located dependency: ./templateService.ts
+// updateTournament's Partial Pick now includes 'status' so the mutation
+// layer can drive status transitions generically if needed.
 
 import { supabase, withAdminAuth } from '../../../shared/infra/supabaseClient'
 import {
@@ -57,13 +59,13 @@ export async function createTournament(
     const { data, error } = await supabase
       .from('tournaments')
       .insert({
-        name:                opts.name,
-        status:              'draft' as TournamentStatus,
-        round_names:         [],
-        scoring_config:      null,
-        requires_tiebreaker: false,
-        group_id:            opts.group_id ?? null,
-        game_type:           opts.game_type ?? 'bracket',
+        name:                      opts.name,
+        status:                    'draft' as TournamentStatus,
+        round_names:               [],
+        scoring_config:            null,
+        requires_tiebreaker:       false,
+        group_id:                  opts.group_id ?? null,
+        game_type:                 opts.game_type ?? 'bracket',
         survivor_elimination_rule: 'end_early',
       })
       .select()
@@ -90,11 +92,13 @@ export async function createTournament(
 
 /**
  * updateTournament — accepts any editable subset of Tournament fields.
+ * 'status' is included so callers can drive generic status transitions.
  */
 export async function updateTournament(
   id:      string,
   updates: Partial<Pick<Tournament,
     | 'name'
+    | 'status'
     | 'unlocks_at'
     | 'locks_at'
     | 'round_names'
@@ -102,6 +106,7 @@ export async function updateTournament(
     | 'requires_tiebreaker'
     | 'survivor_elimination_rule'
     | 'round_locks'
+    | 'show_game_numbers'
   >>,
 ): Promise<ServiceResult<Tournament>> {
   return withAdminAuth(async () => {
@@ -138,6 +143,24 @@ export async function lockTournament(id: string): Promise<ServiceResult<Tourname
       .select()
       .single()
     if (error || !data) return { ok: false, error: error?.message ?? 'Lock failed.' }
+    return { ok: true, data: data as Tournament }
+  })
+}
+
+/**
+ * completeTournament — marks a tournament as fully resolved.
+ * Distinct from 'locked': signals results are final and renders a
+ * "Finished" badge in the UI rather than the generic "Locked" state.
+ */
+export async function completeTournament(id: string): Promise<ServiceResult<Tournament>> {
+  return withAdminAuth(async () => {
+    const { data, error } = await supabase
+      .from('tournaments')
+      .update({ status: 'completed' as TournamentStatus })
+      .eq('id', id)
+      .select()
+      .single()
+    if (error || !data) return { ok: false, error: error?.message ?? 'Complete failed.' }
     return { ok: true, data: data as Tournament }
   })
 }

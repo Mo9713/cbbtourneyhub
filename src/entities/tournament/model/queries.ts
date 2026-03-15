@@ -4,39 +4,18 @@ import {
   useQuery,
   useMutation,
   useQueryClient,
-  type QueryClient,
-  type QueryKey,
 } from '@tanstack/react-query'
 
 import { unwrap }  from '../../../shared/lib/unwrap'
 import * as api    from '../api'
 import type { Game, Tournament } from '../../../shared/types'
 import type { CreateTournamentOptions } from '../api'
+import { safeInvalidate } from '../../../shared/lib/queryUtils'
 
-const REALTIME_DEBOUNCE_MS = 150
-const invalidateTimers = new Map<string, ReturnType<typeof setTimeout>>()
-
-// W-04 FIX: `list` alias removed — identical to `all` with misleading semantics.
 export const tournamentKeys = {
   all:   ['tournaments']                  as const,
   games: (tid: string) => ['games', tid] as const,
 } as const
-
-function safeInvalidate(qc: QueryClient, queryKey: QueryKey): void {
-  const keyStr = JSON.stringify(queryKey)
-  if (qc.isMutating() > 0) {
-    if (invalidateTimers.has(keyStr)) {
-      clearTimeout(invalidateTimers.get(keyStr)!)
-    }
-    const timer = setTimeout(() => {
-      void qc.invalidateQueries({ queryKey })
-      invalidateTimers.delete(keyStr)
-    }, REALTIME_DEBOUNCE_MS)
-    invalidateTimers.set(keyStr, timer)
-  } else {
-    void qc.invalidateQueries({ queryKey })
-  }
-}
 
 // ── Local variable types ──────────────────────────────────────
 
@@ -44,6 +23,7 @@ type UpdateTournamentVars = {
   id:      string
   updates: Partial<Pick<Tournament,
     | 'name'
+    | 'status'
     | 'unlocks_at'
     | 'locks_at'
     | 'round_names'
@@ -51,6 +31,7 @@ type UpdateTournamentVars = {
     | 'requires_tiebreaker'
     | 'survivor_elimination_rule'
     | 'round_locks'
+    | 'show_game_numbers'
   >>
 }
 
@@ -119,6 +100,16 @@ export function useLockTournamentMutation() {
   const qc = useQueryClient()
   return useMutation<Tournament, Error, string>({
     mutationFn: (id) => unwrap(api.lockTournament(id)),
+    onSuccess: () => {
+      safeInvalidate(qc, tournamentKeys.all)
+    },
+  })
+}
+
+export function useCompleteTournamentMutation() {
+  const qc = useQueryClient()
+  return useMutation<Tournament, Error, string>({
+    mutationFn: (id) => unwrap(api.completeTournament(id)),
     onSuccess: () => {
       safeInvalidate(qc, tournamentKeys.all)
     },

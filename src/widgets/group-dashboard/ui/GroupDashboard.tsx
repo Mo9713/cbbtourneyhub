@@ -23,7 +23,6 @@ export function GroupDashboard({ groupId }: GroupDashboardProps) {
   const { profile } = useAuth()
   
   const { data: group, isLoading, error } = useGroupDetailsQuery(groupId)
-  // FIX: Fetch the actual group members to strictly scope the leaderboards
   const { data: members = [] }            = useGroupMembersQuery(groupId)
   const { data: allTournaments = [] }     = useTournamentListQuery()
   const { data: rawData }                 = useLeaderboardRaw()
@@ -40,7 +39,6 @@ export function GroupDashboard({ groupId }: GroupDashboardProps) {
 
   const isOwner          = profile?.id === group?.owner_id
   const isAdmin          = profile?.is_admin ?? false
-  // Hide drafts from normal users, but show them to Admins so you can click & edit them
   const groupTournaments = allTournaments.filter((t: Tournament) => 
     t.group_id === groupId && (isAdmin || t.status !== 'draft')
   )
@@ -95,7 +93,6 @@ export function GroupDashboard({ groupId }: GroupDashboardProps) {
     const gameIds = new Set(games.map(g => g.id))
     const picks = rawData.allPicks.filter(p => gameIds.has(p.game_id))
 
-    // FIX: Filter allProfiles to ONLY include people who actually joined this group
     const memberUserIds = new Set(members.map(m => m.user_id))
     const groupProfiles = rawData.allProfiles.filter(p => memberUserIds.has(p.id))
 
@@ -109,7 +106,6 @@ export function GroupDashboard({ groupId }: GroupDashboardProps) {
     const gameIds = new Set(games.map(g => g.id))
     const picks = rawData.allPicks.filter(p => gameIds.has(p.game_id))
 
-    // FIX: Filter allProfiles to ONLY include people who actually joined this group
     const memberUserIds = new Set(members.map(m => m.user_id))
     const groupProfiles = rawData.allProfiles.filter(p => memberUserIds.has(p.id))
 
@@ -128,11 +124,15 @@ export function GroupDashboard({ groupId }: GroupDashboardProps) {
 
   const renderTournamentCard = (t: Tournament, isSurvivor: boolean) => {
     const locked = isPicksLocked(t, profile?.is_admin ?? false)
+    const isCompleted = t.status === 'completed'
 
     let statusLeft = null
     let statusRight = null
 
-    if (t.status === 'draft') {
+    if (isCompleted) {
+      statusLeft = <span className="text-slate-500">Status</span>
+      statusRight = <span className="text-violet-500 dark:text-violet-400 font-black">Finished</span>
+    } else if (t.status === 'draft') {
       statusLeft = <span className="text-slate-500">Status</span>
       statusRight = <span className="text-amber-500 font-black">Draft</span>
     } else if (isSurvivor) {
@@ -156,11 +156,15 @@ export function GroupDashboard({ groupId }: GroupDashboardProps) {
         : <span className="text-emerald-600 dark:text-emerald-500 font-black shadow-[0_0_8px_rgba(16,185,129,0.8)]">Open</span>
     }
 
+    const cardClasses = isCompleted
+      ? `border-violet-500/40 bg-violet-500/5 hover:border-violet-400/60`
+      : `${theme.panelBg} ${theme.borderBase} hover:border-amber-500/50`
+
     return (
       <button
         key={t.id}
         onClick={() => { selectTournament(t.id); setActiveView('bracket') }}
-        className={`text-left p-5 rounded-2xl border transition-all hover:scale-[1.02] active:scale-[0.99] w-full flex flex-col h-[180px] ${theme.panelBg} ${theme.borderBase} hover:border-amber-500/50`}
+        className={`text-left p-5 rounded-2xl border transition-all hover:scale-[1.02] active:scale-[0.99] w-full flex flex-col h-[180px] ${cardClasses}`}
       >
         <div className="flex items-start justify-between gap-3 w-full mb-2">
           <h3 className={`font-display text-xl font-bold uppercase tracking-wide leading-tight line-clamp-2 ${theme.textBase}`}>

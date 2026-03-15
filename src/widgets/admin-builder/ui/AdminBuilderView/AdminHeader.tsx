@@ -1,29 +1,41 @@
 // src/widgets/admin-builder/ui/AdminBuilderView/AdminHeader.tsx
-import { useState, useEffect } from 'react'
+
+import { useState, useEffect }   from 'react'
 import {
   Plus, Lock, Globe, AlertTriangle, Edit3,
-  RefreshCw, Trash2, X, ChevronRight,
+  RefreshCw, Trash2, X, ChevronRight, CheckCircle2,
 } from 'lucide-react'
-import { isoToInputCST, cstInputToISO, isPicksLocked } from '../../../../shared/lib/time'
-import type { Tournament, Game }        from '../../../../shared/types'
+import {
+  isoToInputCST,
+  cstInputToISO,
+  isPicksLocked,
+} from '../../../../shared/lib/time'
+import type { Tournament } from '../../../../shared/types'
 
 interface Props {
   tournament:         Tournament
-  games:              Game[]
   publishValid:       boolean
   onRename:           (name: string) => void
   onUpdate:           (updates: Partial<Tournament>) => void
   onPublish:          () => void
   onLock:             () => void
+  onComplete:         () => void
   onAddNextRound:     () => void
   onReload:           () => void
   onDeleteTournament: () => void
 }
 
 export default function AdminHeader({
-  tournament, publishValid,
-  onRename, onUpdate, onPublish, onLock,
-  onAddNextRound, onReload, onDeleteTournament,
+  tournament,
+  publishValid,
+  onRename,
+  onUpdate,
+  onPublish,
+  onLock,
+  onComplete,
+  onAddNextRound,
+  onReload,
+  onDeleteTournament,
 }: Props) {
   const [editingName,    setEditingName]    = useState(false)
   const [nameInput,      setNameInput]      = useState(tournament.name)
@@ -52,10 +64,20 @@ export default function AdminHeader({
   const inputCls = 'bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-amber-500/50 transition-colors'
 
   const isTimeLocked = isPicksLocked(tournament, false)
-  const displayStatus = tournament.status === 'draft' ? 'draft' 
-    : tournament.status === 'locked' ? 'locked'
-    : isTimeLocked ? 'time locked' 
-    : 'open'
+
+  const displayStatus =
+    tournament.status === 'draft'     ? 'draft'       :
+    tournament.status === 'completed' ? 'finished'    :
+    tournament.status === 'locked'    ? 'locked'      :
+    isTimeLocked                      ? 'time locked' :
+    'open'
+
+  const statusCls =
+    displayStatus === 'draft'       ? 'bg-amber-500/20 text-amber-400'       :
+    displayStatus === 'open'        ? 'bg-emerald-500/20 text-emerald-400'   :
+    displayStatus === 'finished'    ? 'bg-violet-500/20 text-violet-400'     :
+    displayStatus === 'time locked' ? 'bg-slate-700 text-amber-500 border border-amber-500/20' :
+    'bg-slate-700 text-slate-400'
 
   return (
     <div className="px-5 py-3 border-b border-amber-500/10 bg-amber-500/5 flex-shrink-0">
@@ -89,12 +111,8 @@ export default function AdminHeader({
                 <Edit3 size={12} className="text-slate-600 group-hover:text-amber-400 transition-colors" />
               </button>
             )}
-            
-            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-lg uppercase tracking-widest
-              ${displayStatus === 'draft' ? 'bg-amber-500/20 text-amber-400'  :
-                displayStatus === 'open'  ? 'bg-emerald-500/20 text-emerald-400' :
-                displayStatus === 'time locked' ? 'bg-slate-700 text-amber-500 border border-amber-500/20' :
-                                                'bg-slate-700 text-slate-400'}`}>
+
+            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-lg uppercase tracking-widest ${statusCls}`}>
               {displayStatus}
             </span>
           </div>
@@ -107,7 +125,7 @@ export default function AdminHeader({
         {/* ── Right: schedule + actions ── */}
         <div className="flex items-start gap-4 flex-wrap">
 
-          {/* FIX: Redundant Global Tip-off window hidden for Survivor mode */}
+          {/* Global Tip-off window — hidden for Survivor mode */}
           {tournament.game_type !== 'survivor' && (
             <div className="flex items-end gap-3 bg-slate-800/60 border border-slate-700 rounded-xl px-3 py-2">
               <div>
@@ -140,6 +158,7 @@ export default function AdminHeader({
               className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-all">
               <RefreshCw size={12} />
             </button>
+
             <button onClick={onAddNextRound}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-xs font-bold transition-all">
               <Plus size={11} /> Add Next Round
@@ -164,6 +183,17 @@ export default function AdminHeader({
               <button onClick={onLock}
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-600 hover:bg-slate-500 text-white rounded-lg text-xs font-bold transition-all">
                 <Lock size={11} /> Lock
+              </button>
+            )}
+
+            {/* Mark as Finished — only show on 'locked' to prevent double-fire */}
+            {tournament.status === 'locked' && (
+              <button
+                onClick={onComplete}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-600/80 hover:bg-violet-600 text-white border border-violet-500/40 rounded-lg text-xs font-bold transition-all"
+                title="Mark this tournament as finished. Renders a permanent 'Finished' badge for all participants."
+              >
+                <CheckCircle2 size={11} /> Mark as Finished
               </button>
             )}
 

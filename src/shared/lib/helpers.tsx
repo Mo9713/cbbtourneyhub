@@ -1,6 +1,6 @@
 // src/shared/lib/helpers.tsx
 import React from 'react'
-import { Globe, Edit3, Lock } from 'lucide-react'
+import { Globe, Edit3, Lock, CheckCircle2 } from 'lucide-react'
 import type { TournamentStatus } from '../types'
 
 export function fibonacci(n: number): number {
@@ -38,15 +38,22 @@ export const isTBDName = (n: string) =>
   !n || n === 'TBD' || n === 'BYE' || n.startsWith('Winner of Game')
 
 export const statusDot = (s: TournamentStatus) =>
-  s === 'open' ? 'bg-emerald-400' : s === 'draft' ? 'bg-amber-400' : 'bg-slate-600'
+  s === 'open'      ? 'bg-emerald-400' :
+  s === 'draft'     ? 'bg-amber-400'   :
+  s === 'completed' ? 'bg-violet-400'  :
+  'bg-slate-600'
 
 export const statusLabel = (s: TournamentStatus) =>
-  s === 'open' ? 'Open' : s === 'draft' ? 'Draft' : 'Locked'
+  s === 'open'      ? 'Open'      :
+  s === 'draft'     ? 'Draft'     :
+  s === 'completed' ? 'Finished'  :
+  'Locked'
 
 export function statusIcon(s: TournamentStatus): React.ReactNode {
-  if (s === 'open')  return <Globe size={11} className="text-emerald-400" />
-  if (s === 'draft') return <Edit3 size={11} className="text-amber-400" />
-  return               <Lock  size={11} className="text-slate-500" />
+  if (s === 'open')      return <Globe        size={11} className="text-emerald-400" />
+  if (s === 'draft')     return <Edit3        size={11} className="text-amber-400" />
+  if (s === 'completed') return <CheckCircle2 size={11} className="text-violet-400" />
+  return                        <Lock         size={11} className="text-slate-500" />
 }
 
 export const BD_REGIONS = ['East', 'West', 'South', 'Midwest', 'Final Four']

@@ -1,15 +1,12 @@
 // src/shared/types/index.ts
 //
-// M-03 FIX: 'leaderboard' removed from ActiveView.
-// ViewRouter mapped that case to <SettingsPage /> via fall-through,
-// making it a phantom route that could never render a leaderboard.
-// All leaderboard UX is now exclusively delivered through the
-// Standings tab embedded inside BracketView / SurvivorBracketView.
-// Removing it from the type union prevents any future code from
-// navigating to a ghost state and eliminates the dead guard in
-// useRealtimeSync (C-01).
+// STATUS CHANGELOG:
+//   'completed' added — signals a tournament is fully resolved and results
+//   are final. Treated as locked for all pick-submission purposes.
+//   Distinct from 'locked' so the UI can render a "Finished" badge
+//   and the admin can surface it as a deliberate end-state action.
 
-export type TournamentStatus = 'draft' | 'open' | 'locked'
+export type TournamentStatus = 'draft' | 'open' | 'locked' | 'completed'
 export type ThemeKey         = 'ember' | 'ice' | 'plasma' | 'forest' | 'mono'
 export type ActiveView       = 'home' | 'bracket' | 'admin' | 'settings' | 'group'
 export type TemplateKey      = 'blank' | 'standard' | 'bigdance'
@@ -82,7 +79,7 @@ export interface Tournament {
   game_type?:                'bracket' | 'survivor'
   round_locks?:              Record<number, string>
   survivor_elimination_rule?: 'end_early' | 'revive_all'
-  show_game_numbers?:        boolean // NEW
+  show_game_numbers?:        boolean
 }
 
 export interface Game {

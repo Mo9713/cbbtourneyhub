@@ -1,31 +1,43 @@
 // src/app/hooks/useRealtimeSync.ts
 //
 // ── Realtime Debounce Contract ────────────────────────────────
-// safeInvalidate (imported from shared/lib/queryUtils — C-04) defers
-// cache invalidation by 150ms when a local mutation is in-flight.
-// This prevents Supabase Realtime "echo" events (the DB confirming
-// our own write) from reverting in-flight optimistic UI updates.
+// safeInvalidate (imported from shared/lib/queryUtils) defers cache
+// invalidation by 150ms when a local mutation is in-flight, preventing
+// Supabase Realtime "echo" events from clobbering optimistic UI updates.
+//
+// ── Echo Suppression Narrowing (this PR) ─────────────────────
+// PREVIOUS: Both the `games` and `picks` handlers used an early `return`
+// guarded by `qc.isMutating({ mutationKey: ['makePick'] }) > 0`. This
+// silently dropped ALL realtime events — including admin score updates
+// from other sessions — whenever any pick mutation was in-flight.
+//
+// FIX for `games` table: The early return is removed entirely. Game rows
+// are NEVER written by the `makePick` mutation, so there is no echo
+// scenario to suppress. Admin winner declarations now propagate to all
+// clients immediately via safeInvalidate's 150ms deferred path.
+//
+// FIX for `picks` table: The early return is now narrowed to only
+// suppress events where the changed row belongs to the current user AND
+// a pick mutation is in-flight — the only case where an echo is harmful.
+// Picks from other users or admin actions are no longer dropped.
 //
 // ── Prefix Invalidation Contract ─────────────────────────────
 // invalidateQueries is called with exact: false (the TanStack Query
 // default). A key like ['picks', 'mine'] will match ALL compound
 // observer keys of the form ['picks', 'mine', tid, gameIds[]].
 
-import { useEffect, useRef }       from 'react'
-import { useQueryClient }          from '@tanstack/react-query'
-import type {
-  RealtimeChannel,
-}                                  from '@supabase/supabase-js'
+import { useEffect, useRef }    from 'react'
+import { useQueryClient }       from '@tanstack/react-query'
+import type { RealtimeChannel } from '@supabase/supabase-js'
 
-import { supabase }                from '../../shared/infra/supabaseClient'
-import { safeInvalidate }          from '../../shared/lib/queryUtils'
-import { tournamentKeys }          from '../../entities/tournament/model/queries'
-import { pickKeys }                from '../../entities/pick/model/queries'
-import { leaderboardKeys }         from '../../entities/leaderboard/model/queries'
-import { groupKeys }               from '../../entities/group/model/queries'
-// MOD-03 FIX: Import from the public slice API, not the internal model file.
-import { useAuth }                 from '../../features/auth'
-import { useUIStore }              from '../../shared/store/uiStore'
+import { supabase }             from '../../shared/infra/supabaseClient'
+import { safeInvalidate }       from '../../shared/lib/queryUtils'
+import { tournamentKeys }       from '../../entities/tournament/model/queries'
+import { pickKeys }             from '../../entities/pick/model/queries'
+import { leaderboardKeys }      from '../../entities/leaderboard/model/queries'
+import { groupKeys }            from '../../entities/group/model/queries'
+import { useAuth }              from '../../features/auth'
+import { useUIStore }           from '../../shared/store/uiStore'
 
 export function useRealtimeSync(): void {
   const qc          = useQueryClient()
@@ -37,7 +49,6 @@ export function useRealtimeSync(): void {
   const selectedIdRef = useRef(useUIStore.getState().selectedTournamentId)
   const snoopRef      = useRef(useUIStore.getState().snoopTargetId)
 
-  // ── Stable ref for Realtime channel ──────────────────────
   const channelRef = useRef<RealtimeChannel | null>(null)
 
   useEffect(() => {
@@ -81,21 +92,28 @@ export function useRealtimeSync(): void {
       .on('postgres_changes', {
         event: '*', schema: 'public', table: 'games',
       }, () => {
-        // FIX: Ignore the realtime echo if the user is actively spam-clicking picks
-        if (qc.isMutating({ mutationKey: ['makePick'] }) > 0) return
-
-        // FIX: Replaced broken ['games'] key with tournamentKeys.all. 
-        // Because TanStack Query keys are arrays (e.g., ['tournaments', 'games', id]), 
-        // we must target the root 'tournaments' level to flush them all!
+        // No early return here. Game rows are written exclusively by admin
+        // mutations — there is no pick-echo scenario on this table.
+        // safeInvalidate's 150ms deferral handles any coincidental overlap.
         safeInvalidate(qc, tournamentKeys.all)
         safeInvalidate(qc, leaderboardKeys.raw)
       })
 
       .on('postgres_changes', {
         event: '*', schema: 'public', table: 'picks',
-      }, () => {
-        // FIX: Ignore the realtime echo if the user is actively spam-clicking
-        if (qc.isMutating({ mutationKey: ['makePick'] }) > 0) return
+      }, (payload) => {
+        // Narrow the echo guard to the current user's own rows only.
+        // Dropping events from OTHER users' pick writes or admin actions
+        // was the root cause of standings latency in multi-user sessions.
+        const changedUserId =
+          (payload.new as { user_id?: string })?.user_id ??
+          (payload.old as { user_id?: string })?.user_id
+
+        const isOwnEcho =
+          changedUserId === profile.id &&
+          qc.isMutating({ mutationKey: ['makePick'] }) > 0
+
+        if (isOwnEcho) return
 
         safeInvalidate(qc, ['picks', 'mine'])
         safeInvalidate(qc, pickKeys.allMine())

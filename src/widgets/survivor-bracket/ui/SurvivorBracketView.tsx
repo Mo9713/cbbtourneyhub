@@ -1,11 +1,4 @@
 // src/widgets/survivor-bracket/ui/SurvivorBracketView.tsx
-//
-// C-03 FIX: getIsEliminated now receives allTournamentPicks (all
-// participants' picks) and the tournament object so it can correctly
-// evaluate the revive_all elimination rule.
-//
-// MOD-02 FIX: LeaderboardView is now imported from the leaderboard
-// widget's public index.ts rather than directly from its internal ui/.
 
 import { useMemo, useState }     from 'react'
 import { Ban }                   from 'lucide-react'
@@ -20,11 +13,10 @@ import { getActiveSurvivorRound } from '../../../shared/lib/time'
 import {
   getUsedTeams,
   getIsEliminated,
-  getAggregateSeedScore,
+  isEndEarlyResolved,
   useMakeSurvivorPickMutation,
   SurvivorGameCard,
 }                                from '../../../features/survivor'
-// MOD-02 FIX: Import via the public slice API, not the internal ui/ directory.
 import { LeaderboardView }       from '../../leaderboard'
 import Countdown                 from '../../../shared/ui/Countdown'
 import { useAuth }               from '../../../features/auth'
@@ -35,7 +27,7 @@ interface Props {
 }
 
 export function SurvivorBracketView({ tournamentId }: Props) {
-  const theme   = useTheme()
+  const theme       = useTheme()
   const { profile } = useAuth()
 
   const { data: tournaments = [] } = useTournamentListQuery()
@@ -51,23 +43,27 @@ export function SurvivorBracketView({ tournamentId }: Props) {
 
   const gameIds = useMemo(() => games.map((g: Game) => g.id), [games])
 
-  // C-03 FIX: Derive all tournament participants' picks from the leaderboard
-  // raw cache for revive_all evaluation. This ensures getIsEliminated has
-  // the global context required to detect mass-elimination events.
   const allTournamentPicks = useMemo<Pick[]>(() => {
     const gameIdSet = new Set(gameIds)
     return (raw?.allPicks ?? []).filter((p: Pick) => gameIdSet.has(p.game_id))
   }, [raw, gameIds])
 
   const activeRound = getActiveSurvivorRound(tournament)
-  const usedTeams   = getUsedTeams(picks)
-  const seedScore   = getAggregateSeedScore(picks, games)
 
-  // C-03 FIX: Pass allTournamentPicks and tournament to enable revive_all.
+  const usedTeams = useMemo(
+    () => getUsedTeams(picks, games),
+    [picks, games],
+  )
+
   const isEliminated = useMemo(() => {
     if (!tournament) return false
     return getIsEliminated(picks, games, allTournamentPicks, tournament)
   }, [picks, games, allTournamentPicks, tournament])
+
+  const isTournamentOver = useMemo(() => {
+    if (!tournament) return false
+    return isEndEarlyResolved(allTournamentPicks, games, tournament)
+  }, [allTournamentPicks, games, tournament])
 
   const southGames   = games.filter((g: Game) => g.region === 'South'   && g.round_num <= 4)
   const westGames    = games.filter((g: Game) => g.region === 'West'    && g.round_num <= 4)
@@ -79,7 +75,11 @@ export function SurvivorBracketView({ tournamentId }: Props) {
     pickMutation.mutate({ tournamentId, gameId, predictedWinner: teamName, roundNum, gameIds })
   }
 
-  const renderRegion = (name: string, regionGames: Game[], align: 'left' | 'right' | 'center') => {
+  const renderRegion = (
+    name:        string,
+    regionGames: Game[],
+    align:       'left' | 'right' | 'center',
+  ) => {
     const rounds = align === 'center' ? [5, 6] : [1, 2, 3, 4]
     return (
       <div className="flex flex-col w-full gap-4">
@@ -109,6 +109,7 @@ export function SurvivorBracketView({ tournamentId }: Props) {
                     usedTeams={usedTeams}
                     activeRound={activeRound}
                     isEliminated={isEliminated}
+                    isTournamentOver={isTournamentOver}
                     onMakePick={handleMakePick}
                   />
                 ))}
@@ -128,13 +129,20 @@ export function SurvivorBracketView({ tournamentId }: Props) {
         <div className="flex flex-col items-center xl:items-start text-center xl:text-left">
           <h1 className={`text-2xl font-black ${theme.textBase}`}>{tournament.name}</h1>
           <span className={`text-sm font-bold uppercase tracking-widest ${theme.textMuted}`}>Survivor Mode</span>
+          {isTournamentOver && (
+            <span className="mt-1 text-xs font-bold text-rose-400 uppercase tracking-widest">
+              Pool Concluded — Mass Elimination
+            </span>
+          )}
         </div>
 
         <div className="flex gap-2 bg-black/10 dark:bg-white/5 p-1.5 rounded-xl mt-4 xl:mt-0">
           <button
             onClick={() => setViewMode('bracket')}
             className={`px-6 py-2 rounded-lg font-bold text-sm transition-all ${
-              viewMode === 'bracket' ? `${theme.bg} ${theme.border} ${theme.accentB} shadow-sm` : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+              viewMode === 'bracket'
+                ? `${theme.bg} ${theme.border} ${theme.accentB} shadow-sm`
+                : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
             }`}
           >
             My Picks
@@ -142,7 +150,9 @@ export function SurvivorBracketView({ tournamentId }: Props) {
           <button
             onClick={() => setViewMode('standings')}
             className={`px-6 py-2 rounded-lg font-bold text-sm transition-all ${
-              viewMode === 'standings' ? `${theme.bg} ${theme.border} ${theme.accentB} shadow-sm` : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+              viewMode === 'standings'
+                ? `${theme.bg} ${theme.border} ${theme.accentB} shadow-sm`
+                : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
             }`}
           >
             Standings
@@ -150,41 +160,41 @@ export function SurvivorBracketView({ tournamentId }: Props) {
         </div>
 
         <div className="flex gap-3 mt-4 xl:mt-0 items-center">
-          <Countdown tournament={tournament} isAdmin={profile?.is_admin ?? false} timezone={profile?.timezone ?? null} />
-          <div className={`flex flex-col items-center px-4 py-1.5 rounded-lg ${theme.bgMd}`}>
-            <span className={`text-xs font-bold uppercase ${theme.textMuted}`}>Active Rd</span>
-            <span className={`text-lg font-black ${theme.accent}`}>{activeRound > 0 ? activeRound : 'Locked'}</span>
-          </div>
-          <div className={`flex flex-col items-center px-4 py-1.5 rounded-lg ${theme.bgMd}`}>
-            <span className={`text-xs font-bold uppercase ${theme.textMuted}`}>Seed Score</span>
-            <span className={`text-lg font-black ${theme.textBase}`}>{seedScore}</span>
-          </div>
+          <Countdown
+            tournament={tournament}
+            isAdmin={profile?.is_admin ?? false}
+            timezone={profile?.timezone ?? null}
+          />
+          {isEliminated && !isTournamentOver && (
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-rose-500/10 border border-rose-500/30">
+              <Ban size={12} className="text-rose-400" />
+              <span className="text-xs font-bold text-rose-400 uppercase tracking-widest">Eliminated</span>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* ── Main Content Area ── */}
       {viewMode === 'bracket' ? (
-        <div className="flex-1 overflow-y-auto pr-2">
-          {isEliminated && (
-            <div className="bg-red-500/10 border border-red-500/20 text-red-500 px-6 py-4 rounded-xl flex items-center gap-3 mb-8 shadow-sm">
-              <Ban size={24} />
-              <div>
-                <h3 className="font-bold text-lg">Eliminated</h3>
-                <p className="text-sm opacity-90">One of your picked teams lost. You are out of this survivor pool.</p>
+        <div className="flex-1 overflow-auto scrollbar-thin">
+          <div className="flex flex-col gap-10 min-w-max">
+            {/* Regional grid */}
+            <div className="grid grid-cols-[1fr_auto_1fr] gap-6">
+              <div className="flex flex-col gap-10">
+                {renderRegion('South', southGames, 'left')}
+                {renderRegion('West', westGames, 'left')}
+              </div>
+              <div className="flex flex-col items-center justify-center">
+                {renderRegion('Final Four', finalGames, 'center')}
+              </div>
+              <div className="flex flex-col gap-10">
+                {renderRegion('East', eastGames, 'right')}
+                {renderRegion('Midwest', midwestGames, 'right')}
               </div>
             </div>
-          )}
-
-          <div className="flex flex-col gap-12">
-            {renderRegion('South',   southGames,   'left')}
-            {renderRegion('West',    westGames,    'left')}
-            {renderRegion('East',    eastGames,    'right')}
-            {renderRegion('Midwest', midwestGames, 'right')}
-            {renderRegion('Finals',  finalGames,   'center')}
           </div>
         </div>
       ) : (
-        <div className={`flex-1 rounded-2xl border overflow-hidden shadow-xl ${theme.borderBase} bg-white dark:bg-slate-950`}>
+        <div className="flex-1 overflow-auto scrollbar-thin">
           <LeaderboardView tournament={tournament} />
         </div>
       )}

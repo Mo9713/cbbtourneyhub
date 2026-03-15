@@ -1,4 +1,12 @@
 // src/widgets/tournament-bracket/ui/BracketView/index.tsx
+//
+// allTournamentPicks guard updated (this PR): previously only populated
+// for survivor_elimination_rule === 'revive_all'. Now populates for ALL
+// survivor tournaments so isEndEarlyResolved has the data it needs.
+//
+// isTournamentOver computed here and exposed via BracketViewContext so
+// MatchupColumn can pass it down to SurvivorGameCard without prop-drilling
+// through BracketGrid.
 
 import { useState, useMemo, useCallback }      from 'react'
 import { useTheme }                            from '../../../../shared/lib/theme'
@@ -19,7 +27,10 @@ import { useMyPicks, useMakePick, useSaveTiebreaker } from '../../../../entities
 import { useLeaderboardRaw }                   from '../../../../entities/leaderboard/model/queries'
 import { buildPickMap, sortedRounds, getChampGame }   from '../../../../features/bracket/model/selectors'
 import { useGames, useTournamentListQuery }    from '../../../../entities/tournament/model/queries'
-import { useMakeSurvivorPickMutation }         from '../../../../features/survivor'
+import {
+  useMakeSurvivorPickMutation,
+  isEndEarlyResolved,
+}                                              from '../../../../features/survivor'
 import BracketHeader                           from './BracketHeader'
 import BracketGrid                             from './BracketGrid'
 import TiebreakerPanel                         from './TiebreakerPanel'
@@ -69,17 +80,23 @@ export default function BracketView({
   const { mutate: makeSurvivorPick }    = useMakeSurvivorPickMutation()
 
   const { data: raw } = useLeaderboardRaw()
-  const allTournamentPicks = useMemo<Pick[] | undefined>(() => {
-    if (
-      !tournament ||
-      tournament.game_type !== 'survivor' ||
-      tournament.survivor_elimination_rule !== 'revive_all' ||
-      readOnly
-    ) return undefined
 
+  // Populate allTournamentPicks for ALL survivor tournaments (not just revive_all).
+  // isEndEarlyResolved needs this data to detect mass-elimination events regardless
+  // of which elimination rule is configured.
+  const allTournamentPicks = useMemo<Pick[] | undefined>(() => {
+    if (!tournament || tournament.game_type !== 'survivor' || readOnly) return undefined
     const gameIdSet = new Set(games.map((g: Game) => g.id))
     return (raw?.allPicks ?? []).filter((p: Pick) => gameIdSet.has(p.game_id))
   }, [raw, tournament, games, readOnly])
+
+  // Data-derived "pool is over" signal for end_early tournaments.
+  // This is the correct lock gate for survivors — it does NOT depend on
+  // tournament.status, so an admin write cannot accidentally lock live survivors.
+  const isTournamentOver = useMemo<boolean>(() => {
+    if (!tournament || tournament.game_type !== 'survivor' || !allTournamentPicks) return false
+    return isEndEarlyResolved(allTournamentPicks, games, tournament)
+  }, [tournament, allTournamentPicks, games])
 
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null)
 
@@ -90,16 +107,16 @@ export default function BracketView({
   const isSurvivor = tournament?.game_type === 'survivor'
   const isBigDance = useMemo(() => games.some((g: Game) => g.region), [games])
 
-  const pickMap         = useMemo(() => buildPickMap(picks),                                         [picks])
-  const rounds          = useMemo(() => sortedRounds(games, isBigDance ? selectedRegion : null),     [games, isBigDance, selectedRegion])
-  const effectiveNames  = useMemo<EffectiveNames>(() => deriveEffectiveNames(games, picks),          [games, picks])
-  
-  const champion        = useMemo(() => deriveChampion(games, picks, effectiveNames),                [games, picks, effectiveNames])
-  const champGame       = useMemo(() => getChampGame(games),                                         [games])
-  const actualChampion  = useMemo(() => champGame?.actual_winner ?? null,                            [champGame])
-  
-  const gameNumbers     = useMemo(() => computeGameNumbers(games),                                   [games])
-  const eliminatedTeams = useMemo(() => deriveEliminatedTeams(games, effectiveNames),                [games, effectiveNames])
+  const pickMap         = useMemo(() => buildPickMap(picks),                                           [picks])
+  const rounds          = useMemo(() => sortedRounds(games, isBigDance ? selectedRegion : null),       [games, isBigDance, selectedRegion])
+  const effectiveNames  = useMemo<EffectiveNames>(() => deriveEffectiveNames(games, picks),            [games, picks])
+
+  const champion        = useMemo(() => deriveChampion(games, picks, effectiveNames),                  [games, picks, effectiveNames])
+  const champGame       = useMemo(() => getChampGame(games),                                           [games])
+  const actualChampion  = useMemo(() => champGame?.actual_winner ?? null,                              [champGame])
+
+  const gameNumbers     = useMemo(() => computeGameNumbers(games),                                     [games])
+  const eliminatedTeams = useMemo(() => deriveEliminatedTeams(games, effectiveNames),                  [games, effectiveNames])
 
   const score = useMemo(() => {
     if (!tournament) return { current: 0, max: 0 }
@@ -145,9 +162,10 @@ export default function BracketView({
     onPick:             handlePick,
     onSurvivorPick:     isSurvivor ? handleSurvivorPick : undefined,
     allTournamentPicks,
+    isTournamentOver,
     showGameNumbers:    tournament?.show_game_numbers ?? false,
-    theme               // NEW: Pass the active theme to the context provider!
-  }), [isLocked, readOnly, ownerName, handlePick, isSurvivor, handleSurvivorPick, allTournamentPicks, tournament, theme])
+    theme,
+  }), [isLocked, readOnly, ownerName, handlePick, isSurvivor, handleSurvivorPick, allTournamentPicks, isTournamentOver, tournament, theme])
 
   if (!tournament || !profile) return null
 
@@ -169,7 +187,9 @@ export default function BracketView({
               <button
                 onClick={() => setViewMode('bracket')}
                 className={`px-6 py-1.5 rounded-lg font-bold text-sm transition-all ${
-                  viewMode === 'bracket' ? `${theme.bg} ${theme.border} ${theme.accentB} shadow-sm` : 'text-slate-500 hover:text-slate-300'
+                  viewMode === 'bracket'
+                    ? `${theme.bg} ${theme.border} ${theme.accentB} shadow-sm`
+                    : 'text-slate-500 hover:text-slate-300'
                 }`}
               >
                 My Bracket
@@ -177,7 +197,9 @@ export default function BracketView({
               <button
                 onClick={() => setViewMode('standings')}
                 className={`px-6 py-1.5 rounded-lg font-bold text-sm transition-all ${
-                  viewMode === 'standings' ? `${theme.bg} ${theme.border} ${theme.accentB} shadow-sm` : 'text-slate-500 hover:text-slate-300'
+                  viewMode === 'standings'
+                    ? `${theme.bg} ${theme.border} ${theme.accentB} shadow-sm`
+                    : 'text-slate-500 hover:text-slate-300'
                 }`}
               >
                 Standings

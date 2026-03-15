@@ -1,13 +1,14 @@
 // src/widgets/admin-builder/ui/AdminBuilderView/index.tsx
 
-import { useState, useMemo, useCallback, useEffect } from 'react'
-import { useQueryClient }   from '@tanstack/react-query'
+import React, { useState, useMemo, useCallback } from 'react'
+import { useQueryClient }                 from '@tanstack/react-query'
 
 import {
   useGames,
   useUpdateTournamentMutation,
   usePublishTournamentMutation,
   useLockTournamentMutation,
+  useCompleteTournamentMutation,
   useDeleteTournamentMutation,
   useTournamentListQuery,
   usePatchGamesCache,
@@ -27,7 +28,6 @@ export default function AdminBuilderView() {
   const qc = useQueryClient()
   const { setConfirmModal, pushToast } = useUIStore()
 
-  // ── Tournament data ───────────────────────────────────────
   const { data: tournaments = [] } = useTournamentListQuery()
   const selectedTournamentId       = useUIStore((s) => s.selectedTournamentId)
 
@@ -39,11 +39,11 @@ export default function AdminBuilderView() {
   const { data: games = [] } = useGames(tournament?.id ?? null)
   const patchGamesCache      = usePatchGamesCache()
 
-  // ── Mutation hooks ────────────────────────────────────────
-  const updateTournamentM  = useUpdateTournamentMutation()
-  const publishTournamentM = usePublishTournamentMutation()
-  const lockTournamentM    = useLockTournamentMutation()
-  const deleteTournamentM  = useDeleteTournamentMutation()
+  const updateTournamentM   = useUpdateTournamentMutation()
+  const publishTournamentM  = usePublishTournamentMutation()
+  const lockTournamentM     = useLockTournamentMutation()
+  const completeTournamentM = useCompleteTournamentMutation()
+  const deleteTournamentM   = useDeleteTournamentMutation()
 
   const renameTournament = useCallback(async (newName: string): Promise<void> => {
     if (!tournament) return
@@ -65,6 +65,26 @@ export default function AdminBuilderView() {
     await lockTournamentM.mutateAsync(tournament.id)
   }, [tournament, lockTournamentM])
 
+  const handleCompleteTournament = useCallback(() => {
+    if (!tournament) return
+    setConfirmModal({
+      title:        'Mark as Finished',
+      message:      `Mark "${tournament.name}" as finished? This will display a permanent "Finished" badge for all participants. The tournament can still be viewed but picks are permanently locked.`,
+      confirmLabel: 'Mark as Finished',
+      dangerous:    false,
+      onCancel:  () => setConfirmModal(null),
+      onConfirm: async () => {
+        setConfirmModal(null)
+        try {
+          await completeTournamentM.mutateAsync(tournament.id)
+          pushToast(`"${tournament.name}" marked as finished.`, 'success')
+        } catch (err) {
+          pushToast(err instanceof Error ? err.message : 'Failed to complete tournament.', 'error')
+        }
+      },
+    })
+  }, [tournament, completeTournamentM, setConfirmModal, pushToast])
+
   const handleDeleteTournament = useCallback(() => {
     if (!tournament) return
     const gameIds = games.map((g: Game) => g.id)
@@ -85,7 +105,6 @@ export default function AdminBuilderView() {
     })
   }, [tournament, games, deleteTournamentM, setConfirmModal, pushToast])
 
-  // ── Bracket mutations ─────────────────────────────────────
   const updateGame = useCallback(async (id: string, updates: Partial<Game>): Promise<string | null> => {
     const tid = tournament?.id
     if (!tid) return 'No tournament selected'
@@ -108,11 +127,13 @@ export default function AdminBuilderView() {
   const addGameToRound = useCallback(async (round: number): Promise<string | null> => {
     const tid = tournament?.id
     if (!tid) return 'No tournament selected'
-    const result = await gameService.addGameToRound(tid, round, 0)
+    const roundGames = games.filter((g: Game) => g.round_num === round)
+    const maxSort = roundGames.length > 0 ? Math.max(...roundGames.map((g: Game) => g.sort_order ?? 0)) : -1
+    const result = await gameService.addGameToRound(tid, round, maxSort + 1)
     if (!result.ok) return result.error
     void qc.invalidateQueries({ queryKey: tournamentKeys.games(tid) })
     return null
-  }, [tournament?.id, qc])
+  }, [tournament?.id, games, qc])
 
   const addNextRound = useCallback(async (): Promise<string | null> => {
     const tid = tournament?.id
@@ -126,148 +147,93 @@ export default function AdminBuilderView() {
     return null
   }, [tournament?.id, games, qc])
 
-  const deleteGame = useCallback(async (game: Game): Promise<string | null> => {
+  const handleDeleteGame = useCallback(async (game: Game): Promise<string | null> => {
     const tid = tournament?.id
     if (!tid) return 'No tournament selected'
     const gameNums = computeGameNumbers(games)
-    const result   = await gameService.deleteGame(game, games, gameNums)
+    const result = await gameService.deleteGame(game, games, gameNums)
     if (!result.ok) return result.error
     void qc.invalidateQueries({ queryKey: tournamentKeys.games(tid) })
     return null
   }, [tournament?.id, games, qc])
 
-  const linkGames = useCallback(async (fromId: string, toId: string, slot: 'team1_name' | 'team2_name'): Promise<string | null> => {
+  const handleUnlinkGame = useCallback(async (gameId: string): Promise<string | null> => {
     const tid = tournament?.id
     if (!tid) return 'No tournament selected'
+    const gameToUnlink = games.find((g: Game) => g.id === gameId)
+    if (!gameToUnlink) return 'Game not found'
+
     const gameNums = computeGameNumbers(games)
-    const fromGame = games.find((g: Game) => g.id === fromId)
-    if (!fromGame) return 'Game not found'
-    patchGamesCache(tid, (prev) => prev.map((g: Game) => {
-      if (g.id === fromId) return { ...g, next_game_id: toId }
-      if (g.id === toId)   return { ...g, [slot]: `Winner of Game #${gameNums[fromId]}` }
-      return g
-    }))
-    const result = await gameService.linkGames(fromGame, toId, slot, gameNums[fromId], games, gameNums)
-    if (!result.ok) {
-      void qc.invalidateQueries({ queryKey: tournamentKeys.games(tid) })
-      return result.error
-    }
+    const result = await gameService.unlinkGame(gameToUnlink, games, gameNums)
+    if (!result.ok) return result.error
     void qc.invalidateQueries({ queryKey: tournamentKeys.games(tid) })
     return null
-  }, [tournament?.id, games, patchGamesCache, qc])
+  }, [tournament?.id, games, qc])
 
-  const unlinkGame = useCallback(async (fromId: string): Promise<string | null> => {
+  const [linkingFromId, setLinkingFromId] = useState<string | null>(null)
+
+  const handleStartLink = useCallback((gameId: string) => {
+    setLinkingFromId(gameId)
+  }, [])
+
+  const handleCompleteLink = useCallback(async (targetId: string) => {
+    if (!linkingFromId || linkingFromId === targetId) { setLinkingFromId(null); return }
     const tid = tournament?.id
-    if (!tid) return 'No tournament selected'
+    if (!tid) return
+
+    const fromGame = games.find((g: Game) => g.id === linkingFromId)
+    if (!fromGame) return
+
     const gameNums = computeGameNumbers(games)
-    const fromGame = games.find((g: Game) => g.id === fromId)
-    if (!fromGame) return 'Game not found'
-    patchGamesCache(tid, (prev) => prev.map((g: Game) => g.id === fromId ? { ...g, next_game_id: null } : g))
-    const result = await gameService.unlinkGame(fromGame, games, gameNums)
+    const fromGameNumber = gameNums[fromGame.id] ?? 0
+
+    const feeders = games
+      .filter((g: Game) => g.next_game_id === targetId)
+      .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+    const slot = feeders.length > 0 ? 'team2_name' : 'team1_name'
+
+    const result = await gameService.linkGames(fromGame, targetId, slot, fromGameNumber, games, gameNums)
+
     if (!result.ok) {
+      pushToast(result.error, 'error')
+    } else {
       void qc.invalidateQueries({ queryKey: tournamentKeys.games(tid) })
-      return result.error
     }
-    void qc.invalidateQueries({ queryKey: tournamentKeys.games(tid) })
-    return null
-  }, [tournament?.id, games, patchGamesCache, qc])
+    setLinkingFromId(null)
+  }, [linkingFromId, games, tournament?.id, pushToast, qc])
 
-  const handleDeleteGame = useCallback((game: Game) => {
-    setConfirmModal({
-      title:        'Delete Game',
-      message:      `Delete Round ${game.round_num} game (${game.team1_name} vs ${game.team2_name})?`,
-      dangerous:    true,
-      confirmLabel: 'Delete',
-      onCancel:  () => setConfirmModal(null),
-      onConfirm: async () => {
-        setConfirmModal(null)
-        const err = await deleteGame(game)
-        if (err) pushToast(err, 'error')
-      },
-    })
-  }, [deleteGame, setConfirmModal, pushToast])
-
-  // ── UI state ──────────────────────────────────────────────
-  const [linkingFromId,  setLinkingFromId]  = useState<string | null>(null)
-  const [selectedRegion, setSelectedRegion] = useState<string | null>(null)
-  const [draggedGameId,  setDraggedGameId]  = useState<string | null>(null)
+  const [draggedGameId, setDraggedGameId] = useState<string | null>(null)
   const [dragOverGameId, setDragOverGameId] = useState<string | null>(null)
 
-  const gameNumbers  = useMemo(() => computeGameNumbers(games), [games])
-  const maxRound     = useMemo(
-    () => (games.length ? Math.max(...games.map((g: Game) => g.round_num)) : 1),
-    [games],
-  )
-  const isBigDance   = useMemo(() => games.some((g: Game) => g.region), [games])
-  const publishValid = useMemo(() => {
-    const nonChamp = games.filter((g: Game) => g.round_num < maxRound)
-    return nonChamp.length === 0 || nonChamp.every((g: Game) => g.next_game_id)
-  }, [games, maxRound])
-
-  const displayGames = useMemo(
-    () => (!isBigDance || !selectedRegion
-      ? games
-      : games.filter((g: Game) => g.region === selectedRegion)),
-    [games, isBigDance, selectedRegion],
-  )
-
-  const rounds = useMemo(() => {
-    const map = new Map<number, Game[]>()
-    displayGames.forEach((g: Game) => {
-      if (!map.has(g.round_num)) map.set(g.round_num, [])
-      map.get(g.round_num)!.push(g)
-    })
-    return Array.from(map.entries())
-      .sort(([a], [b]) => a - b)
-      .map(
-        ([r, gs]) =>
-          [r, gs.sort((a: Game, b: Game) => (a.sort_order ?? 0) - (b.sort_order ?? 0))] as [number, Game[]],
-      )
-  }, [displayGames])
-
-  // ── ESC cancel link ───────────────────────────────────────
-  useEffect(() => {
-    if (!linkingFromId) return
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setLinkingFromId(null) }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [linkingFromId])
-
-  // ── Link handlers ─────────────────────────────────────────
-  const handleStartLink    = useCallback((id: string) => setLinkingFromId(id), [])
-  const handleCompleteLink = useCallback(
-    async (toId: string, slot: 'team1_name' | 'team2_name') => {
-      if (!linkingFromId) return
-      await linkGames(linkingFromId, toId, slot)
-      setLinkingFromId(null)
-    },
-    [linkingFromId, linkGames],
-  )
-
-  // ── Drag handlers ─────────────────────────────────────────
-  const handleDragStart = useCallback((id: string) => setDraggedGameId(id), [])
-  const handleDragOver  = useCallback((e: React.DragEvent, id: string) => {
+  const handleDragStart = useCallback((gameId: string) => setDraggedGameId(gameId), [])
+  
+  const handleDragOver = useCallback((e: React.DragEvent, gameId: string) => {
     e.preventDefault()
-    setDragOverGameId(id)
+    setDragOverGameId(gameId)
   }, [])
-  const handleDragEnd   = useCallback(() => {
+  
+  const handleDragEnd = useCallback(() => { 
     setDraggedGameId(null)
-    setDragOverGameId(null)
+    setDragOverGameId(null) 
   }, [])
+
   const handleDrop = useCallback(
     async (e: React.DragEvent, targetId: string) => {
       e.preventDefault()
-      if (!draggedGameId) return
-      const roundNum = games.find((g: Game) => g.id === draggedGameId)?.round_num
+      if (!draggedGameId || draggedGameId === targetId) { handleDragEnd(); return }
+      const dragRound = games.find((g: Game) => g.id === draggedGameId)?.round_num
+      const dropRound = games.find((g: Game) => g.id === targetId)?.round_num
+      if (dragRound !== dropRound) { handleDragEnd(); return }
+
       const sorted   = games
-        .filter((g: Game) => g.round_num === roundNum)
+        .filter((g: Game) => g.round_num === dragRound)
         .sort((a: Game, b: Game) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
       const fromIdx  = sorted.findIndex((g: Game) => g.id === draggedGameId)
       const toIdx    = sorted.findIndex((g: Game) => g.id === targetId)
       if (fromIdx === -1 || toIdx === -1) { handleDragEnd(); return }
 
-      const reordered      = [...sorted]
-      const [removed]      = reordered.splice(fromIdx, 1)
+      const reordered = [...sorted]
+      const [removed] = reordered.splice(fromIdx, 1)
       reordered.splice(toIdx, 0, removed)
       await Promise.all(reordered.map((g: Game, i: number) => updateGame(g.id, { sort_order: i })))
       handleDragEnd()
@@ -275,7 +241,25 @@ export default function AdminBuilderView() {
     [draggedGameId, games, updateGame, handleDragEnd],
   )
 
-  // ── Reload ────────────────────────────────────────────────
+  const maxRound     = games.length ? Math.max(...games.map((g: Game) => g.round_num)) : 0
+  const gameNumbers  = useMemo(() => computeGameNumbers(games), [games])
+  const isBigDance   = useMemo(() => games.some((g: Game) => g.region), [games])
+  const publishValid = useMemo(() => {
+    const nonFinals = games.filter((g: Game) => !!g.next_game_id)
+    return nonFinals.length === 0 || nonFinals.every((g: Game) => !!g.next_game_id)
+  }, [games])
+
+  const rounds = useMemo(() => {
+    const map = new Map<number, Game[]>()
+    for (const g of games) {
+      if (!map.has(g.round_num)) map.set(g.round_num, [])
+      map.get(g.round_num)!.push(g)
+    }
+    return Array.from(map.entries()).sort((a, b) => a[0] - b[0])
+  }, [games])
+
+  const [selectedRegion, setSelectedRegion] = useState<string | null>(null)
+
   const handleReload = useCallback(() => {
     if (!tournament) return
     void qc.invalidateQueries({ queryKey: tournamentKeys.games(tournament.id) })
@@ -288,12 +272,12 @@ export default function AdminBuilderView() {
     <div className="flex flex-col h-full overflow-hidden">
       <AdminHeader
         tournament={tournament}
-        games={games}
         publishValid={publishValid}
         onRename={renameTournament}
         onUpdate={(upd) => updateTournament(upd as Partial<Tournament>)}
         onPublish={publishTournament}
         onLock={lockTournament}
+        onComplete={handleCompleteTournament}
         onAddNextRound={addNextRound}
         onReload={handleReload}
         onDeleteTournament={handleDeleteTournament}
@@ -348,7 +332,7 @@ export default function AdminBuilderView() {
         onSetWinner={setWinner}
         onDeleteGame={handleDeleteGame}
         onAddGameToRound={addGameToRound}
-        onUnlinkGame={unlinkGame}
+        onUnlinkGame={handleUnlinkGame}
         onDragStart={handleDragStart}
         onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}

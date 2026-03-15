@@ -1,27 +1,81 @@
 // src/features/survivor/model/selectors.ts
 //
-// C-03 FIX: getIsEliminated now accepts allPicks and tournament to
-// correctly evaluate the revive_all elimination rule.
+// BUG FIX (this PR): getUsedTeams now accepts `games` and decodes slot
+// keys ('team1'/'team2') to actual team name strings before returning.
+// Without decoding, usedTeams.includes(teamName) in SurvivorGameCard
+// always returned false — burned teams appeared available to re-pick.
 //
-// When survivor_elimination_rule === 'revive_all', a user who lost their
-// pick is NOT considered eliminated if every other active participant also
-// lost their pick in the same round (mass elimination = mass revival).
+// BUG FIX (this PR): getIsEliminated's user-elimination detection loop
+// now decodes slot keys before comparing against actual_winner, using
+// isTeamMatch for case-insensitive normalization. Previously, comparing
+// 'team1' against 'Duke' always yielded inequality, flagging every pick
+// as wrong regardless of outcome.
 //
-// All seed values continue to use Number() casting to prevent string
-// concatenation bugs (e.g. "8" + "1" = "81" vs 8 + 1 = 9).
+// NEW: isEndEarlyResolved — determines whether the entire pool is dead
+// under the 'end_early' rule. Used by BracketView/MatchupColumn and
+// SurvivorBracketView to lock all participants out of future rounds
+// when every active picker was eliminated in the same resolved round.
+// This is data-derived (picks + games), never from tournament.status,
+// so it cannot be accidentally triggered by an admin status write.
 
+import { isTeamMatch }              from '../../../shared/lib/bracketMath'
 import type { Pick, Game, Tournament } from '../../../shared/types'
 
-export function getUsedTeams(userPicks: Pick[]): string[] {
-  return userPicks.map((pick) => pick.predicted_winner).filter(Boolean)
+// ── Internal helper ───────────────────────────────────────────
+
+/**
+ * Decodes a stored slot key ('team1'/'team2') to the resolved team name.
+ * Falls through to the raw value for any pick that already stores a name.
+ */
+function decodePickedTeam(predictedWinner: string, game: Game): string {
+  if (predictedWinner === 'team1') return game.team1_name
+  if (predictedWinner === 'team2') return game.team2_name
+  return predictedWinner
+}
+
+// ── Public API ────────────────────────────────────────────────
+
+/**
+ * Returns the set of team names this user has already committed to across
+ * all rounds. Slot keys are decoded to team names so that string-matching
+ * against game.team1_name / game.team2_name is correct.
+ *
+ * @param userPicks - The current user's picks for this tournament.
+ * @param games     - All games for this tournament (required for decoding).
+ */
+export function getUsedTeams(userPicks: Pick[], games: Game[]): string[] {
+  const gameMap = new Map(games.map(g => [g.id, g]))
+  return userPicks
+    .map(pick => {
+      const game = gameMap.get(pick.game_id)
+      if (!game || !pick.predicted_winner) return null
+      return decodePickedTeam(pick.predicted_winner, game)
+    })
+    .filter((name): name is string => !!name)
+}
+
+/**
+ * Returns aggregate seed score for display — sum of seeds of correctly-picked
+ * teams. All seed values use Number() casting to prevent string concatenation.
+ */
+export function getAggregateSeedScore(userPicks: Pick[], games: Game[]): number {
+  const gameMap = new Map(games.map(g => [g.id, g]))
+  return userPicks.reduce((acc, pick) => {
+    const game = gameMap.get(pick.game_id)
+    if (!game?.actual_winner) return acc
+    const decoded = decodePickedTeam(pick.predicted_winner, game)
+    if (!isTeamMatch(decoded, game.actual_winner)) return acc
+    const seed = pick.predicted_winner === 'team1' ? game.team1_seed : game.team2_seed
+    return acc + (Number(seed) || 0)
+  }, 0)
 }
 
 /**
  * Determines whether the current user is eliminated from a survivor pool.
  *
- * For the default 'end_early' rule, returns true the moment any of the
- * user's picks is wrong. For 'revive_all', returns false if every other
- * active participant was also eliminated in the same round.
+ * For the 'end_early' rule, returns true the moment any pick is wrong.
+ * For 'revive_all', returns false if every other active participant was
+ * also eliminated in the same round (mass elimination = mass revival).
  *
  * @param userPicks  - The current user's picks for this tournament.
  * @param games      - All games for this tournament.
@@ -34,17 +88,20 @@ export function getIsEliminated(
   allPicks:   Pick[],
   tournament: Tournament,
 ): boolean {
+  const gameMap = new Map(games.map(g => [g.id, g]))
+
   // Find the earliest round in which this user lost a pick.
   let userFirstElimRound: number | null = null
 
   for (const pick of userPicks) {
-    const game = games.find(g => g.id === pick.game_id)
+    const game = gameMap.get(pick.game_id)
     if (!game?.actual_winner) continue
 
-    const actual    = game.actual_winner.trim().toLowerCase()
-    const predicted = pick.predicted_winner?.trim().toLowerCase()
+    // Decode slot key before comparison — raw 'team1'/'team2' never
+    // matches an actual winner name like 'Duke'.
+    const decoded = decodePickedTeam(pick.predicted_winner, game)
 
-    if (actual !== predicted) {
+    if (!isTeamMatch(decoded, game.actual_winner)) {
       if (userFirstElimRound === null || game.round_num < userFirstElimRound) {
         userFirstElimRound = game.round_num
       }
@@ -54,7 +111,7 @@ export function getIsEliminated(
   // User has not lost any pick — still alive.
   if (userFirstElimRound === null) return false
 
-  // User is out on the default rule.
+  // User is out under the default rule.
   if (tournament.survivor_elimination_rule !== 'revive_all') return true
 
   // ── REVIVE_ALL check ────────────────────────────────────────
@@ -62,71 +119,110 @@ export function getIsEliminated(
   const eliminationRound = userFirstElimRound
   const roundGames = games.filter(g => g.round_num === eliminationRound)
 
-  // If the round is not fully resolved, we cannot confirm a mass revival.
+  // Cannot confirm a mass revival if the round is not fully resolved.
   if (!roundGames.every(g => !!g.actual_winner)) return true
 
   const roundGameIds = new Set(roundGames.map(g => g.id))
 
-  // Map players to their picks in this round (excluding already-eliminated players).
-  // "Already eliminated" = lost in a round BEFORE this one.
-  const earlierLosers = new Set<string>()
+  // Build per-player loss data, skipping users already eliminated in prior rounds.
+  const priorEliminated = new Set<string>()
+  const activePickers   = new Set<string>()
+  const lostThisRound   = new Set<string>()
+
+  // First pass: find who was already out before this round.
   for (const pick of allPicks) {
-    const game = games.find(g => g.id === pick.game_id)
-    if (!game?.actual_winner) continue
-    if (game.round_num >= eliminationRound) continue
-    if (game.actual_winner.trim().toLowerCase() !== pick.predicted_winner?.trim().toLowerCase()) {
-      earlierLosers.add(pick.user_id)
+    const game = gameMap.get(pick.game_id)
+    if (!game?.actual_winner || game.round_num >= eliminationRound) continue
+    const decoded = decodePickedTeam(pick.predicted_winner, game)
+    if (!isTeamMatch(decoded, game.actual_winner)) {
+      priorEliminated.add(pick.user_id)
     }
   }
 
-  // Gather the set of active pickers in this round and who among them lost.
-  const activePickersThisRound  = new Set<string>()
-  const eliminatedThisRound     = new Set<string>()
-
+  // Second pass: evaluate this round for non-prior-eliminated pickers.
   for (const pick of allPicks) {
-    if (!roundGameIds.has(pick.game_id))  continue
-    if (earlierLosers.has(pick.user_id)) continue
+    if (!roundGameIds.has(pick.game_id)) continue
+    if (priorEliminated.has(pick.user_id)) continue
 
-    activePickersThisRound.add(pick.user_id)
+    activePickers.add(pick.user_id)
 
-    const game = roundGames.find(g => g.id === pick.game_id)!
-    const actual    = game.actual_winner!.trim().toLowerCase()
-    const predicted = pick.predicted_winner?.trim().toLowerCase()
-
-    if (actual !== predicted) {
-      eliminatedThisRound.add(pick.user_id)
+    const game    = gameMap.get(pick.game_id)!
+    const decoded = decodePickedTeam(pick.predicted_winner, game)
+    if (!isTeamMatch(decoded, game.actual_winner ?? '')) {
+      lostThisRound.add(pick.user_id)
     }
   }
 
-  // Mass elimination: every active picker lost → everyone is revived.
-  if (
-    activePickersThisRound.size > 0 &&
-    eliminatedThisRound.size === activePickersThisRound.size
-  ) {
-    return false
-  }
+  // Mass revival: every active picker was eliminated in the same round.
+  if (activePickers.size > 0 && lostThisRound.size === activePickers.size) return false
 
   return true
 }
 
 /**
- * Calculates the aggregate seed score for tiebreaker scenarios.
- * Uses strict Number() casting to guarantee mathematical addition
- * (e.g., 8 seed + 1 seed = 9 points) instead of string concatenation.
+ * Returns true when the 'end_early' rule applies AND every active
+ * participant was eliminated in the most recently fully-resolved round.
+ *
+ * This is the data-derived "pool is over" signal for the lock gate in
+ * BracketView and SurvivorBracketView. It must NEVER be derived from
+ * tournament.status to avoid the admin-status-write false-lock bug.
+ *
+ * When this returns true, the entire pool is dead — including any user
+ * who happened to survive previous rounds. No further picks are valid.
+ *
+ * @param allPicks   - All participants' picks for this tournament.
+ * @param games      - All games for this tournament.
+ * @param tournament - The tournament being evaluated.
  */
-export function getAggregateSeedScore(userPicks: Pick[], games: Game[]): number {
-  let score = 0
+export function isEndEarlyResolved(
+  allPicks:   Pick[],
+  games:      Game[],
+  tournament: Tournament,
+): boolean {
+  if (tournament.survivor_elimination_rule !== 'end_early') return false
 
-  for (const pick of userPicks) {
-    const game = games.find(g => g.id === pick.game_id)
-    if (!game) continue
+  const gameMap = new Map(games.map(g => [g.id, g]))
 
-    if (pick.predicted_winner === game.team1_name && game.team1_seed) {
-      score += Number(game.team1_seed) || 0
-    } else if (pick.predicted_winner === game.team2_name && game.team2_seed) {
-      score += Number(game.team2_seed) || 0
+  // Find the highest fully-resolved round.
+  const resolvedRoundNums = [...new Set(
+    games.filter(g => !!g.actual_winner).map(g => g.round_num),
+  )]
+  if (resolvedRoundNums.length === 0) return false
+
+  const latestResolved = Math.max(...resolvedRoundNums)
+  const roundGames     = games.filter(g => g.round_num === latestResolved)
+
+  // The round must be 100% resolved — a partial round cannot confirm mass elimination.
+  if (!roundGames.every(g => !!g.actual_winner)) return false
+
+  const roundGameIds = new Set(roundGames.map(g => g.id))
+
+  // Track who was already eliminated before this round.
+  const priorEliminated = new Set<string>()
+  for (const pick of allPicks) {
+    const game = gameMap.get(pick.game_id)
+    if (!game?.actual_winner || game.round_num >= latestResolved) continue
+    const decoded = decodePickedTeam(pick.predicted_winner, game)
+    if (!isTeamMatch(decoded, game.actual_winner)) {
+      priorEliminated.add(pick.user_id)
     }
   }
 
-  return score
+  const activePickers    = new Set<string>()
+  const eliminatedLatest = new Set<string>()
+
+  for (const pick of allPicks) {
+    if (!roundGameIds.has(pick.game_id)) continue
+    if (priorEliminated.has(pick.user_id)) continue
+
+    activePickers.add(pick.user_id)
+
+    const game    = gameMap.get(pick.game_id)!
+    const decoded = decodePickedTeam(pick.predicted_winner, game)
+    if (!isTeamMatch(decoded, game.actual_winner ?? '')) {
+      eliminatedLatest.add(pick.user_id)
+    }
+  }
+
+  return activePickers.size > 0 && eliminatedLatest.size === activePickers.size
 }

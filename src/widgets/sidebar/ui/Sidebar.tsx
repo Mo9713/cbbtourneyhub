@@ -184,7 +184,10 @@ export default function Sidebar({ onClose, onOpenAddTournament, onToggleDesktop 
                       <Trophy size={16} className={isSelected ? 'text-amber-500' : 'opacity-70'} />
                       <span className="truncate flex-1 text-left">{t.name}</span>
                       <div className="flex gap-1 opacity-60 ml-auto">
-                        {t.status === 'locked' ? (
+                        {/* FIX: Added completed status dot support */}
+                        {t.status === 'completed' ? (
+                          <div className="w-1.5 h-1.5 rounded-full bg-violet-400" title="Finished" />
+                        ) : t.status === 'locked' ? (
                           <div className="w-1.5 h-1.5 rounded-full bg-slate-500" title="Locked" />
                         ) : t.status === 'open' ? (
                           <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]" title="Open" />

@@ -5,9 +5,43 @@
 // ARCHITECTURE RULE: Lock / unlock MATH uses ONLY epoch milliseconds.
 // isPicksLocked() NEVER receives a timezone preference.
 // Timezone preferences are used ONLY in display formatting fns.
+//
+// STATUS CHANGE: 'completed' now treated identically to 'locked' for
+// all pick-submission purposes. A completed tournament is always locked.
 // ─────────────────────────────────────────────────────────────
 
 import type { Tournament } from '../types'
+
+export interface TimezoneOption { label: string; value: string }
+
+export const TIMEZONE_OPTIONS: TimezoneOption[] = [
+  { label: 'Eastern Time — New York (ET)',       value: 'America/New_York'    },
+  { label: 'Central Time — Chicago (CT)',        value: 'America/Chicago'     },
+  { label: 'Mountain Time — Denver (MT)',        value: 'America/Denver'      },
+  { label: 'Mountain Time — Phoenix (no DST)',   value: 'America/Phoenix'     },
+  { label: 'Pacific Time — Los Angeles (PT)',    value: 'America/Los_Angeles' },
+  { label: 'Alaska Time (AKT)',                  value: 'America/Anchorage'   },
+  { label: 'Hawaii Time (HT)',                   value: 'Pacific/Honolulu'    },
+  { label: 'Atlantic Time — Halifax (AT)',       value: 'America/Halifax'     },
+  { label: 'Central Time — Winnipeg (CT)',       value: 'America/Winnipeg'    },
+  { label: 'Pacific Time — Vancouver (PT)',      value: 'America/Vancouver'   },
+  { label: 'UTC (Coordinated Universal Time)',   value: 'UTC'                 },
+  { label: 'London (GMT / BST)',                 value: 'Europe/London'       },
+  { label: 'Paris / Berlin (CET / CEST)',        value: 'Europe/Paris'        },
+  { label: 'Helsinki / Kyiv (EET / EEST)',       value: 'Europe/Helsinki'     },
+  { label: 'Dubai (GST, UTC+4)',                 value: 'Asia/Dubai'          },
+  { label: 'India (IST, UTC+5:30)',              value: 'Asia/Kolkata'        },
+  { label: 'Bangkok / Jakarta (ICT, UTC+7)',     value: 'Asia/Bangkok'        },
+  { label: 'China / Singapore (CST, UTC+8)',     value: 'Asia/Shanghai'       },
+  { label: 'Japan / Korea (JST, UTC+9)',         value: 'Asia/Tokyo'          },
+  { label: 'Sydney (AEST / AEDT)',               value: 'Australia/Sydney'    },
+  { label: 'Auckland (NZST / NZDT)',             value: 'Pacific/Auckland'    },
+]
+
+export function timezoneLabelFor(value: string | null): string {
+  if (!value) return 'Central Time — Chicago (CT)'
+  return TIMEZONE_OPTIONS.find(o => o.value === value)?.label ?? value
+}
 
 /**
  * Converts a Supabase UTC ISO 8601 string to epoch milliseconds.
@@ -25,25 +59,28 @@ export function getActiveSurvivorRound(tournament: Tournament | null): number {
   if (!tournament.round_locks) return 1 // Fallback if no locks configured
 
   const now = Date.now()
-  
+
   for (let r = 1; r <= 6; r++) {
     const lockIso = tournament.round_locks[r]
     // W-12 FIX: A missing lock time means the round hasn't locked yet.
     if (!lockIso) return r
     if (now < parseTournamentTimestamp(lockIso)) return r
   }
-  
+
   return 0 // All configured rounds are in the past
 }
 
 /**
  * Returns true if picks should currently be locked for the tournament.
- * Strict Integrity: Admins do NOT bypass time locks. Everyone plays by the same rules.
+ * 'completed' is treated identically to 'locked' — both permanently close picking.
+ * Strict Integrity: Admins do NOT bypass time locks.
  */
 export function isPicksLocked(tournament: Tournament, _isAdmin = false): boolean {
-  if (tournament.status === 'draft' || tournament.status === 'locked') return true
-  
-  // No admin bypass here! Strict adherence to the clock.
+  if (
+    tournament.status === 'draft'     ||
+    tournament.status === 'locked'    ||
+    tournament.status === 'completed'
+  ) return true
 
   if (tournament.game_type === 'survivor') {
     return getActiveSurvivorRound(tournament) === 0
@@ -51,7 +88,7 @@ export function isPicksLocked(tournament: Tournament, _isAdmin = false): boolean
 
   const now = Date.now()
   if (tournament.unlocks_at && now < parseTournamentTimestamp(tournament.unlocks_at)) return true
-  if (tournament.locks_at && now >= parseTournamentTimestamp(tournament.locks_at)) return true
+  if (tournament.locks_at   && now >= parseTournamentTimestamp(tournament.locks_at))  return true
 
   return false
 }
@@ -157,46 +194,15 @@ export function isoToInputCST(iso: string | null): string {
 export function inputInTzToISO(local: string, timezone: string | null): string | null {
   if (!local) return null
   const tz = timezone ?? DEFAULT_DISPLAY_TZ
-  const naiveUtc = new Date(`${local}:00Z`)
-  const p = getDatePartsInTz(naiveUtc, tz)
+  const naiveUtc   = new Date(`${local}:00Z`)
+  const p          = getDatePartsInTz(naiveUtc, tz)
   const wallAsUtcMs = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second)
-  const offsetMs   = naiveUtc.getTime() - wallAsUtcMs
-  const localAsUtc = new Date(`${local}:00Z`)
+  const offsetMs    = naiveUtc.getTime() - wallAsUtcMs
+  const localAsUtc  = new Date(`${local}:00Z`)
   return new Date(localAsUtc.getTime() + offsetMs).toISOString()
 }
 
 /** @deprecated Use inputInTzToISO(local, null) instead. */
 export function cstInputToISO(local: string): string | null {
   return inputInTzToISO(local, null)
-}
-
-export interface TimezoneOption { label: string; value: string }
-
-export const TIMEZONE_OPTIONS: TimezoneOption[] = [
-  { label: 'Eastern Time — New York (ET)',       value: 'America/New_York'    },
-  { label: 'Central Time — Chicago (CT)',        value: 'America/Chicago'     },
-  { label: 'Mountain Time — Denver (MT)',        value: 'America/Denver'      },
-  { label: 'Mountain Time — Phoenix (no DST)',   value: 'America/Phoenix'     },
-  { label: 'Pacific Time — Los Angeles (PT)',    value: 'America/Los_Angeles' },
-  { label: 'Alaska Time (AKT)',                  value: 'America/Anchorage'   },
-  { label: 'Hawaii Time (HT)',                   value: 'Pacific/Honolulu'    },
-  { label: 'Atlantic Time — Halifax (AT)',       value: 'America/Halifax'     },
-  { label: 'Central Time — Winnipeg (CT)',       value: 'America/Winnipeg'    },
-  { label: 'Pacific Time — Vancouver (PT)',      value: 'America/Vancouver'   },
-  { label: 'UTC (Coordinated Universal Time)',   value: 'UTC'                 },
-  { label: 'London (GMT / BST)',                 value: 'Europe/London'       },
-  { label: 'Paris / Berlin (CET / CEST)',        value: 'Europe/Paris'        },
-  { label: 'Helsinki / Kyiv (EET / EEST)',       value: 'Europe/Helsinki'     },
-  { label: 'Dubai (GST, UTC+4)',                 value: 'Asia/Dubai'          },
-  { label: 'India (IST, UTC+5:30)',              value: 'Asia/Kolkata'        },
-  { label: 'Bangkok / Jakarta (ICT, UTC+7)',     value: 'Asia/Bangkok'        },
-  { label: 'China / Singapore (CST, UTC+8)',     value: 'Asia/Shanghai'       },
-  { label: 'Japan / Korea (JST, UTC+9)',         value: 'Asia/Tokyo'          },
-  { label: 'Sydney (AEST / AEDT)',               value: 'Australia/Sydney'    },
-  { label: 'Auckland (NZST / NZDT)',             value: 'Pacific/Auckland'    },
-]
-
-export function timezoneLabelFor(value: string | null): string {
-  if (!value) return 'Central Time — Chicago (CT)'
-  return TIMEZONE_OPTIONS.find(o => o.value === value)?.label ?? value
 }
