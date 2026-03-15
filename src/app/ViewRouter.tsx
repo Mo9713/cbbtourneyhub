@@ -1,10 +1,4 @@
 // src/app/ViewRouter.tsx
-//
-// FIX: The dead 'leaderboard' case has been removed.
-// 'leaderboard' has been purged from the ActiveView type union, so this
-// switch statement no longer needs a case for it. All leaderboard UX
-// is delivered through the contextual Standings tab inside BracketView
-// and SurvivorBracketView.
 
 import { useAuth }                                from '../features/auth'
 import { HomePage as HomeView }                   from '../pages/home'
@@ -15,12 +9,14 @@ import { SettingsPage }                           from '../pages/settings'
 import { useUIStore }                             from '../shared/store/uiStore'
 
 export default function ViewRouter() {
-  const { profile }          = useAuth()
-  const activeView           = useUIStore((s) => s.activeView)
-  const selectedTournamentId = useUIStore((s) => s.selectedTournamentId)
+  const { profile } = useAuth()
+  const activeView  = useUIStore((s) => s.activeView)
 
   if (!profile) return null
 
+  // Strict enum mapping enforces isolation of the activeView state.
+  // The previous ambiguous fallback (selectedTournamentId ? BracketView : HomeView)
+  // caused the router to hijack the 'home' view when context IDs were preserved.
   switch (activeView) {
     case 'admin':
       return profile.is_admin ? <AdminBuilderView /> : <BracketView />
@@ -36,6 +32,6 @@ export default function ViewRouter() {
 
     case 'home':
     default:
-      return selectedTournamentId ? <BracketView /> : <HomeView />
+      return <HomeView />
   }
 }
