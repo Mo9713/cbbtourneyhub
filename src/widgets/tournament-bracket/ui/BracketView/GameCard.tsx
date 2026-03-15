@@ -72,9 +72,10 @@ export default function GameCard({
         {rows.map(({ actual, predicted, seed, score, inKey }, idx) => {
           const isTBD = isTBDName(predicted)
 
-          const isWinner = hasWinner && !isTBD && (
-            game.actual_winner === actual || game.actual_winner === predicted
-          )
+          // FIX: Strictly bind isWinner to the PREDICTED team slot. 
+          // A dead prediction will no longer steal a green background just because the real team won.
+          const isWinner = hasWinner && !isTBD && game.actual_winner === predicted
+          
           const isPicked     = !isTBD && userPick?.predicted_winner === predicted
           const isEliminated = !isTBD && !isWinner && eliminatedTeams.has(predicted)
 

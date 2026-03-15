@@ -187,9 +187,9 @@ export function calculateLocalScore(
 // ─────────────────────────────────────────────────────────────
 
 export function deriveChampion(
-  games:          Game[],
-  picks:          Pick[],
-  effectiveNames: EffectiveNames
+  games:           Game[],
+  picks:           Pick[],
+  _effectiveNames: EffectiveNames // FIX: Prefixed with underscore to ignore unused warning
 ): string | null {
   if (games.length === 0) return null
 
@@ -199,16 +199,15 @@ export function deriveChampion(
     games.find(g => g.round_num === maxRound)
 
   if (!champGame) return null
-  if (champGame.actual_winner) return champGame.actual_winner
 
-  const eff          = effectiveNames[champGame.id]
-  const currentTeam1 = eff?.team1.predicted ?? champGame.team1_name
-  const currentTeam2 = eff?.team2.predicted ?? champGame.team2_name
-
+  // FIX: Prioritize the user's explicit pick. Do NOT allow real-life results to overwrite the user's prediction.
   const directPick = picks.find(p => p.game_id === champGame.id)?.predicted_winner
-  if (directPick && (directPick === currentTeam1 || directPick === currentTeam2)) {
+  if (directPick && !isTBDName(directPick)) {
     return directPick
   }
+
+  // Fallback: If no prediction was made, show the real-world champion for read-only accuracy
+  if (champGame.actual_winner) return champGame.actual_winner
 
   return null
 }
@@ -250,7 +249,6 @@ export function computeConnectorLines(
     const inR  = getInRect(game.next_game_id, slot)
     if (!inR) continue
 
-    // No Y_OFFSET — coordinates land on the true geometric center of each dot.
     const inX = inR.left + inR.width  / 2 - containerRect.left + scrollLeft
     const inY = inR.top  + inR.height / 2 - containerRect.top  + scrollTop
 
@@ -279,7 +277,6 @@ export function computeAdminConnectorLines(
     const outX = outR.left + outR.width  / 2 - containerRect.left + scrollLeft
     const outY = outR.top  + outR.height / 2 - containerRect.top  + scrollTop
 
-    // Determine if this game feeds into the top (in1) or bottom (in2) slot of the next game
     const feeders = games
       .filter(g => g.next_game_id === game.next_game_id)
       .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.id.localeCompare(b.id))

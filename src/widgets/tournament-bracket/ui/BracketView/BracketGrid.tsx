@@ -15,7 +15,6 @@ import { useTheme }                      from '../../../../shared/lib/theme'
 
 const HEADER_H = 80
 
-// FIX: Fluid dynamic scaling ensures compact 8-team brackets (105px) and non-overlapping 64-team brackets (80px).
 function computeSlotH(numLeafSlots: number): number {
   if (numLeafSlots >= 32) return 80 
   if (numLeafSlots <= 8)  return 105
@@ -94,13 +93,14 @@ interface Props {
   gameNumbers:     Record<string, number>
   eliminatedTeams: Set<string>
   champion:        string | null
+  actualChampion:  string | null
   readOnly:        boolean
   ownerName?:      string
 }
 
 export default function BracketGrid({
   rounds, pickMap, effectiveNames, tournament, gameNumbers,
-  eliminatedTeams, champion, readOnly, ownerName,
+  eliminatedTeams, champion, actualChampion, readOnly, ownerName,
 }: Props) {
   const theme = useTheme()
   const maxRound = rounds.length > 0 ? Math.max(...rounds.map(([r]) => r)) : 1
@@ -116,7 +116,6 @@ export default function BracketGrid({
     [rounds, allDisplayGames, gameNumbers],
   )
 
-  // FIX: Properly apply slotH to totalHeight so asymmetrical/smaller brackets neatly compress.
   const rawLeafSlots  = slotGrid.get(minRound)?.length ?? 1
   const slotH         = computeSlotH(rawLeafSlots)
   const totalHeight   = Math.max(4, rawLeafSlots) * slotH + HEADER_H
@@ -235,6 +234,7 @@ export default function BracketGrid({
           <div className="flex-1 flex items-center justify-center px-1">
             <ChampionCallout
               champion={champion}
+              actualChampion={actualChampion}
               readOnly={readOnly}
               ownerName={ownerName}
             />
