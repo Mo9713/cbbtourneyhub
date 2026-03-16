@@ -59,7 +59,21 @@ export default function Sidebar({ onClose, onToggleDesktop }: SidebarProps) {
   const [isTournamentsOpen, setIsTournamentsOpen] = useState(true)
   const [pinnedIds, setPinnedIds]                 = useState<string[]>([])
   
-  const [expandedGroups, setExpandedGroups]       = useState<Record<string, boolean>>({})
+  const initialExpandedState = useMemo(() => {
+    const state: Record<string, boolean> = {}
+    groups.forEach((g: Group) => {
+      state[g.id] = true
+    })
+    return state
+  }, [groups])
+
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({})
+
+  useEffect(() => {
+    if (Object.keys(expandedGroups).length === 0 && Object.keys(initialExpandedState).length > 0) {
+      setExpandedGroups(initialExpandedState)
+    }
+  }, [initialExpandedState, expandedGroups])
 
   useEffect(() => {
     try {
@@ -108,8 +122,8 @@ export default function Sidebar({ onClose, onToggleDesktop }: SidebarProps) {
   return (
     <aside className={`w-64 h-full flex flex-col border-r shadow-2xl overflow-hidden relative bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 transition-colors duration-300`}>
 
-      {/* ── HEADER ── */}
-      <div className="flex items-center justify-between pl-4 pr-3 py-4 flex-shrink-0 border-b border-slate-200 dark:border-slate-800/50 bg-slate-100/50 dark:bg-black/10">
+      {/* ── HEADER (Hidden on Mobile, Visible on Desktop) ── */}
+      <div className="hidden md:flex items-center justify-between pl-4 pr-3 py-4 flex-shrink-0 border-b border-slate-200 dark:border-slate-800/50 bg-slate-100/50 dark:bg-black/10">
         <div className="flex-1 pr-4 flex items-center justify-start">
           <img
             src="/logo.png"

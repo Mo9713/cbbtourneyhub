@@ -1,5 +1,5 @@
 // src/entities/group/model/queries.ts
-
+import { useAuth } from '../../../features/auth'
 import { useQuery, useMutation, useQueryClient, type QueryClient, type QueryKey } from '@tanstack/react-query'
 import { unwrap }  from '../../../shared/lib/unwrap'
 import * as api    from '../api'
@@ -32,9 +32,13 @@ function safeInvalidate(qc: QueryClient, queryKey: QueryKey): void {
 }
 
 export function useUserGroupsQuery() {
+  const { profile } = useAuth() // Pull the profile ID
+
   return useQuery<Group[], Error, Group[]>({
-    queryKey: groupKeys.userGroups(),
+    // FIX: Tying the cache to profile.id forces an INSTANT refetch on mobile login!
+    queryKey: ['groups', profile?.id], 
     queryFn:  () => unwrap(api.fetchUserGroups()),
+    enabled:  !!profile?.id, // Only fetch when actually logged in
     select:   (data) => data ?? ([] as Group[]),
   })
 }

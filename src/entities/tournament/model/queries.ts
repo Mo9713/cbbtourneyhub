@@ -12,6 +12,10 @@ import type { Game, Tournament } from '../../../shared/types'
 import type { CreateTournamentOptions } from '../api'
 import { safeInvalidate } from '../../../shared/lib/queryUtils'
 
+// FIX: Import auth and group queries to apply global security filtering
+import { useAuth }            from '../../../features/auth'
+import { useUserGroupsQuery } from '../../group'
+
 export const tournamentKeys = {
   all:   ['tournaments']                  as const,
   games: (tid: string) => ['games', tid] as const,
@@ -40,24 +44,31 @@ type DeleteTournamentVars = { id: string; gameIds: string[] }
 // ── Queries ───────────────────────────────────────────────────
 
 export function useTournamentListQuery() {
+  const { profile }           = useAuth()
+  const { data: groups = [] } = useUserGroupsQuery()
+
   return useQuery<Tournament[], Error, Tournament[]>({
     queryKey: tournamentKeys.all,
     queryFn:  () => unwrap(api.fetchTournaments()),
-    select:   (data) => data ?? ([] as Tournament[]),
+    select:   (data) => {
+      const all = data ?? ([] as Tournament[])
+      
+      // Admins bypass the filter to manage all tournaments
+      if (profile?.is_admin) return all
+
+      // FIX: Secure the data boundary. Non-admins only see Global tournaments (!t.group_id) 
+      // OR tournaments inside a group they have successfully joined.
+      const myGroupIds = new Set(groups.map(g => g.id))
+      return all.filter(t => !t.group_id || myGroupIds.has(t.group_id))
+    },
   })
 }
 
 export function useGames(tournamentId: string | null) {
   return useQuery<Game[], Error, Game[]>({
     queryKey: tournamentKeys.games(tournamentId ?? ''),
-    // FIX (Type Assertion Danger): Previously called api.fetchGames(tournamentId!)
-    // which asserts non-null without a runtime guard. In React Strict Mode,
-    // effects run twice and this can fire with a null id before `enabled`
-    // suppresses it, crashing with a runtime TypeError. The conditional
-    // resolves to an empty array instead of asserting null away.
-    queryFn:  () => tournamentId
-      ? unwrap(api.fetchGames(tournamentId))
-      : Promise.resolve([] as Game[]),
+    // Strict Mode Fallback
+    queryFn:  () => tournamentId ? unwrap(api.fetchGames(tournamentId)) : Promise.resolve([]),
     enabled:  !!tournamentId,
     select:   (data) => data ?? ([] as Game[]),
   })

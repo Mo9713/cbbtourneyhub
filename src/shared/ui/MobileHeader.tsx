@@ -24,9 +24,13 @@ export default function MobileHeader({ onMenuOpen }: Props) {
         <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 overflow-hidden shadow-inner bg-slate-200 dark:bg-black/20`}>
           <span className="text-lg leading-none drop-shadow-md">{theme.logo}</span>
         </div>
-        <span className={`font-display font-extrabold text-lg tracking-tight uppercase ${theme.textBase}`}>
-          TH
-        </span>
+        <div className="flex items-center h-6">
+          <img 
+            src="/logo.png" 
+            alt="TourneyHub Logo" 
+            className="h-full w-auto object-contain drop-shadow-sm" 
+          />
+        </div>
       </div>
       
       <div className="w-8" aria-hidden /> {/* Spacer for centering */}
