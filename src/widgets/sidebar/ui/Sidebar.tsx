@@ -4,8 +4,7 @@ import { useState, useEffect, useMemo } from 'react'
 import {
   Trophy, Home, Settings, LogOut, PanelLeftClose,
   Settings2, Moon, Sun, Shield,
-  ChevronDown, ChevronRight, Search, Pin,
-  Check
+  ChevronDown, ChevronRight, Pin, Check, X
 } from 'lucide-react'
 
 import { useTheme }               from '../../../shared/lib/theme'
@@ -33,6 +32,19 @@ const getEffectiveStatus = (t: Tournament, now: number): Tournament['status'] =>
   return 'open'
 }
 
+const formatTimeLeft = (targetTime: number, now: number) => {
+  const diff = targetTime - now;
+  if (diff <= 0) return 'Locked';
+  const hours = Math.floor(diff / (1000 * 60 * 60));
+  const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+  
+  if (hours > 24) {
+      const days = Math.floor(hours / 24);
+      return `${days}d ${hours % 24}h`;
+  }
+  return `${hours}h ${minutes}m`;
+};
+
 export default function Sidebar({ onClose, onToggleDesktop }: SidebarProps) {
   const theme = useTheme()
   const { profile, signOut, updateUIMode } = useAuth()
@@ -48,13 +60,13 @@ export default function Sidebar({ onClose, onToggleDesktop }: SidebarProps) {
   const { data: groups = [] }                    = useUserGroupsQuery()
   const isAdmin = profile?.is_admin
 
+  // Increased ticker resolution for the countdown timer
   const [currentTime, setCurrentTime] = useState(Date.now())
   useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(Date.now()), 60000)
+    const timer = setInterval(() => setCurrentTime(Date.now()), 10000)
     return () => clearInterval(timer)
   }, [])
 
-  const [searchTerm, setSearchTerm]               = useState('')
   const [isGroupsOpen, setIsGroupsOpen]           = useState(true)
   const [isTournamentsOpen, setIsTournamentsOpen] = useState(true)
   const [pinnedIds, setPinnedIds]                 = useState<string[]>([])
@@ -84,6 +96,34 @@ export default function Sidebar({ onClose, onToggleDesktop }: SidebarProps) {
     }
   }, [])
 
+  // Calculate the globally closest upcoming lock deadline
+  const nextDeadline = useMemo(() => {
+    let earliestTime = Infinity;
+    let earliestName = '';
+
+    allTournaments.forEach(t => {
+      if (t.status !== 'open') return;
+
+      if (t.game_type === 'survivor' && t.round_locks) {
+        Object.values(t.round_locks).forEach(lock => {
+          const time = new Date(lock).getTime();
+          if (time > Date.now() && time < earliestTime) {
+            earliestTime = time;
+            earliestName = t.name;
+          }
+        });
+      } else if (t.locks_at) {
+        const time = new Date(t.locks_at).getTime();
+        if (time > Date.now() && time < earliestTime) {
+          earliestTime = time;
+          earliestName = t.name;
+        }
+      }
+    });
+
+    return earliestTime === Infinity ? null : { time: earliestTime, name: earliestName };
+  }, [allTournaments]);
+
   const togglePin = (id: string, e: React.MouseEvent) => {
     e.stopPropagation()
     setPinnedIds(prev => {
@@ -98,16 +138,9 @@ export default function Sidebar({ onClose, onToggleDesktop }: SidebarProps) {
     setExpandedGroups(prev => ({ ...prev, [groupId]: !prev[groupId] }))
   }
 
-  const filteredGroups = useMemo(() => {
-    return groups.filter((g: Group) => g.name.toLowerCase().includes(searchTerm.toLowerCase()))
-  }, [groups, searchTerm])
-
-  const globalTournaments = useMemo(() => {
-    return allTournaments.filter((t: Tournament) => !t.group_id && t.name.toLowerCase().includes(searchTerm.toLowerCase()))
-  }, [allTournaments, searchTerm])
-
-  const pinnedGroups      = filteredGroups.filter((g: Group) => pinnedIds.includes(g.id))
-  const unpinnedGroups    = filteredGroups.filter((g: Group) => !pinnedIds.includes(g.id))
+  const pinnedGroups      = groups.filter((g: Group) => pinnedIds.includes(g.id))
+  const unpinnedGroups    = groups.filter((g: Group) => !pinnedIds.includes(g.id))
+  const globalTournaments = allTournaments.filter((t: Tournament) => !t.group_id)
 
   const handleLogout = async () => await signOut()
 
@@ -122,15 +155,28 @@ export default function Sidebar({ onClose, onToggleDesktop }: SidebarProps) {
   return (
     <aside className={`w-64 h-full flex flex-col border-r shadow-2xl overflow-hidden relative bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 transition-colors duration-300`}>
 
-      {/* ── HEADER (Hidden on Mobile, Visible on Desktop) ── */}
-      <div className="hidden md:flex items-center justify-between pl-4 pr-3 py-4 flex-shrink-0 border-b border-slate-200 dark:border-slate-800/50 bg-slate-100/50 dark:bg-black/10">
-        <div className="flex-1 pr-4 flex items-center justify-start">
-          <img
-            src="/logo.png"
-            alt="TourneyHub Logo"
-            className="w-full h-auto object-contain object-left drop-shadow-sm"
-          />
+      {/* ── UNIFIED HEADER: Deadline Countdown + Actions ── */}
+      <div className="flex items-center justify-between pl-4 pr-3 pt-12 pb-4 md:pt-4 md:pb-4 flex-shrink-0 border-b border-slate-200 dark:border-slate-800/50 bg-slate-100/50 dark:bg-black/10 min-h-[64px] gap-2">
+        
+        {/* Next Lock Countdown Widget */}
+        <div className="flex-1 min-w-0">
+          {nextDeadline ? (
+             <div className="flex flex-col">
+               <span className="text-[9px] uppercase tracking-widest font-bold text-slate-500 truncate">
+                 Next Lock: {nextDeadline.name}
+               </span>
+               <span className={`text-xs font-black ${theme.accent}`}>
+                 {formatTimeLeft(nextDeadline.time, currentTime)}
+               </span>
+             </div>
+          ) : (
+            <span className="text-[10px] uppercase tracking-widest font-bold text-slate-400">
+              No active deadlines
+            </span>
+          )}
         </div>
+
+        {/* Desktop Collapse Button */}
         {onToggleDesktop && (
           <button
             onClick={onToggleDesktop}
@@ -140,19 +186,15 @@ export default function Sidebar({ onClose, onToggleDesktop }: SidebarProps) {
             <PanelLeftClose size={18} />
           </button>
         )}
-      </div>
 
-      <div className="px-4 pt-4 flex-shrink-0">
-        <div className="relative group">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-amber-500 transition-colors" />
-          <input
-            type="text"
-            placeholder="Filter..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full bg-slate-200/50 dark:bg-black/20 border border-slate-300 dark:border-slate-800/50 rounded-lg pl-9 pr-8 py-2 text-sm font-medium text-slate-900 dark:text-white placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-amber-500 transition-all"
-          />
-        </div>
+        {/* Mobile Close Drawer Button */}
+        <button
+          onClick={onClose}
+          className="flex md:hidden p-2 rounded-xl text-slate-500 hover:text-rose-500 dark:text-slate-400 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors shrink-0"
+          title="Close sidebar"
+        >
+          <X size={24} />
+        </button>
       </div>
 
       <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-700 py-4 px-3 space-y-4">
