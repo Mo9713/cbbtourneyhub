@@ -1,19 +1,19 @@
 // src/widgets/tournament-list/ui/TournamentListView.tsx
 
-import { useState, useMemo }                from 'react'
-import { ChevronDown, Globe, Users, Skull, Eye } from 'lucide-react'
-import { useTheme }                         from '../../../shared/lib/theme'
-import { isPicksLocked }                    from '../../../shared/lib/time'
-import { statusLabel, statusIcon }          from '../../../shared/lib/helpers'
-import { useAuth }                          from '../../../features/auth'
-import { useUIStore }                       from '../../../shared/store/uiStore'
-import { useTournamentListQuery, useGames } from '../../../entities/tournament/model/queries'
-import { useMyPicks }                       from '../../../entities/pick/model/queries'
+import { useState, useMemo }                        from 'react'
+import { ChevronDown, Globe, Users, Skull, Eye }    from 'lucide-react'
+import { useTheme }                                 from '../../../shared/lib/theme'
+import { isPicksLocked, getActiveSurvivorRound }    from '../../../shared/lib/time'
+import { statusLabel, statusIcon }                  from '../../../shared/lib/helpers'
+import { useAuth }                                  from '../../../features/auth'
+import { useUIStore }                               from '../../../shared/store/uiStore'
+import { useTournamentListQuery, useGames }         from '../../../entities/tournament/model/queries'
+import { useMyPicks }                               from '../../../entities/pick/model/queries'
 import { useUserGroupsQuery, useGroupMembersQuery } from '../../../entities/group/model/queries'
-import { useLeaderboardRaw }                from '../../../entities/leaderboard/model/queries'
-import { computeLeaderboard }               from '../../../features/leaderboard/model/selectors'
-import { Avatar }                           from '../../../shared/ui'
-import type { Tournament }                  from '../../../shared/types'
+import { useLeaderboardRaw }                        from '../../../entities/leaderboard/model/queries'
+import { computeLeaderboard }                       from '../../../features/leaderboard/model/selectors'
+import { Avatar }                                   from '../../../shared/ui'
+import type { Tournament }                          from '../../../shared/types'
 
 // ── TournamentCard ────────────────────────────────────────────
 interface CardProps {
@@ -26,10 +26,29 @@ function TournamentCard({ t, isAdmin, onSelect }: CardProps) {
   const theme = useTheme()
   const { data: games = [] } = useGames(t.id)
   const { data: picks = [] } = useMyPicks(t.id, games)
-  const myPickCount          = picks.length
-  const locked               = isPicksLocked(t, isAdmin)
-  const pct                  = games.length > 0 ? Math.round((myPickCount / games.length) * 100) : 0
-  const isEffectivelyLocked  = t.status === 'locked' || t.status === 'completed' || (t.status === 'open' && locked)
+  
+  const locked              = isPicksLocked(t, isAdmin)
+  const isEffectivelyLocked = t.status === 'locked' || t.status === 'completed' || (t.status === 'open' && locked)
+  const isSurvivor          = t.game_type === 'survivor'
+
+  // FIX: Intelligent Survivor Progress Math (0/1 or 1/1 based on current active round)
+  const activeRound   = isSurvivor ? getActiveSurvivorRound(t) : 0
+  const requiredPicks = isSurvivor ? 1 : games.length
+  let myPickCount     = picks.length
+
+  if (isSurvivor) {
+    if (activeRound === 0) {
+      myPickCount = 0
+    } else {
+      const hasPicked = picks.some(p => {
+        const g = games.find(game => game.id === p.game_id)
+        return g?.round_num === activeRound
+      })
+      myPickCount = hasPicked ? 1 : 0
+    }
+  }
+
+  const pct = requiredPicks > 0 ? Math.round((myPickCount / requiredPicks) * 100) : 0
 
   const displayStatus =
     t.status === 'completed'           ? 'completed' :
@@ -66,16 +85,17 @@ function TournamentCard({ t, isAdmin, onSelect }: CardProps) {
         </span>
       </div>
 
-      {/* FOOTER: Anchored to the bottom to guarantee perfect grid alignment */}
       <div className={`mt-auto w-full pt-4 border-t flex flex-col justify-center min-h-[44px] ${borderTopCls}`}>
         {displayStatus === 'open' && !isAdmin && games.length > 0 && (
           <div className="w-full">
             <div className="flex items-center justify-between mb-1.5">
-              <span className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Your picks</span>
+              <span className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">
+                {isSurvivor ? 'Current Round Pick' : 'Your Picks'}
+              </span>
               <span className={`text-[10px] font-bold ${pct === 100
                 ? 'text-emerald-600 dark:text-emerald-400'
                 : theme.accent}`}>
-                {myPickCount} / {games.length}
+                {myPickCount} / {requiredPicks}
               </span>
             </div>
             <div className="h-1.5 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
@@ -150,10 +170,14 @@ export default function TournamentListView() {
     const gameIds = new Set(games.map(g => g.id))
     const picks   = rawData.allPicks.filter(p => gameIds.has(p.game_id))
 
+    const pickUserIds = new Set(picks.map(p => p.user_id))
+
     let contextProfiles = rawData.allProfiles
     if (activeContext !== 'global') {
       const memberUserIds = new Set(activeGroupMembers.map(m => m.user_id))
-      contextProfiles = contextProfiles.filter(p => memberUserIds.has(p.id))
+      contextProfiles = contextProfiles.filter(p => memberUserIds.has(p.id) || pickUserIds.has(p.id))
+    } else {
+      contextProfiles = contextProfiles.filter(p => pickUserIds.has(p.id))
     }
 
     return computeLeaderboard(picks, games, rawData.allGames, contextProfiles, tMap)
@@ -162,17 +186,21 @@ export default function TournamentListView() {
   const survivorBoards = useMemo(() => {
     if (!rawData || !survivorTourneys.length) return []
 
-    let contextProfiles = rawData.allProfiles
-    if (activeContext !== 'global') {
-      const memberUserIds = new Set(activeGroupMembers.map(m => m.user_id))
-      contextProfiles = contextProfiles.filter(p => memberUserIds.has(p.id))
-    }
-
     return survivorTourneys.map((t: Tournament) => {
       const tMap    = new Map([[t.id, t]])
       const games   = rawData.allGames.filter(g => g.tournament_id === t.id)
       const gameIds = new Set(games.map(g => g.id))
       const picks   = rawData.allPicks.filter(p => gameIds.has(p.game_id))
+      const pickUserIds = new Set(picks.map(p => p.user_id))
+
+      let contextProfiles = rawData.allProfiles
+      if (activeContext !== 'global') {
+        const memberUserIds = new Set(activeGroupMembers.map(m => m.user_id))
+        contextProfiles = contextProfiles.filter(p => memberUserIds.has(p.id) || pickUserIds.has(p.id))
+      } else {
+        contextProfiles = contextProfiles.filter(p => pickUserIds.has(p.id))
+      }
+
       return {
         tournamentName: t.name,
         board: computeLeaderboard(picks, games, rawData.allGames, contextProfiles, tMap),
@@ -220,7 +248,6 @@ export default function TournamentListView() {
 
   return (
     <div className="flex flex-col h-full max-w-7xl mx-auto w-full">
-      {/* Sleek Context Toggle Header */}
       <div className={`px-6 py-5 border-b flex-shrink-0 flex items-center justify-between ${theme.headerBg} relative z-20`}>
         <div>
           <h1 className="font-display text-3xl font-extrabold text-slate-900 dark:text-white uppercase tracking-wide">
@@ -284,7 +311,6 @@ export default function TournamentListView() {
             {renderSection('Locked', locked)}
             {renderSection('Finished', completed)}
 
-            {/* ── Standings Section ── */}
             {(standardTourneys.length > 0 || survivorTourneys.length > 0) && (
               <div className="mt-12 w-full flex flex-col items-center">
                 <h2 className={`font-display text-2xl font-black uppercase tracking-widest mb-8 text-center ${theme.textBase}`}>
@@ -292,7 +318,6 @@ export default function TournamentListView() {
                 </h2>
                 <div className={`grid grid-cols-1 ${(standardTourneys.length > 0 && survivorTourneys.length > 0) ? 'xl:grid-cols-2' : 'max-w-4xl mx-auto'} gap-8 items-start w-full max-w-7xl`}>
                   
-                  {/* ── STANDARD BRACKETS ── */}
                   {standardTourneys.length > 0 && (
                     <div className={`flex flex-col rounded-2xl border ${theme.panelBg} ${theme.borderBase} overflow-hidden shadow-sm`}>
                       <div className={`px-5 py-4 border-b ${theme.borderBase} bg-slate-100/50 dark:bg-black/20`}>
@@ -314,9 +339,11 @@ export default function TournamentListView() {
                                   <span className={`flex-1 font-semibold text-sm truncate ${theme.textBase}`}>
                                     {entry.profile.display_name} {isMe && <span className="text-[10px] font-normal text-slate-500 ml-1">(you)</span>}
                                   </span>
-                                  <div className="text-right w-16 flex-shrink-0">
+                                  <div className="text-right flex-shrink-0">
                                     <p className={`font-bold ${theme.accent}`}>{entry.points} pts</p>
-                                    <p className={`text-[10px] ${theme.textMuted}`}>Max {entry.maxPossible}</p>
+                                    {entry.tiebreakerScore !== null && (
+                                      <p className="text-[9px] text-slate-500">TB: {entry.tiebreakerScore}</p>
+                                    )}
                                   </div>
                                   {isAdmin && (
                                     <div className="w-10 flex items-center justify-center flex-shrink-0">
@@ -336,7 +363,6 @@ export default function TournamentListView() {
                     </div>
                   )}
 
-                  {/* ── SURVIVOR POOLS ── */}
                   {survivorBoards.map(({ tournamentName, board }) => (
                     <div key={tournamentName} className={`flex flex-col rounded-2xl border ${theme.panelBg} ${theme.borderBase} overflow-hidden shadow-sm`}>
                       <div className={`px-5 py-4 border-b ${theme.borderBase} bg-slate-100/50 dark:bg-black/20`}>

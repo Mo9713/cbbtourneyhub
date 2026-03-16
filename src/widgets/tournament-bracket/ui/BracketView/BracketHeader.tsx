@@ -1,11 +1,12 @@
 // src/widgets/tournament-bracket/ui/BracketView/BracketHeader.tsx
+
 import { Eye, Lock, Clock } from 'lucide-react'
-import { useTheme }    from '../../../../shared/lib/theme'
+import { useTheme }         from '../../../../shared/lib/theme'
 import { statusLabel, statusIcon } from '../../../../shared/lib/helpers'
-import { isPicksLocked, isBeforeUnlock } from '../../../../shared/lib/time'
-import { useAuth } from '../../../../features/auth/model/useAuth'
-import Countdown from '../../../../shared/ui/Countdown'
-import type { Tournament } from '../../../../shared/types'
+import { isPicksLocked, isBeforeUnlock, getActiveSurvivorRound } from '../../../../shared/lib/time'
+import { useAuth }          from '../../../../features/auth/model/useAuth'
+import Countdown            from '../../../../shared/ui/Countdown'
+import type { Tournament }  from '../../../../shared/types'
 
 interface Props {
   tournament:  Tournament
@@ -19,7 +20,6 @@ interface Props {
 export default function BracketHeader({ tournament, pickedCount, totalGames, readOnly, ownerName, score }: Props) {
   const theme = useTheme()
   const { profile } = useAuth()
-  const pct   = totalGames > 0 ? Math.round((pickedCount / totalGames) * 100) : 0
 
   const lockedByTime = isPicksLocked(tournament, profile?.is_admin ?? false)
   const beforeOpen   = isBeforeUnlock(tournament)
@@ -38,65 +38,82 @@ export default function BracketHeader({ tournament, pickedCount, totalGames, rea
     }
   }
 
+  // ── Smart Progress Math (Handles Survivor 1/1 vs Bracket 63/63) ──
+  const isSurvivor = tournament.game_type === 'survivor'
+  let effectiveTotal  = totalGames
+  let effectivePicked = pickedCount
+
+  if (isSurvivor) {
+    const activeRound = getActiveSurvivorRound(tournament)
+    effectiveTotal = 1
+    // If they have made enough picks to match the active round, they've picked for this round.
+    effectivePicked = (pickedCount >= activeRound && activeRound > 0) ? 1 : 0
+  }
+
+  const pct = effectiveTotal > 0 ? Math.round((effectivePicked / effectiveTotal) * 100) : 0
+
   return (
-    <div className={`px-6 py-4 border-b flex-shrink-0 flex flex-col md:flex-row md:items-center justify-between gap-4
+    <div className={`px-6 py-5 border-b flex-shrink-0 flex flex-col md:flex-row items-center justify-between gap-6 md:gap-8
       ${readOnly ? 'bg-violet-50 dark:bg-violet-500/5 border-violet-200 dark:border-violet-500/20' : theme.headerBg}`}>
 
-      <div>
+      {/* ── LEFT: Title & Status ── */}
+      <div className="flex flex-col items-center md:items-start text-center md:text-left w-full md:w-auto md:flex-1">
         {readOnly && (
           <div className="flex items-center gap-2 mb-1">
             <Eye size={14} className="text-violet-600 dark:text-violet-400" />
             <span className="text-xs font-bold text-violet-600 dark:text-violet-400 uppercase tracking-widest">Read-Only</span>
           </div>
         )}
-        <h2 className="font-display text-3xl font-extrabold text-slate-900 dark:text-white uppercase tracking-wide">
+        <h2 className="font-display text-2xl md:text-3xl font-extrabold text-slate-900 dark:text-white uppercase tracking-wide leading-tight">
           {readOnly ? `${ownerName}'s Bracket` : tournament.name}
         </h2>
-        <div className="flex items-center gap-2 mt-0.5">
-          {badgeIcon}
-          <span className="text-xs text-slate-500 dark:text-slate-400">{badgeText}</span>
-          {!readOnly && (
-            <>
-              <span className="text-slate-300 dark:text-slate-700">·</span>
-              <span className={`text-xs font-semibold ${theme.accent}`}>{pickedCount}/{totalGames} picks</span>
-            </>
-          )}
+        <div className="flex items-center gap-2 mt-1.5">
+          <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800/50 px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700/50">
+            {badgeIcon}
+            <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">{badgeText}</span>
+          </div>
         </div>
       </div>
 
-      <div className="flex items-center gap-5 flex-shrink-0">
+      {/* ── MIDDLE: Centered Progress Bar or Scoreboard ── */}
+      <div className="w-full md:flex-1 flex justify-center order-last md:order-none mt-2 md:mt-0">
+        {isLocked ? (
+          <div className="flex flex-col items-center justify-center bg-slate-100 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700/50 rounded-2xl px-8 py-2 shadow-inner w-full max-w-sm">
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-slate-500 dark:text-slate-400 uppercase font-bold tracking-widest">Score</span>
+              <span className={`text-3xl font-black ${readOnly ? 'text-violet-600 dark:text-violet-400' : theme.accent}`}>{score.current}</span>
+            </div>
+            <div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-0.5">
+              Max: <span className="text-slate-700 dark:text-slate-300">{score.max}</span>
+            </div>
+          </div>
+        ) : (
+          <div className="w-full max-w-md bg-slate-100 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700/50 rounded-2xl p-3.5 shadow-inner">
+            <div className="flex items-center justify-between mb-2 px-1">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                {isSurvivor ? 'Current Round Pick' : 'Progress'}
+              </span>
+              <span className={`text-xs font-black ${pct === 100 ? 'text-emerald-500' : theme.accent}`}>
+                {effectivePicked} / {effectiveTotal}
+              </span>
+            </div>
+            <div className="h-2.5 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all duration-500 ${pct === 100 ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]' : (readOnly ? 'bg-violet-500' : theme.btn.split(' ')[0])}`}
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── RIGHT: Countdown Timer ── */}
+      <div className="flex items-center justify-center md:justify-end w-full md:w-auto md:flex-1">
         <Countdown 
           tournament={tournament} 
           isAdmin={profile?.is_admin ?? false} 
           timezone={profile?.timezone ?? null} 
         />
-
-        <div className="text-right">
-          {isLocked ? (
-            <div className="flex flex-col items-end">
-              <div className="flex items-center gap-2 mb-1">
-                <span className="text-xs text-slate-500 dark:text-slate-400">Score</span>
-                <span className={`text-xl font-bold ${readOnly ? 'text-violet-600 dark:text-violet-400' : theme.accent}`}>{score.current}</span>
-              </div>
-              <div className="text-[10px] text-slate-500 font-medium uppercase tracking-widest">
-                Max: <span className="text-slate-700 dark:text-slate-300">{score.max}</span>
-              </div>
-            </div>
-          ) : (
-            <>
-              <div className="flex items-center gap-2 justify-end mb-1">
-                <span className="text-xs text-slate-500 dark:text-slate-400">Progress</span>
-                <span className={`text-sm font-bold ${readOnly ? 'text-violet-600 dark:text-violet-400' : theme.accent}`}>{pickedCount}/{totalGames}</span>
-              </div>
-              <div className="w-28 h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
-                <div
-                  className={`h-full ${readOnly ? 'bg-violet-500' : theme.bar} rounded-full transition-all`}
-                  style={{ width: `${pct}%` }}
-                />
-              </div>
-            </>
-          )}
-        </div>
       </div>
 
     </div>
