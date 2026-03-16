@@ -1,20 +1,4 @@
 // src/app/hooks/useHashRouter.ts
-//
-// FIX: 'leaderboard' removed from the VALID set.
-// It was purged from the ActiveView type union; a hash of #/leaderboard
-// arriving via a stale bookmark will now be ignored (falls through to
-// the default home render) rather than navigating to a ghost state.
-//
-// INVITE LINK (mount): #/join/CODE detected on first render. The invite
-// code is stored in pendingInviteCode (UIStore) and the hash is replaced
-// with #/home. AppShell then consumes pendingInviteCode to open
-// JoinGroupModal pre-filled with the code.
-//
-// INVITE LINK (active tab): a hashchange listener now mirrors the mount
-// logic. When a user pastes a #/join/CODE link into a tab that is already
-// open, the browser fires hashchange but NOT a page reload, so the mount
-// effect never re-runs. The listener catches this case and triggers the
-// same join flow.
 
 import { useEffect, useRef } from 'react'
 import { useUIStore }        from '../../shared/store/uiStore'
@@ -29,8 +13,6 @@ function fromHash(hash: string): ActiveView | null {
   return VALID.has(v) ? (v as ActiveView) : null
 }
 
-// Extracted so both the mount effect and the hashchange listener share
-// the exact same detection and dispatch logic.
 function handleJoinHash(
   hash:                 string,
   setPendingInviteCode: (code: string | null) => void,
@@ -39,7 +21,6 @@ function handleJoinHash(
   const joinMatch = hash.match(/#\/?join\/([^/?]+)/)
   if (!joinMatch?.[1]) return false
 
-  // Normalise to uppercase — codes are stored uppercase in the DB.
   setPendingInviteCode(joinMatch[1].toUpperCase())
   history.replaceState({ view: 'home' }, '', '#/home')
   setActiveView('home')
@@ -71,17 +52,12 @@ export function useHashRouter(): void {
   }, [activeView, activeGroupId])
 
   // ── hashchange — fires when user pastes a link into an open tab ──
-  // The mount effect never re-runs in this case, so without this listener
-  // a pasted #/join/CODE link would silently redirect to #/home without
-  // opening the modal.
   useEffect(() => {
     const onHashChange = () => {
       const hash = window.location.hash
 
-      // Handle invite links first — they take priority over all other routes.
       if (handleJoinHash(hash, setPendingInviteCode, setActiveView)) return
 
-      // Handle group deep-links.
       const groupMatch = hash.match(/#\/?group\/([^/?]+)/)
       if (groupMatch?.[1]) {
         fromPopState.current = true
@@ -90,7 +66,6 @@ export function useHashRouter(): void {
         return
       }
 
-      // Handle standard view links.
       const view = fromHash(hash)
       if (view) {
         fromPopState.current = true
@@ -129,8 +104,18 @@ export function useHashRouter(): void {
     const groupMatch = hash.match(/#\/?group\/([^/?]+)/)
     const hashView   = fromHash(hash)
 
-    // Invite link on mount — must be checked before all other patterns.
+    // 1. Check URL hash first (for already logged in users)
     if (handleJoinHash(hash, setPendingInviteCode, setActiveView)) return
+
+    // 2. Check localStorage (for NEW users returning from an email confirmation new tab)
+    const storedInvite = localStorage.getItem('tourneyhub-invite')
+    if (storedInvite) {
+      localStorage.removeItem('tourneyhub-invite')
+      setPendingInviteCode(storedInvite)
+      history.replaceState({ view: 'home' }, '', '#/home')
+      setActiveView('home')
+      return
+    }
 
     if (groupMatch?.[1]) {
       fromPopState.current = true

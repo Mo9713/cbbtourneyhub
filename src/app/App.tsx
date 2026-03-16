@@ -8,10 +8,19 @@ import { ThemeCtx, THEMES }  from '../shared/lib/theme'
 
 function RootOrchestrator() {
   const { user, appLoading } = useAuth()
-  
-  // Explicitly subscribe to the profile cache to trigger instant re-renders
-  // when a theme or UI mode mutation updates the query data.
   const { data: profile } = useProfileQuery(user?.id)
+
+  // FIX: Stash invite code BEFORE auth. 
+  // If a new user verifies their email, Supabase opens a NEW TAB, completely 
+  // losing the #/join/CODE hash. Stashing it in localStorage ensures it 
+  // survives the cross-tab email verification flow!
+  useEffect(() => {
+    const hash = window.location.hash
+    const joinMatch = hash.match(/#\/?join\/([^/?]+)/)
+    if (joinMatch && joinMatch[1]) {
+      localStorage.setItem('tourneyhub-invite', joinMatch[1].toUpperCase())
+    }
+  }, [])
 
   // 1. Tailwind Dark Mode Controller
   useEffect(() => {
