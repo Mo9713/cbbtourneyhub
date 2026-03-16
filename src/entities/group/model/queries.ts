@@ -1,18 +1,22 @@
 // src/entities/group/model/queries.ts
-import { useAuth } from '../../../features/auth'
+
 import { useQuery, useMutation, useQueryClient, type QueryClient, type QueryKey } from '@tanstack/react-query'
 import { unwrap }  from '../../../shared/lib/unwrap'
 import * as api    from '../api'
 import type { Group, GroupMember, Profile } from '../../../shared/types'
 
+// FIX 1: Import useAuth to grab the profile ID for our mobile speed fix
+import { useAuth } from '../../../features/auth'
+
 const REALTIME_DEBOUNCE_MS = 150
 const invalidateTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
 export const groupKeys = {
-  all:        ['groups']                               as const,
-  userGroups: ()           => ['groups', 'user']       as const,
-  details:    (id: string) => ['groups', 'detail', id] as const,
-  members:    (id: string) => ['groups', 'members', id] as const,
+  all:        ['groups']                                       as const,
+  // FIX 2: Dynamically include the user ID in the key
+  userGroups: (userId?: string) => ['groups', 'user', userId]  as const,
+  details:    (id: string) => ['groups', 'detail', id]         as const,
+  members:    (id: string) => ['groups', 'members', id]        as const,
 }
 
 function safeInvalidate(qc: QueryClient, queryKey: QueryKey): void {
@@ -32,13 +36,12 @@ function safeInvalidate(qc: QueryClient, queryKey: QueryKey): void {
 }
 
 export function useUserGroupsQuery() {
-  const { profile } = useAuth() // Pull the profile ID
+  const { profile } = useAuth()
 
   return useQuery<Group[], Error, Group[]>({
-    // FIX: Tying the cache to profile.id forces an INSTANT refetch on mobile login!
-    queryKey: ['groups', profile?.id], 
+    queryKey: groupKeys.userGroups(profile?.id),
     queryFn:  () => unwrap(api.fetchUserGroups()),
-    enabled:  !!profile?.id, // Only fetch when actually logged in
+    enabled:  !!profile?.id,
     select:   (data) => data ?? ([] as Group[]),
   })
 }
@@ -65,9 +68,11 @@ export function useJoinGroupMutation() {
   const qc = useQueryClient()
   return useMutation<string, Error, string>({
     mutationFn: (inviteCode) => unwrap(api.joinGroup(inviteCode)),
-    onSuccess: (groupId) => {
-      safeInvalidate(qc, groupKeys.userGroups())
-      safeInvalidate(qc, groupKeys.members(groupId))
+    onSuccess: () => {
+      // FIX 3: Invalidate EVERYTHING related to groups to ensure sidebar updates
+      safeInvalidate(qc, groupKeys.all)
+      // FIX 4: Force the app to fetch the newly unlocked private tournaments!
+      safeInvalidate(qc, ['tournaments'])
     },
   })
 }
@@ -76,7 +81,10 @@ export function useCreateGroupMutation() {
   const qc = useQueryClient()
   return useMutation<Group, Error, { name: string; invite_code: string }>({
     mutationFn: (params) => unwrap(api.createGroup(params)),
-    onSuccess: () => { safeInvalidate(qc, groupKeys.userGroups()) },
+    onSuccess: () => { 
+      safeInvalidate(qc, groupKeys.all) 
+      safeInvalidate(qc, ['tournaments'])
+    },
   })
 }
 
@@ -84,18 +92,20 @@ export function useDeleteGroupMutation() {
   const qc = useQueryClient()
   return useMutation<string, Error, string>({
     mutationFn: (groupId) => unwrap(api.deleteGroup(groupId)),
-    onSuccess: () => { safeInvalidate(qc, groupKeys.all) },
+    onSuccess: () => { 
+      safeInvalidate(qc, groupKeys.all) 
+      safeInvalidate(qc, ['tournaments'])
+    },
   })
 }
 
-// FIX: Mutation for non-owners to safely remove themselves
 export function useLeaveGroupMutation() {
   const qc = useQueryClient()
   return useMutation<string, Error, string>({
     mutationFn: (groupId) => unwrap(api.leaveGroup(groupId)),
-    onSuccess: (groupId) => {
-      safeInvalidate(qc, groupKeys.userGroups())
-      safeInvalidate(qc, groupKeys.members(groupId))
+    onSuccess: () => {
+      safeInvalidate(qc, groupKeys.all)
+      safeInvalidate(qc, ['tournaments'])
     },
   })
 }
