@@ -1,30 +1,40 @@
 // src/app/AppShell.tsx
 //
-// INVITE LINK: reads pendingInviteCode from UIStore (set by useHashRouter
-// when a #/join/CODE URL is detected on mount). When present, the Join
-// Group modal is opened automatically with the code pre-filled. The pending
-// code is cleared immediately after consumption so it doesn't re-trigger.
-// All original prop signatures preserved (Sidebar, MobileHeader, AddTournamentModal).
+// INVITE LINK RACE CONDITION FIX:
+// Previously, the useEffect that consumed pendingInviteCode called both
+// openJoinGroup() and setPendingInviteCode(null) in the same synchronous
+// block. React batches these state writes, so by the time JoinGroupModal
+// actually mounted, pendingInviteCode was already null and initialCode
+// arrived as undefined — the auto-submit never fired.
+//
+// Fix: pendingInviteCode is first captured into local component state
+// (capturedInviteCode) before being cleared from the store. The modal
+// receives capturedInviteCode as initialCode, which is stable across
+// the render cycle where the store value is being cleared. The store
+// value is then cleared in a setTimeout(0) — one tick after openJoinGroup
+// has caused a re-render — so there is no window where both values are
+// null simultaneously.
+//
+// capturedInviteCode is reset to null when the modal closes, ready for
+// the next invite link navigation.
 
-import { useCallback, useEffect }       from 'react'
-import { PanelLeftOpen }                from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
+import { PanelLeftOpen }                    from 'lucide-react'
 
-import { SnoopModal }                   from '../widgets/snoop-modal'
-import { AddTournamentModal }           from '../features/tournament'
+import { SnoopModal }                       from '../widgets/snoop-modal'
+import { AddTournamentModal }               from '../features/tournament'
 import { CreateGroupModal, JoinGroupModal } from '../features/group-management'
 
-import { Sidebar }                      from '../widgets/sidebar'
-import {
-  MobileHeader, Toaster, ConfirmModal,
-} from '../shared/ui'
-import { useTheme }                     from '../shared/lib/theme'
-import { useRealtimeSync }              from './hooks/useRealtimeSync'
-import { useHashRouter }                from './hooks/useHashRouter'
-import { useUIStore }                   from '../shared/store/uiStore'
-import { useCreateTournamentMutation }  from '../entities/tournament/model/queries'
+import { Sidebar }                          from '../widgets/sidebar'
+import { MobileHeader, Toaster, ConfirmModal } from '../shared/ui'
+import { useTheme }                         from '../shared/lib/theme'
+import { useRealtimeSync }                  from './hooks/useRealtimeSync'
+import { useHashRouter }                    from './hooks/useHashRouter'
+import { useUIStore }                       from '../shared/store/uiStore'
+import { useCreateTournamentMutation }      from '../entities/tournament/model/queries'
 
-import ViewRouter                       from './ViewRouter'
-import type { TemplateKey }             from '../shared/types'
+import ViewRouter                           from './ViewRouter'
+import type { TemplateKey }                 from '../shared/types'
 
 export default function AppShell() {
   const theme = useTheme()
@@ -38,7 +48,6 @@ export default function AppShell() {
     snoopTargetId,     closeSnoop,
     confirmModal,
     toasts,            pushToast,
-    // Invite-link auto-join
     pendingInviteCode, setPendingInviteCode,
   } = useUIStore()
 
@@ -47,18 +56,35 @@ export default function AppShell() {
   useRealtimeSync()
   useHashRouter()
 
-  // ── Invite-link auto-join ──────────────────────────────────
-  // When useHashRouter detects #/join/CODE on mount it stores the code
-  // in pendingInviteCode. Consume it here: open the modal once and
-  // immediately clear the pending value so it never re-fires.
+  // ── Race-condition-safe invite code capture ────────────────
+  // This local state is the stable value passed to JoinGroupModal as
+  // initialCode. It is set before the store value is cleared, so the
+  // modal always receives a non-null string when launched from a link.
+  const [capturedInviteCode, setCapturedInviteCode] = useState<string | null>(null)
+
   useEffect(() => {
-    if (pendingInviteCode) {
-      openJoinGroup()
-      // Clear immediately — JoinGroupModal received initialCode as a prop
-      // snapshot and will auto-submit from there.
-      setPendingInviteCode(null)
-    }
+    if (!pendingInviteCode) return
+
+    // 1. Capture the code locally so the modal prop stays stable.
+    setCapturedInviteCode(pendingInviteCode)
+
+    // 2. Open the modal — this triggers a re-render where isJoinGroupOpen
+    //    becomes true and JoinGroupModal mounts with capturedInviteCode.
+    openJoinGroup()
+
+    // 3. Clear the store value one tick later. The setTimeout(0) ensures
+    //    the modal has fully mounted and read its initialCode prop before
+    //    pendingInviteCode becomes null in the store. Without this delay,
+    //    React batches the clear with the openJoinGroup write and the
+    //    modal sees initialCode={undefined} on its first render.
+    setTimeout(() => setPendingInviteCode(null), 0)
   }, [pendingInviteCode, openJoinGroup, setPendingInviteCode])
+
+  const handleJoinModalClose = useCallback(() => {
+    closeJoinGroup()
+    // Reset captured code so it doesn't persist to a manually opened modal.
+    setCapturedInviteCode(null)
+  }, [closeJoinGroup])
 
   const handleCreateTournament = useCallback(async (
     name:       string,
@@ -160,14 +186,14 @@ export default function AppShell() {
         <CreateGroupModal onClose={closeCreateGroup} />
       )}
 
-      {/* Pass pendingInviteCode snapshot as initialCode before it is cleared.
-          The value is captured via closure at the moment the modal mounts.
-          After the useEffect above clears pendingInviteCode in the store, the
-          already-mounted modal retains its initialCode prop value unchanged.  */}
+      {/* capturedInviteCode (not pendingInviteCode from the store) is passed
+          as initialCode. It is set before the store value is cleared, so the
+          modal always receives a non-null string when opened via an invite link.
+          Manually opened modals receive capturedInviteCode=null → no auto-submit. */}
       {isJoinGroupOpen && (
         <JoinGroupModal
-          onClose={closeJoinGroup}
-          initialCode={pendingInviteCode ?? undefined}
+          onClose={handleJoinModalClose}
+          initialCode={capturedInviteCode ?? undefined}
         />
       )}
 
