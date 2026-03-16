@@ -1,24 +1,12 @@
 // src/app/AppShell.tsx
 //
-// INVITE LINK RACE CONDITION FIX:
-// Previously, the useEffect that consumed pendingInviteCode called both
-// openJoinGroup() and setPendingInviteCode(null) in the same synchronous
-// block. React batches these state writes, so by the time JoinGroupModal
-// actually mounted, pendingInviteCode was already null and initialCode
-// arrived as undefined — the auto-submit never fired.
-//
-// Fix: pendingInviteCode is first captured into local component state
-// (capturedInviteCode) before being cleared from the store. The modal
-// receives capturedInviteCode as initialCode, which is stable across
-// the render cycle where the store value is being cleared. The store
-// value is then cleared in a setTimeout(0) — one tick after openJoinGroup
-// has caused a re-render — so there is no window where both values are
-// null simultaneously.
-//
-// capturedInviteCode is reset to null when the modal closes, ready for
-// the next invite link navigation.
+// INVITE LINK AUTO-JOIN:
+// When pendingInviteCode is detected in the UIStore, we no longer bother
+// opening the JoinGroupModal. Instead, we execute the useJoinGroupMutation 
+// directly in the background. On success, we instantly route the user to 
+// the group dashboard and clear the pending code. Invisible and seamless!
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect }           from 'react'
 import { PanelLeftOpen }                    from 'lucide-react'
 
 import { SnoopModal }                       from '../widgets/snoop-modal'
@@ -32,6 +20,7 @@ import { useRealtimeSync }                  from './hooks/useRealtimeSync'
 import { useHashRouter }                    from './hooks/useHashRouter'
 import { useUIStore }                       from '../shared/store/uiStore'
 import { useCreateTournamentMutation }      from '../entities/tournament/model/queries'
+import { useJoinGroupMutation }             from '../entities/group' // Added for background joining
 
 import ViewRouter                           from './ViewRouter'
 import type { TemplateKey }                 from '../shared/types'
@@ -44,7 +33,7 @@ export default function AppShell() {
     mobileMenuOpen,    setMobileMenuOpen,
     showAddTournament, closeAddTournament,
     isCreateGroupOpen, closeCreateGroup,
-    isJoinGroupOpen,   closeJoinGroup,   openJoinGroup,
+    isJoinGroupOpen,   closeJoinGroup,
     snoopTargetId,     closeSnoop,
     confirmModal,
     toasts,            pushToast,
@@ -52,39 +41,35 @@ export default function AppShell() {
   } = useUIStore()
 
   const createTournamentM = useCreateTournamentMutation()
+  const joinGroupM        = useJoinGroupMutation() // Hooked up the mutation
 
   useRealtimeSync()
   useHashRouter()
 
-  // ── Race-condition-safe invite code capture ────────────────
-  // This local state is the stable value passed to JoinGroupModal as
-  // initialCode. It is set before the store value is cleared, so the
-  // modal always receives a non-null string when launched from a link.
-  const [capturedInviteCode, setCapturedInviteCode] = useState<string | null>(null)
-
+  // ── Invisible Auto-Join Flow ─────────────────────────────────
   useEffect(() => {
     if (!pendingInviteCode) return
 
-    // 1. Capture the code locally so the modal prop stays stable.
-    setCapturedInviteCode(pendingInviteCode)
+    pushToast('Joining group...', 'info')
 
-    // 2. Open the modal — this triggers a re-render where isJoinGroupOpen
-    //    becomes true and JoinGroupModal mounts with capturedInviteCode.
-    openJoinGroup()
-
-    // 3. Clear the store value one tick later. The setTimeout(0) ensures
-    //    the modal has fully mounted and read its initialCode prop before
-    //    pendingInviteCode becomes null in the store. Without this delay,
-    //    React batches the clear with the openJoinGroup write and the
-    //    modal sees initialCode={undefined} on its first render.
-    setTimeout(() => setPendingInviteCode(null), 0)
-  }, [pendingInviteCode, openJoinGroup, setPendingInviteCode])
-
-  const handleJoinModalClose = useCallback(() => {
-    closeJoinGroup()
-    // Reset captured code so it doesn't persist to a manually opened modal.
-    setCapturedInviteCode(null)
-  }, [closeJoinGroup])
+    // Execute the join mutation silently in the background
+    joinGroupM.mutate(pendingInviteCode, {
+      onSuccess: (groupId) => {
+        pushToast('Successfully joined the group!', 'success')
+        // Instantly teleport the user to the group view
+        useUIStore.getState().setActiveGroup(groupId)
+        useUIStore.getState().setActiveView('group')
+      },
+      onError: (err: any) => {
+        pushToast(err.message || 'Failed to join group. Invalid code.', 'error')
+      },
+      onSettled: () => {
+        // Clear the code so it doesn't fire again
+        setPendingInviteCode(null)
+      }
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingInviteCode]) 
 
   const handleCreateTournament = useCallback(async (
     name:       string,
@@ -162,8 +147,6 @@ export default function AppShell() {
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden relative">
         <MobileHeader
           onMenuOpen={() => setMobileMenuOpen(true)}
-          sidebarBg={theme.sidebarBg}
-          logo={theme.logo}
         />
         <main className="flex-1 overflow-y-auto scrollbar-thin">
           <ViewRouter />
@@ -186,15 +169,9 @@ export default function AppShell() {
         <CreateGroupModal onClose={closeCreateGroup} />
       )}
 
-      {/* capturedInviteCode (not pendingInviteCode from the store) is passed
-          as initialCode. It is set before the store value is cleared, so the
-          modal always receives a non-null string when opened via an invite link.
-          Manually opened modals receive capturedInviteCode=null → no auto-submit. */}
+      {/* Modal is now just for manual entry via the sidebar button! */}
       {isJoinGroupOpen && (
-        <JoinGroupModal
-          onClose={handleJoinModalClose}
-          initialCode={capturedInviteCode ?? undefined}
-        />
+        <JoinGroupModal onClose={closeJoinGroup} />
       )}
 
       {confirmModal && <ConfirmModal {...confirmModal} />}
