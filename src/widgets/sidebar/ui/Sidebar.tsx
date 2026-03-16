@@ -5,7 +5,7 @@ import {
   Trophy, Home, Settings, LogOut, PanelLeftClose,
   Settings2, Moon, Sun, Shield,
   ChevronDown, ChevronRight, Search, Pin,
-  Check
+  Check, X
 } from 'lucide-react'
 
 import { useTheme }               from '../../../shared/lib/theme'
@@ -122,7 +122,7 @@ export default function Sidebar({ onClose, onToggleDesktop }: SidebarProps) {
   return (
     <aside className={`w-64 h-full flex flex-col border-r shadow-2xl overflow-hidden relative bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 transition-colors duration-300`}>
 
-      {/* ── HEADER (Hidden on Mobile, Visible on Desktop) ── */}
+      {/* ── DESKTOP HEADER (Hidden on Mobile) ── */}
       <div className="hidden md:flex items-center justify-between pl-4 pr-3 py-4 flex-shrink-0 border-b border-slate-200 dark:border-slate-800/50 bg-slate-100/50 dark:bg-black/10">
         <div className="flex-1 pr-4 flex items-center justify-start">
           <img
@@ -142,6 +142,25 @@ export default function Sidebar({ onClose, onToggleDesktop }: SidebarProps) {
         )}
       </div>
 
+      {/* ── MOBILE HEADER (Hidden on Desktop) ── */}
+      <div className="md:hidden flex items-center justify-between px-4 py-3 flex-shrink-0 border-b border-slate-200 dark:border-slate-800/50 bg-slate-100/50 dark:bg-black/10">
+        <div className="flex items-center h-6">
+          <img
+            src="/logo.png"
+            alt="TourneyHub Logo"
+            className="h-full w-auto object-contain drop-shadow-sm"
+          />
+        </div>
+        <button
+          onClick={onClose}
+          className="p-2 rounded-xl text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-200/50 dark:hover:bg-white/10 transition-colors shrink-0"
+          title="Close sidebar"
+        >
+          <X size={20} />
+        </button>
+      </div>
+
+      {/* ── SEARCH BAR ── */}
       <div className="px-4 pt-4 flex-shrink-0">
         <div className="relative group">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-amber-500 transition-colors" />
@@ -155,6 +174,7 @@ export default function Sidebar({ onClose, onToggleDesktop }: SidebarProps) {
         </div>
       </div>
 
+      {/* ── SCROLLABLE LIST ── */}
       <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-700 py-4 px-3 space-y-4">
 
         <div className="space-y-1">
