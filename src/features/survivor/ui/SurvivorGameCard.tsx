@@ -1,27 +1,4 @@
 // src/features/survivor/ui/SurvivorGameCard.tsx
-//
-// PRIORITY LADDER (this PR): Team visual state is now resolved through an
-// explicit single-assignment priority ladder (teamState) rather than a
-// chain of if-reassignments. This eliminates the bug where a "burned"
-// team's styling was silently overridden by the "loser" branch, making
-// burned teams visually indistinguishable from merely-eliminated ones.
-//
-// STATE TAXONOMY:
-//   winner-picked — correct active pick (green)
-//   loser-picked  — wrong active pick, game resolved (rose, strikethrough)
-//   loser         — team lost the game, not the user's pick (muted, strikethrough)
-//   burned        — used in a prior round, amber left-border signal
-//   picked        — active pick, game in progress (amber)
-//   locked        — round closed, no pick, no result (neutral grey)
-//   default       — available, unpicked, interactable
-//
-// NEW PROP: isTournamentOver — when true, locks ALL teams regardless of
-// round, without requiring tournament.status to be changed. This prevents
-// the admin status-write false-lock bug described in the architecture review.
-//
-// ACCESSIBILITY: aria-disabled and title attributes are set per teamState
-// so screen reader users and mobile users without hover can understand
-// why an option is unavailable.
 
 import { Check, Ban, Flame } from 'lucide-react'
 import { useTheme }          from '../../../shared/lib/theme'
@@ -58,8 +35,6 @@ export function SurvivorGameCard({
 }: Props) {
   const theme = useTheme()
 
-  // A pick is locked if: the round clock is wrong, the user is out,
-  // or the entire pool resolved via the end_early mass-elimination rule.
   const isPickingLocked = activeRound !== game.round_num || isEliminated || isTournamentOver
 
   const renderTeam = (
@@ -68,7 +43,8 @@ export function SurvivorGameCard({
     inKey:       'data-in1' | 'data-in2',
     slot:        'team1' | 'team2',
   ) => {
-    if (!teamName || teamName === 'TBD') {
+    // FIX: Bulletproof check blocks "TBD", null, and standard "Winner of..." placeholders
+    if (!teamName || teamName === 'TBD' || teamName.toLowerCase().includes('winner')) {
       return (
         <div className={`relative flex items-center px-3 py-2 text-xs ${theme.textMuted} opacity-50 min-h-[32px]`}>
           <div className="absolute inset-y-0 left-0 flex flex-col justify-center pointer-events-none z-10">
@@ -81,15 +57,10 @@ export function SurvivorGameCard({
     }
 
     const isPicked  = currentPick?.predicted_winner === slot
-    // A team is burned if the user has committed to it in ANY round, and
-    // it is not their CURRENT pick in THIS game (picking it again to toggle off is valid).
     const isBurned  = usedTeams.includes(teamName) && !isPicked
     const isWinner  = !!game.actual_winner && isTeamMatch(teamName, game.actual_winner)
     const isLoser   = !!game.actual_winner && !isWinner
 
-    // ── Single-assignment priority ladder ─────────────────────
-    // Each state is mutually exclusive at this priority level. The first
-    // matching condition wins — subsequent branches are never evaluated.
     const teamState: TeamState =
       (isWinner && isPicked)                    ? 'winner-picked' :
       (isLoser  && isPicked)                    ? 'loser-picked'  :
@@ -109,7 +80,6 @@ export function SurvivorGameCard({
       'default':       `hover:bg-emerald-50 dark:hover:bg-[#022c22] cursor-pointer`,
     }[teamState]
 
-    // Accessibility metadata per state
     const titleAttr: string | undefined =
       teamState === 'burned'        ? 'Already used — cannot pick again'       :
       teamState === 'loser'         ? 'Eliminated from this game'              :
@@ -149,7 +119,6 @@ export function SurvivorGameCard({
 
         <span className="truncate flex-1">{teamName}</span>
 
-        {/* State icons — only one renders per team per the priority ladder */}
         {teamState === 'winner-picked' && <Check  size={14} className="ml-1 shrink-0 text-emerald-500" />}
         {teamState === 'loser-picked'  && <Ban    size={14} className="ml-1 shrink-0 text-rose-500" />}
         {teamState === 'burned'        && <Flame  size={12} className="ml-1 shrink-0 text-amber-500/70" />}

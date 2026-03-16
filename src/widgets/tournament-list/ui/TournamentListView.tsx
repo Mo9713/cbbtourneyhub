@@ -31,20 +31,28 @@ function TournamentCard({ t, isAdmin, onSelect }: CardProps) {
   const isEffectivelyLocked = t.status === 'locked' || t.status === 'completed' || (t.status === 'open' && locked)
   const isSurvivor          = t.game_type === 'survivor'
 
-  // FIX: Intelligent Survivor Progress Math (0/1 or 1/1 based on current active round)
   const activeRound   = isSurvivor ? getActiveSurvivorRound(t) : 0
   const requiredPicks = isSurvivor ? 1 : games.length
   let myPickCount     = picks.length
+  let currentRoundPickTeam: string | null = null
 
   if (isSurvivor) {
     if (activeRound === 0) {
       myPickCount = 0
     } else {
-      const hasPicked = picks.some(p => {
+      const pick = picks.find(p => {
         const g = games.find(game => game.id === p.game_id)
         return g?.round_num === activeRound
       })
-      myPickCount = hasPicked ? 1 : 0
+      
+      myPickCount = pick ? 1 : 0
+
+      if (pick) {
+        const g = games.find(game => game.id === pick.game_id)
+        if (g) {
+          currentRoundPickTeam = pick.predicted_winner === 'team1' ? g.team1_name : pick.predicted_winner === 'team2' ? g.team2_name : pick.predicted_winner
+        }
+      }
     }
   }
 
@@ -89,8 +97,13 @@ function TournamentCard({ t, isAdmin, onSelect }: CardProps) {
         {displayStatus === 'open' && !isAdmin && games.length > 0 && (
           <div className="w-full">
             <div className="flex items-center justify-between mb-1.5">
-              <span className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">
-                {isSurvivor ? 'Current Round Pick' : 'Your Picks'}
+              <span className="text-[10px] text-slate-500 uppercase tracking-widest font-bold flex items-center gap-1.5">
+                {isSurvivor ? 'Current Round Pick:' : 'Your Picks'}
+                {isSurvivor && currentRoundPickTeam && (
+                  <span className="text-xs font-black text-emerald-600 dark:text-emerald-400 normal-case tracking-normal">
+                    {currentRoundPickTeam}
+                  </span>
+                )}
               </span>
               <span className={`text-[10px] font-bold ${pct === 100
                 ? 'text-emerald-600 dark:text-emerald-400'
