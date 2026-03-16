@@ -5,6 +5,7 @@ import { ChevronDown, Globe, Users, Skull, Eye }    from 'lucide-react'
 import { useTheme }                                 from '../../../shared/lib/theme'
 import { isPicksLocked, getActiveSurvivorRound }    from '../../../shared/lib/time'
 import { statusLabel, statusIcon }                  from '../../../shared/lib/helpers'
+import { deriveEffectiveNames, deriveChampion }     from '../../../shared/lib/bracketMath'
 import { useAuth }                                  from '../../../features/auth'
 import { useUIStore }                               from '../../../shared/store/uiStore'
 import { useTournamentListQuery, useGames }         from '../../../entities/tournament/model/queries'
@@ -26,7 +27,7 @@ function TournamentCard({ t, isAdmin, onSelect }: CardProps) {
   const theme = useTheme()
   const { data: games = [] } = useGames(t.id)
   const { data: picks = [] } = useMyPicks(t.id, games)
-  
+
   const locked              = isPicksLocked(t, isAdmin)
   const isEffectivelyLocked = t.status === 'locked' || t.status === 'completed' || (t.status === 'open' && locked)
   const isSurvivor          = t.game_type === 'survivor'
@@ -35,6 +36,7 @@ function TournamentCard({ t, isAdmin, onSelect }: CardProps) {
   const requiredPicks = isSurvivor ? 1 : games.length
   let myPickCount     = picks.length
   let currentRoundPickTeam: string | null = null
+  let championPickTeam:     string | null = null
 
   if (isSurvivor) {
     if (activeRound === 0) {
@@ -44,24 +46,34 @@ function TournamentCard({ t, isAdmin, onSelect }: CardProps) {
         const g = games.find(game => game.id === p.game_id)
         return g?.round_num === activeRound
       })
-      
       myPickCount = pick ? 1 : 0
 
       if (pick) {
         const g = games.find(game => game.id === pick.game_id)
         if (g) {
-          currentRoundPickTeam = pick.predicted_winner === 'team1' ? g.team1_name : pick.predicted_winner === 'team2' ? g.team2_name : pick.predicted_winner
+          currentRoundPickTeam =
+            pick.predicted_winner === 'team1' ? g.team1_name :
+            pick.predicted_winner === 'team2' ? g.team2_name :
+            pick.predicted_winner
         }
       }
+    }
+  } else {
+    // Use deriveEffectiveNames + deriveChampion so that slot keys ('team1'/'team2')
+    // are resolved through the full predicted bracket chain, not just the raw
+    // game.team1_name which may still be a "Winner of Game #N" placeholder.
+    if (games.length > 0) {
+      const effectiveNames = deriveEffectiveNames(games, picks)
+      championPickTeam     = deriveChampion(games, picks, effectiveNames)
     }
   }
 
   const pct = requiredPicks > 0 ? Math.round((myPickCount / requiredPicks) * 100) : 0
 
   const displayStatus =
-    t.status === 'completed'           ? 'completed' :
-    t.status === 'draft'               ? 'draft'     :
-    isEffectivelyLocked                ? 'locked'    :
+    t.status === 'completed'   ? 'completed' :
+    t.status === 'draft'       ? 'draft'     :
+    isEffectivelyLocked        ? 'locked'    :
     'open'
 
   const cardBorderCls =
@@ -70,7 +82,7 @@ function TournamentCard({ t, isAdmin, onSelect }: CardProps) {
     'border-2 border-slate-300 dark:border-slate-800 bg-slate-100 dark:bg-slate-900/40 hover:border-slate-400 dark:hover:border-slate-700'
 
   const badgeCls =
-    displayStatus === 'open'      ? `${theme.bg} ${theme.accent}`                                      :
+    displayStatus === 'open'      ? `${theme.bg} ${theme.accent}` :
     displayStatus === 'draft'     ? 'bg-amber-100 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400' :
     displayStatus === 'completed' ? 'bg-violet-100 dark:bg-violet-500/20 text-violet-600 dark:text-violet-300' :
     'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-500'
@@ -97,18 +109,23 @@ function TournamentCard({ t, isAdmin, onSelect }: CardProps) {
         {displayStatus === 'open' && !isAdmin && games.length > 0 && (
           <div className="w-full">
             <div className="flex items-center justify-between mb-1.5">
-              <span className="text-[10px] text-slate-500 uppercase tracking-widest font-bold flex items-center gap-1.5">
-                {isSurvivor ? 'Current Round Pick:' : 'Your Picks'}
+              <span className="text-[10px] text-slate-500 uppercase tracking-widest font-bold flex items-center gap-1.5 min-w-0 overflow-hidden">
+                {isSurvivor ? 'Current Round Pick:' : 'Champion Pick:'}
                 {isSurvivor && currentRoundPickTeam && (
-                  <span className="text-xs font-black text-emerald-600 dark:text-emerald-400 normal-case tracking-normal">
+                  <span className="text-xs font-black text-emerald-600 dark:text-emerald-400 normal-case tracking-normal truncate">
                     {currentRoundPickTeam}
                   </span>
                 )}
+                {!isSurvivor && championPickTeam && (
+                  <span className="text-xs font-black text-emerald-600 dark:text-emerald-400 normal-case tracking-normal truncate">
+                    {championPickTeam}
+                  </span>
+                )}
               </span>
-              <span className={`text-[10px] font-bold ${pct === 100
+              <span className={`text-[10px] font-bold flex-shrink-0 ml-2 ${pct === 100
                 ? 'text-emerald-600 dark:text-emerald-400'
                 : theme.accent}`}>
-                {myPickCount} / {requiredPicks}
+                {myPickCount}&nbsp;/&nbsp;{requiredPicks}
               </span>
             </div>
             <div className="h-1.5 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
@@ -182,7 +199,6 @@ export default function TournamentListView() {
     const games   = rawData.allGames.filter(g => tMap.has(g.tournament_id))
     const gameIds = new Set(games.map(g => g.id))
     const picks   = rawData.allPicks.filter(p => gameIds.has(p.game_id))
-
     const pickUserIds = new Set(picks.map(p => p.user_id))
 
     let contextProfiles = rawData.allProfiles
@@ -192,13 +208,11 @@ export default function TournamentListView() {
     } else {
       contextProfiles = contextProfiles.filter(p => pickUserIds.has(p.id))
     }
-
     return computeLeaderboard(picks, games, rawData.allGames, contextProfiles, tMap)
   }, [rawData, standardTourneys, activeGroupMembers, activeContext])
 
   const survivorBoards = useMemo(() => {
     if (!rawData || !survivorTourneys.length) return []
-
     return survivorTourneys.map((t: Tournament) => {
       const tMap    = new Map([[t.id, t]])
       const games   = rawData.allGames.filter(g => g.tournament_id === t.id)
@@ -213,7 +227,6 @@ export default function TournamentListView() {
       } else {
         contextProfiles = contextProfiles.filter(p => pickUserIds.has(p.id))
       }
-
       return {
         tournamentName: t.name,
         board: computeLeaderboard(picks, games, rawData.allGames, contextProfiles, tMap),
@@ -226,7 +239,9 @@ export default function TournamentListView() {
   const open = activeTournaments.filter(
     (t: Tournament) => t.status === 'open' && !isPicksLocked(t, isAdmin),
   )
-  const draft = isAdmin ? activeTournaments.filter((t: Tournament) => t.status === 'draft') : []
+  const draft = isAdmin
+    ? activeTournaments.filter((t: Tournament) => t.status === 'draft')
+    : []
   const locked = activeTournaments.filter(
     (t: Tournament) =>
       t.status === 'locked' ||
@@ -286,21 +301,26 @@ export default function TournamentListView() {
             </button>
 
             {dropdownOpen && (
-              <div className={`absolute right-0 top-full mt-2 w-56 rounded-xl border shadow-xl overflow-hidden ${theme.panelBg} ${theme.borderBase}`}>
+              <div className={`absolute right-0 top-full mt-2 w-56 rounded-xl border shadow-xl z-50 overflow-hidden ${theme.panelBg} ${theme.borderBase}`}>
                 <button
                   onClick={() => { setActiveContext('global'); setDropdownOpen(false) }}
-                  className={`w-full text-left px-4 py-3 flex items-center gap-2 text-sm font-bold transition-colors
-                    ${activeContext === 'global' ? `${theme.bgMd} ${theme.accent}` : `${theme.textBase} hover:bg-slate-100 dark:hover:bg-slate-800`}`}
+                  className={`w-full flex items-center gap-2 px-4 py-3 text-sm font-bold transition-all ${
+                    activeContext === 'global'
+                      ? `${theme.bgMd} ${theme.accent}`
+                      : `${theme.textBase} hover:bg-slate-100 dark:hover:bg-slate-800`
+                  }`}
                 >
-                  <Globe size={16} /> Global Tournaments
+                  <Globe size={16} /> Global
                 </button>
-                <div className={`h-px w-full ${theme.borderBase} bg-slate-200 dark:bg-slate-800`} />
                 {groups.map(g => (
                   <button
                     key={g.id}
                     onClick={() => { setActiveContext(g.id); setDropdownOpen(false) }}
-                    className={`w-full text-left px-4 py-3 flex items-center gap-2 text-sm font-bold transition-colors
-                      ${activeContext === g.id ? `${theme.bgMd} ${theme.accent}` : `${theme.textBase} hover:bg-slate-100 dark:hover:bg-slate-800`}`}
+                    className={`w-full flex items-center gap-2 px-4 py-3 text-sm font-bold transition-all ${
+                      activeContext === g.id
+                        ? `${theme.bgMd} ${theme.accent}`
+                        : `${theme.textBase} hover:bg-slate-100 dark:hover:bg-slate-800`
+                    }`}
                   >
                     <Users size={16} /> {g.name}
                   </button>
@@ -330,7 +350,7 @@ export default function TournamentListView() {
                   {activeGroupName} Standings
                 </h2>
                 <div className={`grid grid-cols-1 ${(standardTourneys.length > 0 && survivorTourneys.length > 0) ? 'xl:grid-cols-2' : 'max-w-4xl mx-auto'} gap-8 items-start w-full max-w-7xl`}>
-                  
+
                   {standardTourneys.length > 0 && (
                     <div className={`flex flex-col rounded-2xl border ${theme.panelBg} ${theme.borderBase} overflow-hidden shadow-sm`}>
                       <div className={`px-5 py-4 border-b ${theme.borderBase} bg-slate-100/50 dark:bg-black/20`}>
@@ -344,7 +364,7 @@ export default function TournamentListView() {
                         ) : (
                           <div className="flex flex-col gap-2">
                             {standardBoard.map((entry, i) => {
-                              const isMe = entry.profile.id === profile?.id;
+                              const isMe = entry.profile.id === profile?.id
                               return (
                                 <div key={entry.profile.id} className={`flex items-center gap-3 p-3 rounded-xl border ${theme.borderBase} ${isMe ? `${theme.bgMd} border-amber-500/30` : 'bg-white dark:bg-[#11141d]'}`}>
                                   <span className="w-6 text-center font-bold text-slate-500 text-xs">#{i + 1}</span>
@@ -361,7 +381,8 @@ export default function TournamentListView() {
                                   {isAdmin && (
                                     <div className="w-10 flex items-center justify-center flex-shrink-0">
                                       {!isMe && (
-                                        <button onClick={(e) => { e.stopPropagation(); openSnoop(entry.profile.id); }} className="p-1.5 text-slate-400 hover:text-amber-500 transition-colors rounded-md hover:bg-slate-100 dark:hover:bg-slate-800">
+                                        <button onClick={(e) => { e.stopPropagation(); openSnoop(entry.profile.id) }}
+                                          className="p-1.5 text-slate-400 hover:text-amber-500 transition-colors rounded-md hover:bg-slate-100 dark:hover:bg-slate-800">
                                           <Eye size={16} />
                                         </button>
                                       )}
@@ -389,31 +410,26 @@ export default function TournamentListView() {
                         ) : (
                           <div className="flex flex-col gap-2">
                             {board.map((entry, i) => {
-                              const isMe = entry.profile.id === profile?.id;
+                              const isMe = entry.profile.id === profile?.id
                               return (
                                 <div key={entry.profile.id} className={`flex items-center gap-3 p-3 rounded-xl border ${theme.borderBase} ${entry.isEliminated ? 'opacity-50 grayscale' : ''} ${isMe && !entry.isEliminated ? `${theme.bgMd} border-amber-500/30` : 'bg-white dark:bg-[#11141d]'}`}>
-                                  <span className="w-6 text-center font-bold text-slate-500 text-xs">
+                                  <span className="w-6 text-center font-bold text-slate-500 text-xs flex-shrink-0">
                                     {entry.isEliminated ? <Skull size={14} className="mx-auto text-rose-500" /> : `#${i + 1}`}
                                   </span>
                                   <Avatar profile={entry.profile} size="sm" />
                                   <div className="flex-1 flex flex-col min-w-0">
-                                    <span className={`font-semibold text-sm truncate ${entry.isEliminated ? 'line-through' : theme.textBase}`}>
-                                      {entry.profile.display_name} {isMe && <span className="text-[10px] font-normal text-slate-500 ml-1 no-underline">(you)</span>}
+                                    <span className={`font-semibold text-sm truncate ${entry.isEliminated ? 'text-slate-400 line-through' : theme.textBase}`}>
+                                      {entry.profile.display_name} {isMe && <span className="text-[10px] font-normal text-slate-500 ml-1">(you)</span>}
                                     </span>
-                                    {entry.isEliminated && <span className="text-[9px] font-bold text-rose-500 uppercase tracking-widest">Eliminated</span>}
+                                    {entry.isEliminated && (
+                                      <span className="text-[9px] font-bold uppercase tracking-widest text-rose-400">Eliminated</span>
+                                    )}
                                   </div>
-                                  <div className="text-right w-16 flex-shrink-0">
-                                    <p className={`font-bold ${theme.textBase}`}>{entry.seedScore}</p>
-                                    <p className={`text-[10px] ${theme.textMuted}`}>Seed Score</p>
-                                  </div>
-                                  {isAdmin && (
-                                    <div className="w-10 flex items-center justify-center flex-shrink-0">
-                                      {!isMe && (
-                                        <button onClick={(e) => { e.stopPropagation(); openSnoop(entry.profile.id); }} className="p-1.5 text-slate-400 hover:text-amber-500 transition-colors rounded-md hover:bg-slate-100 dark:hover:bg-slate-800">
-                                          <Eye size={16} />
-                                        </button>
-                                      )}
-                                    </div>
+                                  {isAdmin && !isMe && (
+                                    <button onClick={(e) => { e.stopPropagation(); openSnoop(entry.profile.id) }}
+                                      className="p-1.5 text-slate-400 hover:text-amber-500 transition-colors rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 flex-shrink-0">
+                                      <Eye size={16} />
+                                    </button>
                                   )}
                                 </div>
                               )
@@ -423,6 +439,7 @@ export default function TournamentListView() {
                       </div>
                     </div>
                   ))}
+
                 </div>
               </div>
             )}

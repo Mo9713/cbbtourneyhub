@@ -1,15 +1,13 @@
 // src/widgets/group-dashboard/ui/GroupDashboard.tsx
-//
-// INVITE LINK: invite URL row added to group header with one-click copy.
-// MEMBER COUNT: displayed in the header below the group name.
-// M-NEW-2: tiebreaker chip in standard mini-leaderboard rows when relevant.
 
 import { useMemo, useState }    from 'react'
 import { Trash2, LogOut, Skull, Eye, Target, Copy, Check, Link, Users } from 'lucide-react'
 import { useGroupDetailsQuery, useGroupMembersQuery, useDeleteGroupMutation, useLeaveGroupMutation } from '../../../entities/group'
-import { useTournamentListQuery } from '../../../entities/tournament/model/queries'
+import { useTournamentListQuery, useGames } from '../../../entities/tournament/model/queries'
+import { useMyPicks }           from '../../../entities/pick/model/queries'
 import { useLeaderboardRaw }    from '../../../entities/leaderboard/model/queries'
 import { computeLeaderboard }   from '../../../features/leaderboard/model/selectors'
+import { deriveEffectiveNames, deriveChampion } from '../../../shared/lib/bracketMath'
 import { useTheme }             from '../../../shared/lib/theme'
 import { useUIStore }           from '../../../shared/store/uiStore'
 import { useAuth }              from '../../../features/auth'
@@ -22,6 +20,157 @@ interface GroupDashboardProps {
   groupId: string
 }
 
+// ── GroupTournamentCard ───────────────────────────────────────
+// Extracted from the inline renderTournamentCard function so that
+// useGames / useMyPicks hooks are valid at component scope.
+interface GroupCardProps {
+  t:          Tournament
+  isSurvivor: boolean
+}
+
+function GroupTournamentCard({ t, isSurvivor }: GroupCardProps) {
+  const theme   = useTheme()
+  const { profile } = useAuth()
+
+  const selectTournament = useUIStore(s => s.selectTournament)
+  const setActiveView    = useUIStore(s => s.setActiveView)
+
+  const { data: games = [] } = useGames(t.id)
+  const { data: picks = [] } = useMyPicks(t.id, games)
+
+  const locked      = isPicksLocked(t, profile?.is_admin ?? false)
+  const isCompleted = t.status === 'completed'
+
+  // ── Pick detail derivation ─────────────────────────────────
+  const activeRound = isSurvivor ? getActiveSurvivorRound(t) : 0
+  let pickLabel: string | null   = null
+  let pickTeamName: string | null = null
+  let myPickCount   = 0
+  let requiredPicks = isSurvivor ? 1 : games.length
+
+  if (isSurvivor) {
+    if (activeRound > 0) {
+      pickLabel = 'Current Round Pick'
+      const pick = picks.find(p => {
+        const g = games.find(game => game.id === p.game_id)
+        return g?.round_num === activeRound
+      })
+      myPickCount = pick ? 1 : 0
+      if (pick) {
+        const g = games.find(game => game.id === pick.game_id)
+        if (g) {
+          pickTeamName =
+            pick.predicted_winner === 'team1' ? g.team1_name :
+            pick.predicted_winner === 'team2' ? g.team2_name :
+            pick.predicted_winner
+        }
+      }
+    }
+  } else {
+    pickLabel    = 'Champion Pick'
+    myPickCount  = picks.length
+    if (games.length > 0) {
+      const effectiveNames = deriveEffectiveNames(games, picks)
+      pickTeamName         = deriveChampion(games, picks, effectiveNames)
+    }
+  }
+
+  const pct = requiredPicks > 0 ? Math.min(100, Math.round((myPickCount / requiredPicks) * 100)) : 0
+  const showPickBar = !isCompleted && t.status !== 'draft' && !locked && games.length > 0
+
+  // ── Status label pair ──────────────────────────────────────
+  let statusLeft:  React.ReactNode = null
+  let statusRight: React.ReactNode = null
+
+  if (isCompleted) {
+    statusLeft  = <span className="text-slate-500">Status</span>
+    statusRight = <span className="text-violet-500 dark:text-violet-400 font-black">Finished</span>
+  } else if (t.status === 'draft') {
+    statusLeft  = <span className="text-slate-500">Status</span>
+    statusRight = <span className="text-amber-500 font-black">Draft</span>
+  } else if (isSurvivor) {
+    if (activeRound === 0) {
+      statusLeft  = <span className="text-slate-500">Status</span>
+      statusRight = <span className="text-slate-500 font-black">Locked</span>
+    } else if (activeRound === 1) {
+      statusLeft  = <span className="text-slate-500">Status</span>
+      statusRight = <span className="text-emerald-600 dark:text-emerald-500 font-black shadow-[0_0_8px_rgba(16,185,129,0.8)]">Round 1 Open</span>
+    } else {
+      statusLeft  = <span className="text-slate-500">Round {activeRound - 1} Locked</span>
+      statusRight = <span className="text-emerald-600 dark:text-emerald-500 font-black shadow-[0_0_8px_rgba(16,185,129,0.8)]">Round {activeRound} Open</span>
+    }
+  } else {
+    statusLeft  = <span className="text-slate-500">Status</span>
+    statusRight = locked
+      ? <span className="text-slate-500 font-black">Locked</span>
+      : <span className="text-emerald-600 dark:text-emerald-500 font-black shadow-[0_0_8px_rgba(16,185,129,0.8)]">Open</span>
+  }
+
+  const cardClasses = isCompleted
+    ? 'border-violet-500/40 bg-violet-500/5 hover:border-violet-400/60'
+    : `${theme.panelBg} ${theme.borderBase} hover:border-amber-500/50`
+
+  return (
+    <button
+      onClick={() => { selectTournament(t.id); setActiveView('bracket') }}
+      className={`text-left p-5 rounded-2xl border transition-all hover:scale-[1.02] active:scale-[0.99] w-full flex flex-col ${cardClasses}`}
+    >
+      {/* Title + badge */}
+      <div className="flex items-start justify-between gap-3 w-full mb-2">
+        <h3 className={`font-display text-xl font-bold uppercase tracking-wide leading-tight line-clamp-2 ${theme.textBase}`}>
+          {t.name}
+        </h3>
+        <span className={`flex-shrink-0 text-[10px] uppercase tracking-widest font-bold px-2.5 py-1 rounded-md ${theme.bgMd} ${theme.textMuted}`}>
+          {isSurvivor ? 'Survivor' : 'Bracket'}
+        </span>
+      </div>
+
+      {/* Countdown */}
+      <div className="flex items-center justify-start w-full empty:hidden">
+        <Countdown tournament={t} isAdmin={profile?.is_admin ?? false} timezone={profile?.timezone ?? null} />
+      </div>
+
+      {/* Status row */}
+      <div className="mt-3 w-full pt-3 flex items-center justify-center border-t border-slate-200 dark:border-slate-800/50 text-[10px] sm:text-[11px] uppercase tracking-widest font-bold">
+        <div className="flex-1 text-left pr-2 border-r border-slate-200 dark:border-slate-800/50">{statusLeft}</div>
+        <div className="flex-1 text-right pl-2">{statusRight}</div>
+      </div>
+
+      {/* Pick progress bar — only shown when tournament is open and user has games */}
+      {showPickBar && (
+        <div className="mt-3 w-full pt-3 border-t border-slate-200 dark:border-slate-800/50">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-[10px] text-slate-500 uppercase tracking-widest font-bold flex items-center gap-1.5 min-w-0 overflow-hidden">
+              {pickLabel}:
+              {pickTeamName ? (
+                <span className="text-xs font-black text-emerald-600 dark:text-emerald-400 normal-case tracking-normal truncate">
+                  {pickTeamName}
+                </span>
+              ) : (
+                <span className="text-xs font-bold text-amber-500 normal-case tracking-normal">
+                  No pick yet
+                </span>
+              )}
+            </span>
+            <span className={`text-[10px] font-bold flex-shrink-0 ml-2 ${pct === 100
+              ? 'text-emerald-600 dark:text-emerald-400'
+              : 'text-amber-500'}`}>
+              {myPickCount}&nbsp;/&nbsp;{requiredPicks}
+            </span>
+          </div>
+          <div className="h-1.5 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all ${pct === 100 ? 'bg-emerald-500' : 'bg-amber-500'}`}
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+        </div>
+      )}
+    </button>
+  )
+}
+
+// ── GroupDashboard ────────────────────────────────────────────
 export function GroupDashboard({ groupId }: GroupDashboardProps) {
   const theme = useTheme()
   const { profile } = useAuth()
@@ -38,7 +187,6 @@ export function GroupDashboard({ groupId }: GroupDashboardProps) {
   const setConfirmModal   = useUIStore(s => s.setConfirmModal)
   const setActiveView     = useUIStore(s => s.setActiveView)
   const setActiveGroup    = useUIStore(s => s.setActiveGroup)
-  const selectTournament  = useUIStore(s => s.selectTournament)
   const openSnoop         = useUIStore(s => s.openSnoop)
 
   const isOwner          = profile?.id === group?.owner_id
@@ -49,22 +197,18 @@ export function GroupDashboard({ groupId }: GroupDashboardProps) {
 
   const standardTourneys = groupTournaments.filter(t => t.game_type !== 'survivor')
   const survivorTourneys = groupTournaments.filter(t => t.game_type === 'survivor')
-
   const anyStandardTbEnabled = standardTourneys.some(t => t.requires_tiebreaker === true)
 
-  // ── Copy-link button state ────────────────────────────────
   const [copied, setCopied] = useState(false)
 
   const inviteUrl = group
-    ? `${window.location.origin}${window.location.pathname}#/join/${group.invite_code}`
+    ? `${window.location.origin}${window.location.pathname}?join=${group.invite_code}`
     : ''
 
-  const handleCopyLink = async () => {
-    if (!inviteUrl) return
-    try {
-      await navigator.clipboard.writeText(inviteUrl)
-    } catch {
-      // Clipboard API requires HTTPS; fallback for plain HTTP environments.
+  const handleCopyLink = () => {
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(inviteUrl)
+    } else {
       const el = document.createElement('textarea')
       el.value = inviteUrl
       document.body.appendChild(el)
@@ -148,69 +292,6 @@ export function GroupDashboard({ groupId }: GroupDashboardProps) {
 
   if (error || !group) return null
 
-  const renderTournamentCard = (t: Tournament, isSurvivor: boolean) => {
-    const locked      = isPicksLocked(t, profile?.is_admin ?? false)
-    const isCompleted = t.status === 'completed'
-
-    let statusLeft  = null
-    let statusRight = null
-
-    if (isCompleted) {
-      statusLeft  = <span className="text-slate-500">Status</span>
-      statusRight = <span className="text-violet-500 dark:text-violet-400 font-black">Finished</span>
-    } else if (t.status === 'draft') {
-      statusLeft  = <span className="text-slate-500">Status</span>
-      statusRight = <span className="text-amber-500 font-black">Draft</span>
-    } else if (isSurvivor) {
-      const activeRound = getActiveSurvivorRound(t)
-      if (activeRound === 0) {
-        statusLeft  = <span className="text-slate-500">Status</span>
-        statusRight = <span className="text-slate-500 font-black">Locked</span>
-      } else if (activeRound === 1) {
-        statusLeft  = <span className="text-slate-500">Status</span>
-        statusRight = <span className="text-emerald-600 dark:text-emerald-500 font-black shadow-[0_0_8px_rgba(16,185,129,0.8)]">Round 1 Open</span>
-      } else {
-        statusLeft  = <span className="text-slate-500">Round {activeRound - 1} Locked</span>
-        statusRight = <span className="text-emerald-600 dark:text-emerald-500 font-black shadow-[0_0_8px_rgba(16,185,129,0.8)]">Round {activeRound} Open</span>
-      }
-    } else {
-      statusLeft  = <span className="text-slate-500">Status</span>
-      statusRight = locked
-        ? <span className="text-slate-500 font-black">Locked</span>
-        : <span className="text-emerald-600 dark:text-emerald-500 font-black shadow-[0_0_8px_rgba(16,185,129,0.8)]">Open</span>
-    }
-
-    const cardClasses = isCompleted
-      ? `border-violet-500/40 bg-violet-500/5 hover:border-violet-400/60`
-      : `${theme.panelBg} ${theme.borderBase} hover:border-amber-500/50`
-
-    return (
-      <button
-        key={t.id}
-        onClick={() => { selectTournament(t.id); setActiveView('bracket') }}
-        className={`text-left p-5 rounded-2xl border transition-all hover:scale-[1.02] active:scale-[0.99] w-full flex flex-col h-[180px] ${cardClasses}`}
-      >
-        <div className="flex items-start justify-between gap-3 w-full mb-2">
-          <h3 className={`font-display text-xl font-bold uppercase tracking-wide leading-tight line-clamp-2 ${theme.textBase}`}>
-            {t.name}
-          </h3>
-          <span className={`flex-shrink-0 text-[10px] uppercase tracking-widest font-bold px-2.5 py-1 rounded-md ${theme.bgMd} ${theme.textMuted}`}>
-            {isSurvivor ? 'Survivor' : 'Bracket'}
-          </span>
-        </div>
-
-        <div className="mt-2 flex items-center justify-start w-full empty:hidden">
-          <Countdown tournament={t} isAdmin={profile?.is_admin ?? false} timezone={profile?.timezone ?? null} />
-        </div>
-
-        <div className="mt-auto w-full pt-4 flex items-center justify-center border-t border-slate-200 dark:border-slate-800/50 text-[10px] sm:text-[11px] uppercase tracking-widest font-bold">
-          <div className="flex-1 text-left pr-2 border-r border-slate-200 dark:border-slate-800/50">{statusLeft}</div>
-          <div className="flex-1 text-right pl-2">{statusRight}</div>
-        </div>
-      </button>
-    )
-  }
-
   return (
     <div className="flex flex-col w-full max-w-7xl mx-auto p-4 md:p-8 gap-8">
 
@@ -223,15 +304,11 @@ export function GroupDashboard({ groupId }: GroupDashboardProps) {
             {group.name}
           </h1>
 
-          {/* Member count + invite code row */}
           <div className="flex items-center justify-center gap-4 flex-wrap">
-            {/* Member count */}
             <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${theme.bgMd} ${theme.textMuted}`}>
               <Users size={12} />
               {members.length} {members.length === 1 ? 'member' : 'members'}
             </div>
-
-            {/* Invite code pill */}
             <div className={`flex items-center gap-2 ${theme.textMuted}`}>
               <span className="text-sm font-medium">Code:</span>
               <span className={`px-3 py-1 rounded-md text-xs font-mono font-bold tracking-widest ${theme.bgMd} ${theme.textBase}`}>
@@ -240,7 +317,6 @@ export function GroupDashboard({ groupId }: GroupDashboardProps) {
             </div>
           </div>
 
-          {/* Invite link row */}
           <div className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border ${theme.borderBase} ${theme.bgMd} w-full max-w-lg`}>
             <Link size={13} className={`flex-shrink-0 ${theme.textMuted}`} />
             <span className={`text-xs font-mono truncate flex-1 text-left ${theme.textMuted} select-all`}>
@@ -263,7 +339,6 @@ export function GroupDashboard({ groupId }: GroupDashboardProps) {
           </p>
         </div>
 
-        {/* Owner / member actions */}
         <div className="flex items-center justify-center gap-3">
           {isOwner ? (
             <button onClick={handleDelete} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold text-rose-500 hover:bg-rose-500/10 border border-rose-500/20 transition-all">
@@ -304,7 +379,9 @@ export function GroupDashboard({ groupId }: GroupDashboardProps) {
             {standardTourneys.length > 0 && (
               <div className="flex flex-col gap-6 w-full">
                 <div className="flex flex-col gap-4">
-                  {standardTourneys.map(t => renderTournamentCard(t, false))}
+                  {standardTourneys.map(t => (
+                    <GroupTournamentCard key={t.id} t={t} isSurvivor={false} />
+                  ))}
                 </div>
                 <div className={`flex flex-col rounded-2xl border ${theme.panelBg} ${theme.borderBase} overflow-hidden shadow-sm`}>
                   <div className={`px-5 py-4 border-b ${theme.borderBase} bg-slate-100/50 dark:bg-black/20 flex items-center justify-between gap-3`}>
@@ -342,14 +419,14 @@ export function GroupDashboard({ groupId }: GroupDashboardProps) {
                                   <p className={`text-[9px] ${theme.textMuted} uppercase tracking-widest`}>TB</p>
                                 </div>
                               )}
-                              <div className="text-right w-16 flex-shrink-0">
+                              <div className="text-right flex-shrink-0">
                                 <p className={`font-bold ${theme.accent}`}>{entry.points} pts</p>
-                                <p className={`text-[10px] ${theme.textMuted}`}>Max {entry.maxPossible}</p>
                               </div>
                               {isAdmin && (
                                 <div className="w-10 flex items-center justify-center flex-shrink-0">
                                   {!isMe && (
-                                    <button onClick={(e) => { e.stopPropagation(); openSnoop(entry.profile.id) }} className="p-1.5 text-slate-400 hover:text-amber-500 transition-colors rounded-md hover:bg-slate-100 dark:hover:bg-slate-800">
+                                    <button onClick={(e) => { e.stopPropagation(); openSnoop(entry.profile.id) }}
+                                      className="p-1.5 text-slate-400 hover:text-amber-500 transition-colors rounded-md hover:bg-slate-100 dark:hover:bg-slate-800">
                                       <Eye size={16} />
                                     </button>
                                   )}
@@ -365,11 +442,13 @@ export function GroupDashboard({ groupId }: GroupDashboardProps) {
               </div>
             )}
 
-            {/* ── RIGHT COLUMN: SURVIVOR POOLS ── */}
+            {/* ── RIGHT COLUMN: SURVIVOR ── */}
             {survivorTourneys.length > 0 && (
               <div className="flex flex-col gap-6 w-full">
                 <div className="flex flex-col gap-4">
-                  {survivorTourneys.map(t => renderTournamentCard(t, true))}
+                  {survivorTourneys.map(t => (
+                    <GroupTournamentCard key={t.id} t={t} isSurvivor={true} />
+                  ))}
                 </div>
                 <div className={`flex flex-col rounded-2xl border ${theme.panelBg} ${theme.borderBase} overflow-hidden shadow-sm`}>
                   <div className={`px-5 py-4 border-b ${theme.borderBase} bg-slate-100/50 dark:bg-black/20`}>
@@ -386,28 +465,26 @@ export function GroupDashboard({ groupId }: GroupDashboardProps) {
                           const isMe = entry.profile.id === profile?.id
                           return (
                             <div key={entry.profile.id} className={`flex items-center gap-3 p-3 rounded-xl border ${theme.borderBase} ${entry.isEliminated ? 'opacity-50 grayscale' : ''} ${isMe && !entry.isEliminated ? `${theme.bgMd} border-amber-500/30` : 'bg-white dark:bg-[#11141d]'}`}>
-                              <span className="w-6 text-center font-bold text-slate-500 text-xs">
-                                {entry.isEliminated ? <Skull size={14} className="mx-auto text-rose-500" /> : `#${i + 1}`}
+                              <span className="w-6 text-center font-bold text-slate-500 text-xs flex-shrink-0">
+                                {entry.isEliminated
+                                  ? <Skull size={14} className="mx-auto text-rose-500" />
+                                  : `#${i + 1}`
+                                }
                               </span>
                               <Avatar profile={entry.profile} size="sm" />
                               <div className="flex-1 flex flex-col min-w-0">
-                                <span className={`font-semibold text-sm truncate ${entry.isEliminated ? 'line-through' : theme.textBase}`}>
-                                  {entry.profile.display_name} {isMe && <span className="text-[10px] font-normal text-slate-500 ml-1 no-underline">(you)</span>}
+                                <span className={`font-semibold text-sm truncate ${entry.isEliminated ? 'text-slate-400 line-through' : theme.textBase}`}>
+                                  {entry.profile.display_name} {isMe && <span className="text-[10px] font-normal text-slate-500 ml-1">(you)</span>}
                                 </span>
-                                {entry.isEliminated && <span className="text-[9px] font-bold text-rose-500 uppercase tracking-widest">Eliminated</span>}
+                                {entry.isEliminated && (
+                                  <span className="text-[9px] font-bold uppercase tracking-widest text-rose-400">Eliminated</span>
+                                )}
                               </div>
-                              <div className="text-right w-16 flex-shrink-0">
-                                <p className={`font-bold ${theme.textBase}`}>{entry.seedScore}</p>
-                                <p className={`text-[10px] ${theme.textMuted}`}>Seed Score</p>
-                              </div>
-                              {isAdmin && (
-                                <div className="w-10 flex items-center justify-center flex-shrink-0">
-                                  {!isMe && (
-                                    <button onClick={(e) => { e.stopPropagation(); openSnoop(entry.profile.id) }} className="p-1.5 text-slate-400 hover:text-amber-500 transition-colors rounded-md hover:bg-slate-100 dark:hover:bg-slate-800">
-                                      <Eye size={16} />
-                                    </button>
-                                  )}
-                                </div>
+                              {isAdmin && !isMe && (
+                                <button onClick={(e) => { e.stopPropagation(); openSnoop(entry.profile.id) }}
+                                  className="p-1.5 text-slate-400 hover:text-amber-500 transition-colors rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 flex-shrink-0">
+                                  <Eye size={16} />
+                                </button>
                               )}
                             </div>
                           )
@@ -422,6 +499,7 @@ export function GroupDashboard({ groupId }: GroupDashboardProps) {
           </div>
         )}
       </section>
+
     </div>
   )
 }

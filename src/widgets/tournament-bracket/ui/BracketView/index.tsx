@@ -1,16 +1,8 @@
 // src/widgets/tournament-bracket/ui/BracketView/index.tsx
-//
-// allTournamentPicks guard updated (this PR): previously only populated
-// for survivor_elimination_rule === 'revive_all'. Now populates for ALL
-// survivor tournaments so isEndEarlyResolved has the data it needs.
-//
-// isTournamentOver computed here and exposed via BracketViewContext so
-// MatchupColumn can pass it down to SurvivorGameCard without prop-drilling
-// through BracketGrid.
 
 import { useState, useMemo, useCallback }      from 'react'
 import { useTheme }                            from '../../../../shared/lib/theme'
-import { isPicksLocked }                       from '../../../../shared/lib/time'
+import { isPicksLocked, getActiveSurvivorRound } from '../../../../shared/lib/time'
 import { BD_REGIONS }                          from '../../../../shared/lib/helpers'
 import {
   deriveEffectiveNames,
@@ -58,7 +50,8 @@ export default function BracketView({
   const { data: tournaments = [] } = useTournamentListQuery()
   const selectedTournamentId       = useUIStore((s) => s.selectedTournamentId)
 
-  const [viewMode, setViewMode] = useState<'bracket' | 'standings'>('bracket')
+  const [viewMode, setViewMode]           = useState<'bracket' | 'standings'>('bracket')
+  const [selectedRegion, setSelectedRegion] = useState<string | null>(null)
 
   const selectedTournament = useMemo(
     () => tournaments.find((t: Tournament) => t.id === selectedTournamentId) ?? null,
@@ -67,38 +60,20 @@ export default function BracketView({
 
   const tournament = overrideTournament ?? selectedTournament
 
-  const { data: queriedGames = [] } = useGames(
-    overrideGames ? null : (tournament?.id ?? null),
-  )
-  const games = overrideGames ?? queriedGames
+  const { data: _games = [] }  = useGames(tournament?.id ?? null)
+  const { data: _picks = [] }  = useMyPicks(tournament?.id ?? null, _games)
 
-  const { data: queryPicks = [] } = useMyPicks(tournament?.id ?? null, games)
-  const picks                     = overridePicks ?? queryPicks
+  const games = overrideGames ?? _games
+  const picks = overridePicks ?? _picks
 
-  const { mutateAsync: makePick }       = useMakePick()
-  const { mutateAsync: saveTiebreaker } = useSaveTiebreaker()
-  const { mutate: makeSurvivorPick }    = useMakeSurvivorPickMutation()
-
+  // FIX 1: Moved useLeaderboardRaw outside of useMemo (React Hook Rule violation fixed)
   const { data: raw } = useLeaderboardRaw()
 
-  // Populate allTournamentPicks for ALL survivor tournaments (not just revive_all).
-  // isEndEarlyResolved needs this data to detect mass-elimination events regardless
-  // of which elimination rule is configured.
   const allTournamentPicks = useMemo<Pick[] | undefined>(() => {
     if (!tournament || tournament.game_type !== 'survivor' || readOnly) return undefined
     const gameIdSet = new Set(games.map((g: Game) => g.id))
     return (raw?.allPicks ?? []).filter((p: Pick) => gameIdSet.has(p.game_id))
   }, [raw, tournament, games, readOnly])
-
-  // Data-derived "pool is over" signal for end_early tournaments.
-  // This is the correct lock gate for survivors — it does NOT depend on
-  // tournament.status, so an admin write cannot accidentally lock live survivors.
-  const isTournamentOver = useMemo<boolean>(() => {
-    if (!tournament || tournament.game_type !== 'survivor' || !allTournamentPicks) return false
-    return isEndEarlyResolved(allTournamentPicks, games, tournament)
-  }, [tournament, allTournamentPicks, games])
-
-  const [selectedRegion, setSelectedRegion] = useState<string | null>(null)
 
   const isLocked = tournament && profile
     ? isPicksLocked(tournament, profile.is_admin)
@@ -107,16 +82,16 @@ export default function BracketView({
   const isSurvivor = tournament?.game_type === 'survivor'
   const isBigDance = useMemo(() => games.some((g: Game) => g.region), [games])
 
-  const pickMap         = useMemo(() => buildPickMap(picks),                                           [picks])
-  const rounds          = useMemo(() => sortedRounds(games, isBigDance ? selectedRegion : null),       [games, isBigDance, selectedRegion])
-  const effectiveNames  = useMemo<EffectiveNames>(() => deriveEffectiveNames(games, picks),            [games, picks])
+  const pickMap         = useMemo(() => buildPickMap(picks),                                         [picks])
+  const rounds          = useMemo(() => sortedRounds(games, isBigDance ? selectedRegion : null),     [games, isBigDance, selectedRegion])
+  const effectiveNames  = useMemo<EffectiveNames>(() => deriveEffectiveNames(games, picks),          [games, picks])
 
-  const champion        = useMemo(() => deriveChampion(games, picks, effectiveNames),                  [games, picks, effectiveNames])
-  const champGame       = useMemo(() => getChampGame(games),                                           [games])
-  const actualChampion  = useMemo(() => champGame?.actual_winner ?? null,                              [champGame])
+  const champion        = useMemo(() => deriveChampion(games, picks, effectiveNames),                [games, picks, effectiveNames])
+  const champGame       = useMemo(() => getChampGame(games),                                         [games])
+  const actualChampion  = useMemo(() => champGame?.actual_winner ?? null,                            [champGame])
 
-  const gameNumbers     = useMemo(() => computeGameNumbers(games),                                     [games])
-  const eliminatedTeams = useMemo(() => deriveEliminatedTeams(games, effectiveNames),                  [games, effectiveNames])
+  const gameNumbers     = useMemo(() => computeGameNumbers(games),                                   [games])
+  const eliminatedTeams = useMemo(() => deriveEliminatedTeams(games, effectiveNames),                [games, effectiveNames])
 
   const score = useMemo(() => {
     if (!tournament) return { current: 0, max: 0 }
@@ -129,6 +104,33 @@ export default function BracketView({
   )
 
   const gameIds = useMemo(() => games.map((g: Game) => g.id), [games])
+
+  // Derive survivor current-round pick team for BracketHeader display
+  const currentRoundPickTeam = useMemo(() => {
+    if (!isSurvivor || !tournament) return null
+    const activeRound = getActiveSurvivorRound(tournament)
+    if (activeRound === 0) return null
+    const pick = picks.find((p: Pick) => {
+      const g = games.find((game: Game) => game.id === p.game_id)
+      return g?.round_num === activeRound
+    })
+    if (!pick) return null
+    const game = games.find((g: Game) => g.id === pick.game_id)
+    if (!game) return null
+    if (pick.predicted_winner === 'team1') return game.team1_name
+    if (pick.predicted_winner === 'team2') return game.team2_name
+    return pick.predicted_winner
+  }, [isSurvivor, tournament, picks, games])
+
+  const isTournamentOver = useMemo(() => {
+    if (!tournament || !isSurvivor || !allTournamentPicks) return false
+    return isEndEarlyResolved(allTournamentPicks, games, tournament)
+  }, [tournament, isSurvivor, allTournamentPicks, games])
+
+  // FIX 2: Destructure mutations correctly using mutateAsync and mutate aliases!
+  const { mutateAsync: makePick }       = useMakePick()
+  const { mutate: makeSurvivorPick }    = useMakeSurvivorPickMutation()
+  const { mutateAsync: saveTiebreaker } = useSaveTiebreaker()
 
   const handlePick = useCallback(async (game: Game, team: string) => {
     if (!tournament || readOnly || isLocked) return
@@ -172,6 +174,7 @@ export default function BracketView({
   return (
     <BracketViewProvider {...bracketViewValue}>
       <div className="flex flex-col h-full overflow-hidden">
+        {/* Pass champion + currentRoundPickTeam so the header can display pick details */}
         <BracketHeader
           tournament={tournament}
           pickedCount={picks.length}
@@ -179,6 +182,8 @@ export default function BracketView({
           readOnly={readOnly}
           ownerName={ownerName}
           score={score}
+          champion={champion}
+          currentRoundPickTeam={currentRoundPickTeam}
         />
 
         {!readOnly && (

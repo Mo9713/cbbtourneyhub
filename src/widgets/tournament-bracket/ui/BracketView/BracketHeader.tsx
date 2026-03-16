@@ -1,23 +1,29 @@
 // src/widgets/tournament-bracket/ui/BracketView/BracketHeader.tsx
 
 import { Eye, Lock, Clock } from 'lucide-react'
-import { useTheme }         from '../../../../shared/lib/theme'
+import { useTheme }              from '../../../../shared/lib/theme'
 import { statusLabel, statusIcon } from '../../../../shared/lib/helpers'
 import { isPicksLocked, isBeforeUnlock, getActiveSurvivorRound } from '../../../../shared/lib/time'
-import { useAuth }          from '../../../../features/auth/model/useAuth'
-import Countdown            from '../../../../shared/ui/Countdown'
-import type { Tournament }  from '../../../../shared/types'
+import { useAuth }               from '../../../../features/auth/model/useAuth'
+import Countdown                 from '../../../../shared/ui/Countdown'
+import type { Tournament }       from '../../../../shared/types'
 
 interface Props {
-  tournament:  Tournament
-  pickedCount: number
-  totalGames:  number
-  readOnly:    boolean
-  ownerName?:  string
-  score:       { current: number; max: number }
+  tournament:           Tournament
+  pickedCount:          number
+  totalGames:           number
+  readOnly:             boolean
+  ownerName?:           string
+  score:                { current: number; max: number }
+  // Resolved team name strings — passed from parent to avoid re-deriving here
+  champion?:            string | null
+  currentRoundPickTeam?: string | null
 }
 
-export default function BracketHeader({ tournament, pickedCount, totalGames, readOnly, ownerName, score }: Props) {
+export default function BracketHeader({
+  tournament, pickedCount, totalGames, readOnly, ownerName, score,
+  champion, currentRoundPickTeam,
+}: Props) {
   const theme = useTheme()
   const { profile } = useAuth()
 
@@ -38,19 +44,20 @@ export default function BracketHeader({ tournament, pickedCount, totalGames, rea
     }
   }
 
-  // ── Smart Progress Math (Handles Survivor 1/1 vs Bracket 63/63) ──
   const isSurvivor = tournament.game_type === 'survivor'
   let effectiveTotal  = totalGames
   let effectivePicked = pickedCount
 
   if (isSurvivor) {
     const activeRound = getActiveSurvivorRound(tournament)
-    effectiveTotal = 1
-    // If they have made enough picks to match the active round, they've picked for this round.
+    effectiveTotal  = 1
     effectivePicked = (pickedCount >= activeRound && activeRound > 0) ? 1 : 0
   }
 
   const pct = effectiveTotal > 0 ? Math.round((effectivePicked / effectiveTotal) * 100) : 0
+
+  // The team name to display inline in the progress bar label
+  const displayPickTeam = isSurvivor ? currentRoundPickTeam : champion
 
   return (
     <div className={`px-6 py-5 border-b flex-shrink-0 flex flex-col md:flex-row items-center justify-between gap-6 md:gap-8
@@ -90,16 +97,30 @@ export default function BracketHeader({ tournament, pickedCount, totalGames, rea
         ) : (
           <div className="w-full max-w-md bg-slate-100 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700/50 rounded-2xl p-3.5 shadow-inner">
             <div className="flex items-center justify-between mb-2 px-1">
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
-                {isSurvivor ? 'Current Round Pick' : 'Progress'}
+              {/* Label + resolved pick name inline */}
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1.5 min-w-0 overflow-hidden">
+                {isSurvivor ? 'Current Round Pick:' : 'Champion Pick:'}
+                {displayPickTeam ? (
+                  <span className="text-xs font-black text-emerald-600 dark:text-emerald-400 normal-case tracking-normal truncate">
+                    {displayPickTeam}
+                  </span>
+                ) : (
+                  <span className="text-xs font-bold text-slate-400 normal-case tracking-normal">
+                    No pick yet
+                  </span>
+                )}
               </span>
-              <span className={`text-xs font-black ${pct === 100 ? 'text-emerald-500' : theme.accent}`}>
-                {effectivePicked} / {effectiveTotal}
+              <span className={`text-xs font-black flex-shrink-0 ml-2 ${pct === 100 ? 'text-emerald-500' : theme.accent}`}>
+                {effectivePicked}&nbsp;/&nbsp;{effectiveTotal}
               </span>
             </div>
             <div className="h-2.5 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
               <div
-                className={`h-full rounded-full transition-all duration-500 ${pct === 100 ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]' : (readOnly ? 'bg-violet-500' : theme.btn.split(' ')[0])}`}
+                className={`h-full rounded-full transition-all duration-500 ${
+                  pct === 100
+                    ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]'
+                    : (readOnly ? 'bg-violet-500' : theme.btn.split(' ')[0])
+                }`}
                 style={{ width: `${pct}%` }}
               />
             </div>
@@ -109,10 +130,10 @@ export default function BracketHeader({ tournament, pickedCount, totalGames, rea
 
       {/* ── RIGHT: Countdown Timer ── */}
       <div className="flex items-center justify-center md:justify-end w-full md:w-auto md:flex-1">
-        <Countdown 
-          tournament={tournament} 
-          isAdmin={profile?.is_admin ?? false} 
-          timezone={profile?.timezone ?? null} 
+        <Countdown
+          tournament={tournament}
+          isAdmin={profile?.is_admin ?? false}
+          timezone={profile?.timezone ?? null}
         />
       </div>
 
