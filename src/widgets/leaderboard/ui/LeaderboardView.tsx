@@ -1,9 +1,4 @@
 // src/widgets/leaderboard/ui/LeaderboardView.tsx
-//
-// FSD Refactor (Phase 1): All inline DOM mapping has been stripped out. 
-// This Widget now strictly composes data from entities/leaderboard and 
-// passes it to the features/leaderboard/ui presentational tables.
-
 import { useMemo }                    from 'react'
 import { useAuth }                    from '../../../features/auth'
 import { useLeaderboardRaw }          from '../../../entities/leaderboard/model/queries'
@@ -41,12 +36,10 @@ export default function LeaderboardView({ tournament }: LeaderboardViewProps) {
     )
   }, [raw, tournament])
 
-  const isAdmin        = profile?.is_admin ?? false
   const currentId      = profile?.id ?? ''
   const isSurvivorMode = tournament.game_type === 'survivor'
   
   // Only show the tiebreaker chip column for standard bracket tournaments
-  // that have requires_tiebreaker enabled.
   const showTiebreaker = !isSurvivorMode && (tournament.requires_tiebreaker === true)
   const isMe           = (userId: string) => userId === currentId
 
@@ -60,14 +53,14 @@ export default function LeaderboardView({ tournament }: LeaderboardViewProps) {
 
   return (
     <div className="flex flex-col h-full bg-slate-50 dark:bg-slate-950">
-      <div className="flex-1 overflow-auto p-4 md:p-8">
+      <div className="flex-1 overflow-auto p-4 md:p-8 scrollbar-thin">
         <div className="max-w-4xl mx-auto h-full">
           {isSurvivorMode ? (
             <SurvivorStandingsTable 
               title="Survivor Standings"
               board={leaderboard}
               isMe={isMe}
-              isAdmin={isAdmin}
+              tournamentId={tournament.id} // ── PASSED ID HERE ──
               variant="full"
             />
           ) : (
@@ -75,8 +68,8 @@ export default function LeaderboardView({ tournament }: LeaderboardViewProps) {
               title="Tournament Standings"
               board={leaderboard}
               isMe={isMe}
-              isAdmin={isAdmin}
               showTiebreaker={showTiebreaker}
+              tournamentId={tournament.id} // ── PASSED ID HERE ──
               variant="full"
             />
           )}

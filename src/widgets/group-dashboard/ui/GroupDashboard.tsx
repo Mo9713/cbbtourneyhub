@@ -1,4 +1,3 @@
-// src/widgets/group-dashboard/ui/GroupDashboard.tsx
 import { useMemo } from 'react'
 import { Users } from 'lucide-react'
 import { useGroupDetailsQuery, useGroupMembersQuery } from '../../../entities/group'
@@ -11,6 +10,7 @@ import { useUIStore } from '../../../shared/store/uiStore'
 import { StandardStandingsTable, SurvivorStandingsTable } from '../../../features/leaderboard'
 import { CopyInviteLink, DeleteGroupButton, LeaveGroupButton } from '../../../features/group-management'
 import { StandardTournamentCard, SurvivorTournamentCard } from '../../../entities/tournament'
+import { useStabilizedLoading } from '../../../shared/lib/useStabilizedLoading'
 import type { Tournament } from '../../../shared/types'
 
 export function GroupDashboard({ groupId }: { groupId: string }) {
@@ -18,18 +18,26 @@ export function GroupDashboard({ groupId }: { groupId: string }) {
   const { profile } = useAuth()
   const ui = useUIStore()
   
-  const { data: group, isLoading } = useGroupDetailsQuery(groupId)
-  const { data: members = [] } = useGroupMembersQuery(groupId)
-  const { data: tournaments = [] } = useTournamentListQuery()
-  const { data: rawData } = useLeaderboardRaw()
+  const { data: group,       isFetching: isFetchingGroup }   = useGroupDetailsQuery(groupId)
+  const { data: members,     isFetching: isFetchingMembers } = useGroupMembersQuery(groupId)
+  const { data: tournaments, isFetching: isFetchingTourneys } = useTournamentListQuery()
+  const { data: rawData,     isFetching: isFetchingBoard }   = useLeaderboardRaw()
 
   const isAdmin = profile?.is_admin ?? false
-  const groupTournaments = tournaments.filter((t: Tournament) => t.group_id === groupId && (isAdmin || t.status !== 'draft'))
+  const groupTournaments = (tournaments || []).filter((t: Tournament) => t.group_id === groupId && (isAdmin || t.status !== 'draft'))
   
-  const boards = useMemo(() => 
-    selectGroupLeaderboards(rawData, groupTournaments, members), 
-    [rawData, groupTournaments, members]
-  )
+  const boards = useMemo(() => {
+    if (!rawData || !members) return { standard: [], survivor: [] }
+    return selectGroupLeaderboards(rawData, groupTournaments, members)
+  }, [rawData, groupTournaments, members])
+
+  const bracketTourneyId = useMemo(() => 
+    groupTournaments.find(t => t.game_type !== 'survivor')?.id, 
+  [groupTournaments])
+
+  const survivorTourneyId = useMemo(() => 
+    groupTournaments.find(t => t.game_type === 'survivor')?.id, 
+  [groupTournaments])
 
   const isMe = (userId: string) => userId === profile?.id
 
@@ -38,18 +46,41 @@ export function GroupDashboard({ groupId }: { groupId: string }) {
     ui.setActiveView('bracket')
   }
 
-  if (isLoading || !group) {
+  const isDataLoading = isFetchingGroup || isFetchingMembers || isFetchingTourneys || isFetchingBoard || !group || !members || !tournaments || !rawData || !profile;
+  const showSkeleton = useStabilizedLoading(isDataLoading, 400);
+
+  // ── FIX: Added the data variables to the IF statement to satisfy TypeScript ──
+  if (showSkeleton || !group || !members || !tournaments || !rawData || !profile) {
     return (
-      <div className={`flex items-center justify-center w-full h-full p-8 ${theme.textMuted}`}>
-        <div className="w-12 h-12 rounded-full border-4 border-t-transparent animate-spin border-amber-500" />
+      <div className="flex flex-col w-full max-w-7xl mx-auto p-4 md:p-8 gap-8">
+        <header className={`relative overflow-hidden rounded-2xl border p-8 md:p-10 shadow-sm ${theme.panelBg} ${theme.borderBase} flex flex-col items-center text-center gap-6`}>
+          <div className={`absolute top-0 left-0 w-full h-2 ${theme.bgMd}`} />
+          <div className="w-64 h-12 bg-slate-200 dark:bg-slate-800/50 rounded-xl animate-pulse" />
+          <div className="w-32 h-6 bg-slate-200 dark:bg-slate-800/50 rounded-full animate-pulse mt-2" />
+          <div className="w-48 h-10 bg-slate-200 dark:bg-slate-800/50 rounded-lg animate-pulse mt-4 border border-slate-300 dark:border-slate-700" />
+        </header>
+        
+        <section className="flex flex-col gap-6">
+          <div className="flex justify-center w-full mb-2">
+            <div className="w-64 h-10 bg-slate-200 dark:bg-slate-800/50 rounded-xl animate-pulse" />
+          </div>
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 items-start w-full">
+            <div className="flex flex-col gap-6 w-full">
+              <div className="w-full h-40 bg-slate-200 dark:bg-slate-800/50 rounded-2xl animate-pulse border border-slate-300 dark:border-slate-800" />
+              <div className="w-full h-64 bg-slate-200 dark:bg-slate-800/50 rounded-[2rem] animate-pulse border border-slate-300 dark:border-slate-800" />
+            </div>
+            <div className="flex flex-col gap-6 w-full">
+              <div className="w-full h-40 bg-slate-200 dark:bg-slate-800/50 rounded-2xl animate-pulse border border-slate-300 dark:border-slate-800" />
+              <div className="w-full h-64 bg-slate-200 dark:bg-slate-800/50 rounded-[2rem] animate-pulse border border-slate-300 dark:border-slate-800" />
+            </div>
+          </div>
+        </section>
       </div>
     )
   }
 
   return (
     <div className="flex flex-col w-full max-w-7xl mx-auto p-4 md:p-8 gap-8">
-      
-      {/* ── Header ── */}
       <header className={`relative overflow-hidden rounded-2xl border p-8 md:p-10 shadow-sm ${theme.panelBg} ${theme.borderBase} flex flex-col items-center text-center gap-6`}>
         <div className={`absolute top-0 left-0 w-full h-2 ${theme.bgMd}`} />
 
@@ -83,7 +114,6 @@ export function GroupDashboard({ groupId }: { groupId: string }) {
         </div>
       </header>
 
-      {/* ── Tournaments & Standings ── */}
       <section className="flex flex-col gap-6">
         <div className="relative flex flex-col md:flex-row items-center justify-center w-full mb-2">
           <h2 className={`text-3xl font-black uppercase tracking-wider ${theme.textBase}`}>Tournaments</h2>
@@ -118,7 +148,7 @@ export function GroupDashboard({ groupId }: { groupId: string }) {
                   title="Bracket Standings"
                   board={boards.standard}
                   isMe={isMe}
-                  isAdmin={isAdmin}
+                  tournamentId={bracketTourneyId}
                   showTiebreaker={groupTournaments.some(t => t.game_type !== 'survivor' && t.requires_tiebreaker === true)}
                   variant="compact"
                 />
@@ -143,7 +173,7 @@ export function GroupDashboard({ groupId }: { groupId: string }) {
                   title="Survivor Standings"
                   board={boards.survivor}
                   isMe={isMe}
-                  isAdmin={isAdmin}
+                  tournamentId={survivorTourneyId}
                   variant="compact"
                 />
               </div>

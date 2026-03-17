@@ -1,25 +1,24 @@
-// src/widgets/survivor-bracket/ui/SurvivorBracketView.tsx
-
-import { useMemo, useState }     from 'react'
-import { Ban }                   from 'lucide-react'
-import { useTheme }              from '../../../shared/lib/theme'
+import { useMemo }       from 'react'
+import { Ban, Trophy, Settings } from 'lucide-react'
+import { useTheme }      from '../../../shared/lib/theme'
+import { useUIStore }    from '../../../shared/store/uiStore'
 import {
   useTournamentListQuery,
   useGames,
-}                                from '../../../entities/tournament/model/queries'
-import { useMyPicks }            from '../../../entities/pick/model/queries'
-import { useLeaderboardRaw }     from '../../../entities/leaderboard/model/queries'
+}                        from '../../../entities/tournament/model/queries'
+import { useMyPicks }    from '../../../entities/pick/model/queries'
+import { useLeaderboardRaw } from '../../../entities/leaderboard/model/queries'
 import { getActiveSurvivorRound } from '../../../shared/lib/time'
 import {
   getUsedTeams,
   getIsEliminated,
   isEndEarlyResolved,
+  getSurvivorWinner,
   useMakeSurvivorPickMutation,
   SurvivorGameCard,
-}                                from '../../../features/survivor'
-import { LeaderboardView }       from '../../leaderboard'
-import Countdown                 from '../../../shared/ui/Countdown'
-import { useAuth }               from '../../../features/auth'
+}                        from '../../../features/survivor'
+import Countdown         from '../../../shared/ui/Countdown'
+import { useAuth }       from '../../../features/auth'
 import type { Game, Pick, Tournament } from '../../../shared/types'
 
 interface Props {
@@ -29,11 +28,10 @@ interface Props {
 export function SurvivorBracketView({ tournamentId }: Props) {
   const theme       = useTheme()
   const { profile } = useAuth()
+  const setActiveView = useUIStore(s => s.setActiveView)
 
   const { data: tournaments = [] } = useTournamentListQuery()
   const tournament = tournaments.find((t: Tournament) => t.id === tournamentId) ?? null
-
-  const [viewMode, setViewMode] = useState<'bracket' | 'standings'>('bracket')
 
   const { data: games = [] } = useGames(tournamentId)
   const { data: picks = [] } = useMyPicks(tournamentId, games)
@@ -76,10 +74,16 @@ export function SurvivorBracketView({ tournamentId }: Props) {
     return getIsEliminated(picks, games, allTournamentPicks, tournament)
   }, [picks, games, allTournamentPicks, tournament])
 
+  const winnerId = useMemo(() => {
+    if (!tournament) return null
+    return getSurvivorWinner(allTournamentPicks, games, tournament)
+  }, [allTournamentPicks, games, tournament])
+
   const isTournamentOver = useMemo(() => {
     if (!tournament) return false
-    return isEndEarlyResolved(allTournamentPicks, games, tournament)
-  }, [allTournamentPicks, games, tournament])
+    const endedEarly = isEndEarlyResolved(allTournamentPicks, games, tournament)
+    return endedEarly || winnerId !== null
+  }, [allTournamentPicks, games, tournament, winnerId])
 
   const southGames   = games.filter((g: Game) => g.region === 'South'   && g.round_num <= 4)
   const westGames    = games.filter((g: Game) => g.region === 'West'    && g.round_num <= 4)
@@ -138,23 +142,31 @@ export function SurvivorBracketView({ tournamentId }: Props) {
 
   if (!tournament) return null
 
+  const winnerProfile = winnerId 
+    ? raw?.allProfiles.find(p => p.id === winnerId) 
+    : null;
+
   return (
     <div className={`w-full h-full flex flex-col p-4 md:p-8 ${theme.appBg} overflow-hidden`}>
-      {/* ── Dashboard Banner ── */}
-      <div className={`flex flex-col xl:flex-row items-center justify-between p-4 md:p-6 rounded-2xl border shadow-sm mb-6 flex-shrink-0 gap-4 ${theme.panelBg} ${theme.borderBase}`}>
+      <div className={`flex flex-col xl:flex-row items-center justify-between p-4 md:p-6 rounded-2xl border shadow-sm mb-6 flex-shrink-0 gap-4 ${
+        winnerId ? 'bg-amber-500/10 border-amber-500/50' : `${theme.panelBg} ${theme.borderBase}`
+      }`}>
         
-        {/* Left: Titles */}
         <div className="flex flex-col items-center xl:items-start text-center xl:text-left">
-          <h1 className={`text-2xl font-black ${theme.textBase}`}>{tournament.name}</h1>
-          <span className={`text-sm font-bold uppercase tracking-widest ${theme.textMuted}`}>Survivor Mode</span>
-          {isTournamentOver && (
+          <h1 className={`text-2xl font-black ${winnerId ? 'text-amber-500' : theme.textBase}`}>{tournament.name}</h1>
+          <span className={`text-sm font-bold uppercase tracking-widest ${winnerId ? 'text-amber-500/70' : theme.textMuted}`}>Survivor Mode</span>
+          
+          {winnerProfile ? (
+            <span className="mt-1 flex items-center gap-1.5 text-sm font-black text-amber-500 uppercase tracking-widest">
+              <Trophy size={16} /> Pool Winner: {winnerProfile.display_name}!
+            </span>
+          ) : isTournamentOver ? (
             <span className="mt-1 text-xs font-bold text-rose-400 uppercase tracking-widest">
               Pool Concluded — Mass Elimination
             </span>
-          )}
+          ) : null}
         </div>
 
-        {/* Middle: Custom Progress Bar for Survivor */}
         {!isTournamentOver && !isEliminated && activeRound > 0 && (
           <div className="w-full xl:flex-1 max-w-sm bg-slate-100 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700/50 rounded-2xl p-3.5 shadow-inner">
             <div className="flex items-center justify-between mb-2 px-1">
@@ -178,32 +190,17 @@ export function SurvivorBracketView({ tournamentId }: Props) {
           </div>
         )}
 
-        {/* Right: Actions & Countdown */}
         <div className="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
-          <div className="flex gap-2 bg-black/10 dark:bg-white/5 p-1.5 rounded-xl">
-            <button
-              onClick={() => setViewMode('bracket')}
-              className={`px-6 py-2 rounded-lg font-bold text-sm transition-all ${
-                viewMode === 'bracket'
-                  ? `${theme.bg} ${theme.border} ${theme.accentB} shadow-sm`
-                  : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-              }`}
-            >
-              My Picks
-            </button>
-            <button
-              onClick={() => setViewMode('standings')}
-              className={`px-6 py-2 rounded-lg font-bold text-sm transition-all ${
-                viewMode === 'standings'
-                  ? `${theme.bg} ${theme.border} ${theme.accentB} shadow-sm`
-                  : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-              }`}
-            >
-              Standings
-            </button>
-          </div>
-
           <div className="flex gap-3 items-center">
+            {/* ── ADMIN NAV BUTTON ── */}
+            {profile?.is_admin && (
+              <button
+                onClick={() => setActiveView('admin')}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-200 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-slate-300 dark:hover:bg-slate-700 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-colors"
+              >
+                <Settings size={12} /> Admin
+              </button>
+            )}
             <Countdown
               tournament={tournament}
               isAdmin={profile?.is_admin ?? false}
@@ -219,30 +216,23 @@ export function SurvivorBracketView({ tournamentId }: Props) {
         </div>
       </div>
 
-      {viewMode === 'bracket' ? (
-        <div className="flex-1 overflow-auto scrollbar-thin">
-          <div className="flex flex-col gap-10 min-w-max">
-            {/* Regional grid */}
-            <div className="grid grid-cols-[1fr_auto_1fr] gap-6">
-              <div className="flex flex-col gap-10">
-                {renderRegion('South', southGames, 'left')}
-                {renderRegion('West', westGames, 'left')}
-              </div>
-              <div className="flex flex-col items-center justify-center">
-                {renderRegion('Final Four', finalGames, 'center')}
-              </div>
-              <div className="flex flex-col gap-10">
-                {renderRegion('East', eastGames, 'right')}
-                {renderRegion('Midwest', midwestGames, 'right')}
-              </div>
+      <div className="flex-1 overflow-auto scrollbar-thin">
+        <div className="flex flex-col gap-10 min-w-max">
+          <div className="grid grid-cols-[1fr_auto_1fr] gap-6">
+            <div className="flex flex-col gap-10">
+              {renderRegion('South', southGames, 'left')}
+              {renderRegion('West', westGames, 'left')}
+            </div>
+            <div className="flex flex-col items-center justify-center">
+              {renderRegion('Final Four', finalGames, 'center')}
+            </div>
+            <div className="flex flex-col gap-10">
+              {renderRegion('East', eastGames, 'right')}
+              {renderRegion('Midwest', midwestGames, 'right')}
             </div>
           </div>
         </div>
-      ) : (
-        <div className="flex-1 overflow-auto scrollbar-thin">
-          <LeaderboardView tournament={tournament} />
-        </div>
-      )}
+      </div>
     </div>
   )
 }

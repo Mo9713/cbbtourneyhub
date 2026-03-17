@@ -16,9 +16,9 @@ import type { Tournament }                          from '../../../shared/types'
 export default function TournamentListView() {
   const theme = useTheme()
   const { profile }                = useAuth()
-  const { data: tournaments = [] } = useTournamentListQuery()
-  const { data: groups = [] }      = useUserGroupsQuery()
-  const { data: rawData }          = useLeaderboardRaw()
+  const { data: tournaments = [], isLoading: isLoadingTourneys } = useTournamentListQuery()
+  const { data: groups = [],      isLoading: isLoadingGroups } = useUserGroupsQuery()
+  const { data: rawData,          isLoading: isLoadingBoard } = useLeaderboardRaw()
 
   const selectTournamentId = useUIStore((s) => s.selectTournament)
 
@@ -82,12 +82,37 @@ export default function TournamentListView() {
       }
       return {
         tournamentName: t.name,
+        tournamentId: t.id,
         board: computeLeaderboard(picks, games, rawData.allGames, contextProfiles, tMap),
       }
     })
   }, [rawData, survivorTourneys, activeGroupMembers, activeContext])
 
-  if (!profile) return null
+  if (isLoadingTourneys || isLoadingGroups || isLoadingBoard || !profile) {
+    return (
+      <div className="flex flex-col h-full max-w-7xl mx-auto w-full animate-pulse">
+        <div className={`px-6 py-5 border-b flex-shrink-0 flex items-center justify-between ${theme.headerBg}`}>
+          <div className="space-y-2">
+            <div className="w-48 h-8 bg-slate-200 dark:bg-slate-800 rounded-lg" />
+            <div className="w-64 h-4 bg-slate-200 dark:bg-slate-800 rounded" />
+          </div>
+          <div className="w-32 h-10 bg-slate-200 dark:bg-slate-800 rounded-xl" />
+        </div>
+        <div className="flex-1 p-6 md:p-10 w-full max-w-5xl mx-auto space-y-10">
+          <div className="flex items-center justify-center gap-4 w-full">
+            <div className={`h-px flex-1 ${theme.borderBase} bg-slate-200 dark:bg-slate-800`} />
+            <div className="w-32 h-4 bg-slate-200 dark:bg-slate-800 rounded" />
+            <div className={`h-px flex-1 ${theme.borderBase} bg-slate-200 dark:bg-slate-800`} />
+          </div>
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 w-full">
+            {[...Array(6)].map((_, i) => (
+              <div key={i} className="w-full h-40 bg-slate-200 dark:bg-slate-800 rounded-2xl" />
+            ))}
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   const open = activeTournaments.filter((t: Tournament) => t.status === 'open' && !isPicksLocked(t, isAdmin))
   const draft = isAdmin ? activeTournaments.filter((t: Tournament) => t.status === 'draft') : []
@@ -187,10 +212,24 @@ export default function TournamentListView() {
                 </h2>
                 <div className={`grid grid-cols-1 ${(standardTourneys.length > 0 && survivorTourneys.length > 0) ? 'xl:grid-cols-2' : 'max-w-4xl mx-auto'} gap-8 items-start w-full max-w-7xl`}>
                   {standardTourneys.length > 0 && (
-                    <StandardStandingsTable title="Overall Bracket Standings" board={standardBoard} isMe={isMe} isAdmin={isAdmin} showTiebreaker={standardTourneys.some(t => t.requires_tiebreaker === true)} variant="compact" />
+                    <StandardStandingsTable 
+                      title="Overall Bracket Standings" 
+                      board={standardBoard} 
+                      isMe={isMe} 
+                      tournamentId={standardTourneys[0]?.id} 
+                      showTiebreaker={standardTourneys.some(t => t.requires_tiebreaker === true)} 
+                      variant="compact" 
+                    />
                   )}
-                  {survivorBoards.map(({ tournamentName, board }) => (
-                    <SurvivorStandingsTable key={tournamentName} title={`${tournamentName} — Survivor`} board={board} isMe={isMe} isAdmin={isAdmin} variant="compact" />
+                  {survivorBoards.map(({ tournamentName, board, tournamentId }) => (
+                    <SurvivorStandingsTable 
+                      key={tournamentName} 
+                      title={`${tournamentName} — Survivor`} 
+                      board={board} 
+                      isMe={isMe} 
+                      tournamentId={tournamentId}
+                      variant="compact" 
+                    />
                   ))}
                 </div>
               </div>

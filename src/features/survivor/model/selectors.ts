@@ -225,7 +225,44 @@ export function isEndEarlyResolved(
     }
   }
 
-  // FIX M-NEW-3: Delegate to shared isMassRevivalRound rather than
+  // Delegate to shared isMassRevivalRound rather than
   // duplicating the active-picker counting logic here.
   return isMassRevivalRound(roundGames, allPicks, priorEliminated)
+}
+
+/**
+ * Detects if a Survivor pool has a single winner remaining.
+ * Can be scoped to a specific group by passing groupMemberIds.
+ * Returns the user_id of the winner, or null if the game is ongoing/tied.
+ */
+export function getSurvivorWinner(
+  allPicks: Pick[],
+  games: Game[],
+  tournament: Tournament,
+  groupMemberIds?: string[]
+): string | null {
+  if (tournament.game_type !== 'survivor') return null
+
+  // 1. Get all unique user IDs who have made at least one pick in this tournament
+  let participants = [...new Set(allPicks.map(p => p.user_id))]
+
+  // 2. If a group filter is provided, strictly limit the participants to that group
+  if (groupMemberIds && groupMemberIds.length > 0) {
+    const memberSet = new Set(groupMemberIds)
+    participants = participants.filter(id => memberSet.has(id))
+  }
+
+  // 3. Evaluate elimination status for every participant
+  const survivors = participants.filter(uid => {
+    const userPicks = allPicks.filter(p => p.user_id === uid)
+    return !getIsEliminated(userPicks, games, allPicks, tournament)
+  })
+
+  // 4. If exactly ONE person survives, they are the undisputed winner.
+  if (survivors.length === 1) {
+    return survivors[0]
+  }
+
+  // Otherwise, the game continues (multiple survivors) or everyone died (0 survivors)
+  return null
 }

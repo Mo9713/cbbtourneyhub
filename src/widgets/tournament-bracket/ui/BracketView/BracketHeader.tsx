@@ -1,10 +1,9 @@
-// src/widgets/tournament-bracket/ui/BracketView/BracketHeader.tsx
-
-import { Eye, Lock, Clock } from 'lucide-react'
+import { Eye, Lock, Clock, Settings } from 'lucide-react'
 import { useTheme }              from '../../../../shared/lib/theme'
 import { statusLabel, statusIcon } from '../../../../shared/lib/helpers'
 import { isPicksLocked, isBeforeUnlock, getActiveSurvivorRound } from '../../../../shared/lib/time'
 import { useAuth }               from '../../../../features/auth/model/useAuth'
+import { useUIStore }            from '../../../../shared/store/uiStore'
 import Countdown                 from '../../../../shared/ui/Countdown'
 import type { Tournament }       from '../../../../shared/types'
 
@@ -15,7 +14,6 @@ interface Props {
   readOnly:             boolean
   ownerName?:           string
   score:                { current: number; max: number }
-  // Resolved team name strings — passed from parent to avoid re-deriving here
   champion?:            string | null
   currentRoundPickTeam?: string | null
 }
@@ -26,6 +24,7 @@ export default function BracketHeader({
 }: Props) {
   const theme = useTheme()
   const { profile } = useAuth()
+  const setActiveView = useUIStore(s => s.setActiveView)
 
   const lockedByTime = isPicksLocked(tournament, profile?.is_admin ?? false)
   const beforeOpen   = isBeforeUnlock(tournament)
@@ -55,8 +54,6 @@ export default function BracketHeader({
   }
 
   const pct = effectiveTotal > 0 ? Math.round((effectivePicked / effectiveTotal) * 100) : 0
-
-  // The team name to display inline in the progress bar label
   const displayPickTeam = isSurvivor ? currentRoundPickTeam : champion
 
   return (
@@ -97,7 +94,6 @@ export default function BracketHeader({
         ) : (
           <div className="w-full max-w-md bg-slate-100 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700/50 rounded-2xl p-3.5 shadow-inner">
             <div className="flex items-center justify-between mb-2 px-1">
-              {/* Label + resolved pick name inline */}
               <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1.5 min-w-0 overflow-hidden">
                 {isSurvivor ? 'Current Round Pick:' : 'Champion Pick:'}
                 {displayPickTeam ? (
@@ -128,8 +124,16 @@ export default function BracketHeader({
         )}
       </div>
 
-      {/* ── RIGHT: Countdown Timer ── */}
-      <div className="flex items-center justify-center md:justify-end w-full md:w-auto md:flex-1">
+      {/* ── RIGHT: Admin Button & Countdown Timer ── */}
+      <div className="flex items-center justify-center md:justify-end gap-3 w-full md:w-auto md:flex-1">
+        {profile?.is_admin && (
+          <button
+            onClick={() => setActiveView('admin')}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-200 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-slate-300 dark:hover:bg-slate-700 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-colors"
+          >
+            <Settings size={12} /> Admin
+          </button>
+        )}
         <Countdown
           tournament={tournament}
           isAdmin={profile?.is_admin ?? false}

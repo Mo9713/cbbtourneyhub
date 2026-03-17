@@ -8,48 +8,76 @@ import { useUserGroupsQuery, useGroupMembersQuery } from '../../../entities/grou
 import { useLeaderboardRaw } from '../../../entities/leaderboard/model/queries'
 import { selectGroupLeaderboards } from '../../../features/leaderboard/model/selectors'
 import { StandardStandingsTable, SurvivorStandingsTable } from '../../../features/leaderboard'
+import { useStabilizedLoading } from '../../../shared/lib/useStabilizedLoading'
 
 export default function StandingsPage() {
   const theme = useTheme()
   const { profile } = useAuth()
   const ui = useUIStore()
   
-  // Local state for tabs
   const [activeTab, setActiveTab] = useState<'bracket' | 'survivor'>('bracket')
   const [dropdownOpen, setDropdownOpen] = useState(false)
 
-  const { data: tournaments = [], isLoading: isLoadingTourneys } = useTournamentListQuery()
-  const { data: groups = [] } = useUserGroupsQuery()
-  const { data: rawData, isLoading: isLoadingBoard } = useLeaderboardRaw()
+  const { data: tournaments, isFetching: isFetchingTourneys } = useTournamentListQuery()
+  const { data: groups,      isFetching: isFetchingGroups }   = useUserGroupsQuery()
+  const { data: rawData,     isFetching: isFetchingBoard }    = useLeaderboardRaw()
   
-  // Use the active group (fallback to first group if somehow null)
-  const effectiveGroupId = ui.activeGroupId || (groups.length > 0 ? groups[0].id : null)
-  const { data: members = [] } = useGroupMembersQuery(effectiveGroupId || '')
+  const effectiveGroupId = ui.activeGroupId || (groups && groups.length > 0 ? groups[0].id : null)
+  const { data: members,     isFetching: isFetchingMembers }  = useGroupMembersQuery(effectiveGroupId || '')
 
   const isAdmin = profile?.is_admin ?? false
   const isMe = (userId: string) => userId === profile?.id
 
-  const activeGroupName = groups.find(g => g.id === effectiveGroupId)?.name || 'Unknown Group'
+  const activeGroupName = (groups || []).find(g => g.id === effectiveGroupId)?.name || 'Unknown Group'
 
-  // Filter tournaments strictly for this group
   const groupTournaments = useMemo(() => 
-    tournaments.filter(t => t.group_id === effectiveGroupId && (isAdmin || t.status !== 'draft')),
+    (tournaments || []).filter(t => t.group_id === effectiveGroupId && (isAdmin || t.status !== 'draft')),
   [tournaments, effectiveGroupId, isAdmin])
 
-  // Process the leaderboards specifically for this group's members
   const boards = useMemo(() => {
-    if (!rawData || !effectiveGroupId) return { standard: [], survivor: [] }
+    if (!rawData || !effectiveGroupId || !members) return { standard: [], survivor: [] }
     return selectGroupLeaderboards(rawData, groupTournaments, members)
   }, [rawData, groupTournaments, members, effectiveGroupId])
 
-  // Ensure tab makes sense based on available data
+  const bracketTourneyId = useMemo(() => 
+    groupTournaments.find(t => t.game_type !== 'survivor')?.id, 
+  [groupTournaments])
+
+  const survivorTourneyId = useMemo(() => 
+    groupTournaments.find(t => t.game_type === 'survivor')?.id, 
+  [groupTournaments])
+
   const hasStandard = boards.standard.length > 0
   const hasSurvivor = boards.survivor.length > 0
 
-  if (isLoadingTourneys || isLoadingBoard) {
+  const isDataLoading = isFetchingTourneys || isFetchingBoard || isFetchingGroups || isFetchingMembers || !tournaments || !groups || !rawData || !members || !profile;
+  const showSkeleton = useStabilizedLoading(isDataLoading, 400);
+
+  // ── FIX: Added the data variables to the IF statement to satisfy TypeScript ──
+  if (showSkeleton || !tournaments || !groups || !rawData || !members || !profile) {
     return (
-      <div className={`flex items-center justify-center w-full h-full p-8 ${theme.textMuted}`}>
-        <div className="w-12 h-12 rounded-full border-4 border-t-transparent animate-spin border-amber-500" />
+      <div className={`w-full h-full flex flex-col p-4 md:p-8 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-700 ${theme.appBg}`}>
+        <div className="max-w-5xl mx-auto w-full space-y-6 pb-12">
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-2">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-xl bg-slate-200 dark:bg-slate-800/50 animate-pulse border border-slate-300 dark:border-slate-800" />
+              <div className="w-64 h-10 rounded-xl bg-slate-200 dark:bg-slate-800/50 animate-pulse" />
+            </div>
+            <div className="w-40 h-10 rounded-xl bg-slate-200 dark:bg-slate-800/50 animate-pulse border border-slate-300 dark:border-slate-800" />
+          </div>
+
+          <div className={`flex flex-col rounded-[2rem] border shadow-xl overflow-hidden ${theme.panelBg} ${theme.borderBase}`}>
+            <div className="border-b border-slate-200 dark:border-slate-800 px-8 flex gap-8 items-end pt-5 pb-0">
+               <div className="w-24 h-10 bg-slate-200 dark:bg-slate-800/50 rounded-t-lg animate-pulse" />
+               <div className="w-24 h-10 bg-slate-200 dark:bg-slate-800/50 rounded-t-lg animate-pulse" />
+            </div>
+            <div className="p-6 md:p-8 space-y-4">
+              {[...Array(5)].map((_, i) => (
+                <div key={i} className="w-full h-20 rounded-2xl bg-slate-200 dark:bg-slate-800/50 animate-pulse border border-slate-300 dark:border-slate-800" />
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
     )
   }
@@ -74,7 +102,6 @@ export default function StandingsPage() {
     <div className={`w-full h-full flex flex-col p-4 md:p-8 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-700 ${theme.appBg}`}>
       <div className="max-w-5xl mx-auto w-full space-y-6 pb-12">
         
-        {/* ── Header & Group Selector ── */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-3">
@@ -87,7 +114,6 @@ export default function StandingsPage() {
             </div>
           </div>
 
-          {/* Group Dropdown */}
           {groups.length > 0 && (
             <div className="relative">
               <button
@@ -125,7 +151,6 @@ export default function StandingsPage() {
         ) : (
           <div className={`flex flex-col rounded-3xl border shadow-sm overflow-hidden ${theme.panelBg} ${theme.borderBase}`}>
             
-            {/* ── Tailwind Underline Tabs ── */}
             <div className="border-b border-slate-200 dark:border-slate-800 px-6">
               <nav className="-mb-px flex gap-8" aria-label="Tabs">
                 <button
@@ -157,7 +182,6 @@ export default function StandingsPage() {
               </nav>
             </div>
 
-            {/* ── Tab Content ── */}
             <div className="p-6 md:p-8">
               {activeTab === 'bracket' && hasStandard && (
                 <div className="w-full">
@@ -165,7 +189,7 @@ export default function StandingsPage() {
                     title="Bracket Leaderboard"
                     board={boards.standard}
                     isMe={isMe}
-                    isAdmin={isAdmin}
+                    tournamentId={bracketTourneyId}
                     showTiebreaker={groupTournaments.some(t => t.game_type !== 'survivor' && t.requires_tiebreaker === true)}
                     variant="full"
                   />
@@ -178,7 +202,7 @@ export default function StandingsPage() {
                     title="Survivor Leaderboard"
                     board={boards.survivor}
                     isMe={isMe}
-                    isAdmin={isAdmin}
+                    tournamentId={survivorTourneyId}
                     variant="full"
                   />
                 </div>

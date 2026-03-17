@@ -1,30 +1,21 @@
-// src/widgets/snoop-modal/ui/SnoopModal.tsx
-//
-// M-04 FIX: visibleTournaments is now filtered to only show tournaments
-// in which the target user has actually participated (has picks).
-// Previously, all non-draft tournaments were shown, meaning an admin
-// could see tabs for private group tournaments even if neither they
-// nor the target user were members of that group — a contextual data
-// exposure violation. Restricting to tournaments with actual target
-// picks is correct: if they made picks, they were a participant.
-
-import { useState, useMemo }               from 'react'
-import { X, Trophy, Lock }                 from 'lucide-react'
+import { useState, useMemo, useEffect } from 'react'
+import { X, Trophy, Lock, ShieldAlert } from 'lucide-react'
 import { TournamentBracket as BracketView } from '../../tournament-bracket'
-import { useAuth }                          from '../../../features/auth'
-import { isPicksLocked }                   from '../../../shared/lib/time'
-import { useLeaderboardRaw }               from '../../../entities/leaderboard/model/queries'
+import { useAuth } from '../../../features/auth'
+import { isPicksLocked } from '../../../shared/lib/time'
+import { useLeaderboardRaw } from '../../../entities/leaderboard/model/queries'
 import { useTournamentListQuery, useGames } from '../../../entities/tournament/model/queries'
 import type { Game, Pick, Profile, Tournament } from '../../../shared/types'
 
 interface Props {
   targetId: string
+  initialTid?: string | null // ── NEW PROP ──
   onClose:  () => void
 }
 
-export default function SnoopModal({ targetId, onClose }: Props) {
-  const { profile }                = useAuth()
-  const { data: raw }              = useLeaderboardRaw()
+export default function SnoopModal({ targetId, initialTid, onClose }: Props) {
+  const { profile } = useAuth()
+  const { data: raw } = useLeaderboardRaw()
   const { data: tournaments = [] } = useTournamentListQuery()
 
   const [adminOverride, setAdminOverride] = useState(false)
@@ -39,16 +30,21 @@ export default function SnoopModal({ targetId, onClose }: Props) {
     [raw, targetId],
   )
 
-  
-
   const visibleTournaments = useMemo(
     () => tournaments.filter((t: Tournament) => t.status !== 'draft'),
     [tournaments],
   )
 
-  const [selectedTid, setSelectedTid] = useState<string | null>(
-    () => visibleTournaments[0]?.id ?? null,
-  )
+  // ── SMART TAB SELECTION ──
+  // If initialTid is passed and valid, use it. Otherwise fallback to the first available.
+  const [selectedTid, setSelectedTid] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (visibleTournaments.length > 0 && !selectedTid) {
+      const preferred = visibleTournaments.find(t => t.id === initialTid)
+      setSelectedTid(preferred ? preferred.id : visibleTournaments[0].id)
+    }
+  }, [visibleTournaments, initialTid, selectedTid])
 
   const selectedTournament = useMemo(
     () => visibleTournaments.find((t: Tournament) => t.id === selectedTid) ?? null,
@@ -62,7 +58,7 @@ export default function SnoopModal({ targetId, onClose }: Props) {
     [targetPicks, selectedGames],
   )
 
-  const isLoading = !raw || !targetProfile
+  const isLoading = !raw || !targetProfile || !selectedTid
   const isAdmin   = profile?.is_admin ?? false
 
   const isTournamentLocked = selectedTournament
@@ -73,102 +69,117 @@ export default function SnoopModal({ targetId, onClose }: Props) {
     ? (isTournamentLocked || adminOverride)
     : isTournamentLocked
 
+  // Close on Escape key
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', handleEsc)
+    return () => window.removeEventListener('keydown', handleEsc)
+  }, [onClose])
+
   if (isLoading) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950">
         <div className="w-12 h-12 rounded-full border-4 border-t-transparent border-amber-500 animate-spin" />
       </div>
     )
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-      <div className="w-full max-w-5xl h-[90vh] bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden flex flex-col shadow-2xl">
-
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 flex-shrink-0">
-          <div className="flex items-center gap-3">
-            <Trophy size={16} className="text-amber-400" />
-            <span className="font-bold text-white text-sm">
+    // ── TRUE FULLSCREEN TAKEOVER ──
+    <div className="fixed inset-0 z-[100] flex flex-col bg-slate-950 animate-in fade-in zoom-in-95 duration-200">
+      
+      {/* ── Premium Header ── */}
+      <div className="flex items-center justify-between px-6 py-5 border-b border-slate-900 bg-black flex-shrink-0 shadow-md">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
+            <Trophy size={20} className="text-amber-500" />
+          </div>
+          <div>
+            <span className="font-display font-black text-white text-2xl uppercase tracking-wide flex items-center gap-2">
               {targetProfile.display_name}'s Bracket
             </span>
+            <span className="text-xs font-bold uppercase tracking-widest text-slate-500">
+              Snooping Mode
+            </span>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
-          >
-            <X size={16} />
-          </button>
         </div>
 
-        {/* Tournament tabs */}
-        {visibleTournaments.length > 1 && (
-          <div className="flex gap-1 px-4 pt-3 border-b border-slate-800 flex-shrink-0 overflow-x-auto">
-            {visibleTournaments.map((t: Tournament) => (
-              <button
-                key={t.id}
-                onClick={() => setSelectedTid(t.id)}
-                className={`px-4 py-2 text-xs font-bold rounded-t-lg transition-all border-b-2 flex-shrink-0
-                  ${selectedTid === t.id
-                    ? 'text-white border-white bg-white/5'
-                    : 'text-slate-500 border-transparent hover:text-slate-300'
-                  }`}
-              >
-                {t.name}
-              </button>
-            ))}
-          </div>
-        )}
+        <button
+          onClick={onClose}
+          className="p-3 rounded-full bg-slate-900 border border-slate-800 hover:bg-rose-500 hover:border-rose-500 hover:text-white text-slate-400 transition-all shadow-sm"
+        >
+          <X size={20} />
+        </button>
+      </div>
 
-        {/* Admin override banner */}
-        {isAdmin && !isTournamentLocked && selectedTournament && (
-          <div className="px-6 py-2.5 bg-rose-500/10 border-b border-rose-500/20 flex items-center justify-between flex-shrink-0">
-            <div className="flex items-center gap-2 text-rose-400">
-              <Lock size={12} />
-              <span className="text-[11px] font-medium uppercase tracking-wide">
-                Picks are still open.
-              </span>
-            </div>
-            <label className="flex items-center gap-1.5 cursor-pointer">
-              <span className="text-[10px] font-bold text-rose-400/80 uppercase tracking-widest">
-                Admin: Snoop Anyway
-              </span>
-              <input
-                type="checkbox"
-                checked={adminOverride}
-                onChange={(e) => setAdminOverride(e.target.checked)}
-                className="w-3.5 h-3.5 accent-rose-500 rounded bg-slate-800 border-slate-700"
-              />
-            </label>
-          </div>
-        )}
+      {/* ── Tournament Tabs (Pill Style) ── */}
+      {visibleTournaments.length > 1 && (
+        <div className="flex items-center justify-center gap-2 px-4 py-4 bg-slate-950 border-b border-slate-900 flex-shrink-0 overflow-x-auto scrollbar-none">
+          {visibleTournaments.map((t: Tournament) => (
+            <button
+              key={t.id}
+              onClick={() => setSelectedTid(t.id)}
+              className={`px-5 py-2.5 text-xs font-black uppercase tracking-widest rounded-full transition-all flex-shrink-0 ${
+                selectedTid === t.id
+                  ? 'bg-amber-500 text-black shadow-[0_0_15px_rgba(245,158,11,0.3)]'
+                  : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800'
+              }`}
+            >
+              {t.name}
+            </button>
+          ))}
+        </div>
+      )}
 
-        {/* Content */}
-        <div className="flex-1 overflow-auto scrollbar-thin relative bg-slate-950">
-          {!selectedTournament ? (
-            <div className="flex items-center justify-center h-full text-slate-600 text-sm">
-              No tournament participation found.
-            </div>
-          ) : showBracket ? (
-            <BracketView
-              overrideTournament={selectedTournament}
-              overrideGames={selectedGames}
-              overridePicks={selectedPicks}
-              readOnly
-              ownerName={targetProfile.display_name}
+      {/* ── Admin Override Banner ── */}
+      {isAdmin && !isTournamentLocked && selectedTournament && (
+        <div className="px-6 py-3 bg-rose-500/10 border-b border-rose-500/20 flex items-center justify-between flex-shrink-0">
+          <div className="flex items-center gap-3 text-rose-400">
+            <ShieldAlert size={16} />
+            <span className="text-xs font-black uppercase tracking-widest">
+              Live Picks — God Mode Active
+            </span>
+          </div>
+          <label className="flex items-center gap-2 cursor-pointer bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800 hover:border-rose-500 transition-colors">
+            <span className="text-[10px] font-black text-rose-400 uppercase tracking-widest">
+              Force Reveal
+            </span>
+            <input
+              type="checkbox"
+              checked={adminOverride}
+              onChange={(e) => setAdminOverride(e.target.checked)}
+              className="w-4 h-4 accent-rose-500 rounded bg-slate-800 border-slate-700"
             />
-          ) : (
-            <div className="flex flex-col items-center justify-center h-full text-slate-500 space-y-3 p-6 text-center">
-              <div className="w-16 h-16 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center mb-2">
-                <Lock size={24} className="text-slate-600" />
-              </div>
-              <h3 className="text-lg font-bold text-slate-300">Picks are hidden</h3>
-              <p className="text-sm max-w-sm">
-                {targetProfile.display_name}'s bracket is locked to prevent snooping until the tournament officially begins.
-              </p>
-            </div>
-          )}
+          </label>
         </div>
+      )}
+
+      {/* ── Main Content Area ── */}
+      <div className="flex-1 overflow-auto scrollbar-thin relative bg-[#0a0e17]">
+        {!selectedTournament ? (
+          <div className="flex flex-col items-center justify-center h-full text-slate-500 gap-3">
+            <Trophy size={48} className="opacity-20" />
+            <span className="text-sm font-bold uppercase tracking-widest">No active bracket</span>
+          </div>
+        ) : showBracket ? (
+          <BracketView
+            overrideTournament={selectedTournament}
+            overrideGames={selectedGames}
+            overridePicks={selectedPicks}
+            readOnly
+            ownerName={targetProfile.display_name}
+          />
+        ) : (
+          <div className="flex flex-col items-center justify-center h-full space-y-4 p-6 text-center animate-in fade-in duration-500">
+            <div className="w-24 h-24 rounded-full bg-slate-900/50 border border-slate-800 flex items-center justify-center mb-4">
+              <Lock size={40} className="text-slate-600" />
+            </div>
+            <h3 className="text-2xl font-display font-black text-white uppercase tracking-wider">Top Secret</h3>
+            <p className="text-sm font-medium text-slate-400 max-w-md leading-relaxed">
+              {targetProfile.display_name}'s bracket is locked in the vault to prevent snooping. It will automatically unlock the second the first game tips off.
+            </p>
+          </div>
+        )}
       </div>
     </div>
   )

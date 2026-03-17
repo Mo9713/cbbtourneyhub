@@ -99,7 +99,11 @@ export default function AppShell() {
 
       {/* ── Global overlays ── */}
       {snoopTargetId && (
-        <SnoopModal targetId={snoopTargetId} onClose={closeSnoop} />
+        <SnoopModal 
+          targetId={snoopTargetId} 
+          initialTid={useUIStore.getState().snoopTournamentId} // ── ADD THIS ──
+          onClose={closeSnoop} 
+        />
       )}
 
       {showAddTournament && (

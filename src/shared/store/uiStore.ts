@@ -32,7 +32,8 @@ export interface UIStore {
 
   // Snoop
   snoopTargetId: string | null
-  openSnoop:     (id: string) => void
+  snoopTournamentId?: string | null // ── ADD THIS ──
+  openSnoop:     (id: string, tournamentId?: string) => void // ── UPDATE THIS ──
   closeSnoop:    () => void
 
   // Confirm
@@ -68,8 +69,9 @@ export const useUIStore = create<UIStore>((set) => ({
   setPendingInviteCode: (code) => set({ pendingInviteCode: code }),
 
   snoopTargetId: null,
-  openSnoop:     (id) => set({ snoopTargetId: id }),
-  closeSnoop:    () => set({ snoopTargetId: null }),
+  snoopTournamentId: null,
+  openSnoop:     (id, tournamentId) => set({ snoopTargetId: id, snoopTournamentId: tournamentId }),
+  closeSnoop:    () => set({ snoopTargetId: null, snoopTournamentId: null }),
 
   confirmModal:    null,
   setConfirmModal: (cfg) => set({ confirmModal: cfg }),
