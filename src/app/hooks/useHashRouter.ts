@@ -1,5 +1,4 @@
 // src/app/hooks/useHashRouter.ts
-
 import { useEffect, useRef } from 'react'
 import { useUIStore }        from '../../shared/store/uiStore'
 import type { ActiveView }   from '../../shared/types'
@@ -13,27 +12,12 @@ function fromHash(hash: string): ActiveView | null {
   return VALID.has(v) ? (v as ActiveView) : null
 }
 
-function handleJoinHash(
-  hash:                 string,
-  setPendingInviteCode: (code: string | null) => void,
-  setActiveView:        (v: ActiveView) => void,
-): boolean {
-  const joinMatch = hash.match(/#\/?join\/([^/?]+)/)
-  if (!joinMatch?.[1]) return false
-
-  setPendingInviteCode(joinMatch[1].toUpperCase())
-  history.replaceState({ view: 'home' }, '', '#/home')
-  setActiveView('home')
-  return true
-}
-
 export function useHashRouter(): void {
-  const activeView           = useUIStore(s => s.activeView)
-  const setActiveView        = useUIStore(s => s.setActiveView)
-  const activeGroupId        = useUIStore(s => s.activeGroupId)
-  const setActiveGroup       = useUIStore(s => s.setActiveGroup)
-  const setPendingInviteCode = useUIStore(s => s.setPendingInviteCode)
-  const fromPopState         = useRef(false)
+  const activeView    = useUIStore(s => s.activeView)
+  const setActiveView = useUIStore(s => s.setActiveView)
+  const activeGroupId = useUIStore(s => s.activeGroupId)
+  const setActiveGroup = useUIStore(s => s.setActiveGroup)
+  const fromPopState  = useRef(false)
 
   // ── activeView + activeGroupId → URL ──────────────────────
   useEffect(() => {
@@ -51,14 +35,12 @@ export function useHashRouter(): void {
     }
   }, [activeView, activeGroupId])
 
-  // ── hashchange — fires when user pastes a link into an open tab ──
+  // ── hashchange ──
   useEffect(() => {
     const onHashChange = () => {
       const hash = window.location.hash
-
-      if (handleJoinHash(hash, setPendingInviteCode, setActiveView)) return
-
       const groupMatch = hash.match(/#\/?group\/([^/?]+)/)
+      
       if (groupMatch?.[1]) {
         fromPopState.current = true
         setActiveGroup(groupMatch[1])
@@ -75,14 +57,13 @@ export function useHashRouter(): void {
 
     window.addEventListener('hashchange', onHashChange)
     return () => window.removeEventListener('hashchange', onHashChange)
-  }, [setActiveView, setActiveGroup, setPendingInviteCode])
+  }, [setActiveView, setActiveGroup])
 
-  // ── popstate (Back/Forward) → activeView ──────────────────
+  // ── popstate (Back/Forward) ──
   useEffect(() => {
     const onPop = () => {
       const hash       = window.location.hash
       const groupMatch = hash.match(/#\/?group\/([^/?]+)/)
-
       fromPopState.current = true
 
       if (groupMatch?.[1]) {
@@ -98,34 +79,19 @@ export function useHashRouter(): void {
     return () => window.removeEventListener('popstate', onPop)
   }, [setActiveView, setActiveGroup])
 
-  // ── Mount: stamp the initial history entry ─────────────────
+  // ── Mount: Initial Sync ──
   useEffect(() => {
     const hash       = window.location.hash
     const groupMatch = hash.match(/#\/?group\/([^/?]+)/)
     const hashView   = fromHash(hash)
 
-    // 1. Check URL hash first (for already logged in users)
-    if (handleJoinHash(hash, setPendingInviteCode, setActiveView)) return
-
-    // 2. Check localStorage (for NEW users returning from an email confirmation new tab)
-    const storedInvite = localStorage.getItem('tourneyhub-invite')
-    if (storedInvite) {
-      localStorage.removeItem('tourneyhub-invite')
-      setPendingInviteCode(storedInvite)
-      history.replaceState({ view: 'home' }, '', '#/home')
-      setActiveView('home')
-      return
-    }
-
     if (groupMatch?.[1]) {
       fromPopState.current = true
       setActiveGroup(groupMatch[1])
       setActiveView('group')
-      history.replaceState({ view: 'group', groupId: groupMatch[1] }, '', hash)
     } else if (hashView && hashView !== activeView) {
       fromPopState.current = true
       setActiveView(hashView)
-      history.replaceState({ view: hashView }, '', hash)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
