@@ -1,26 +1,16 @@
 // src/app/AppShell.tsx
-//
-// INVITE LINK AUTO-JOIN:
-// When pendingInviteCode is detected in the UIStore, we no longer bother
-// opening the JoinGroupModal. Instead, we execute the useJoinGroupMutation 
-// directly in the background. On success, we instantly route the user to 
-// the group dashboard and clear the pending code. Invisible and seamless!
-
 import { useCallback, useEffect }           from 'react'
-import { PanelLeftOpen }                    from 'lucide-react'
-
 import { SnoopModal }                       from '../widgets/snoop-modal'
 import { AddTournamentModal }               from '../features/tournament'
 import { CreateGroupModal, JoinGroupModal } from '../features/group-management'
-
-import { Sidebar }                          from '../widgets/sidebar'
-import { MobileHeader, Toaster, ConfirmModal } from '../shared/ui'
+import { Navbar }                           from '../widgets/navbar' // ── NEW NAVBAR IMPORT ──
+import { Toaster, ConfirmModal }            from '../shared/ui'
 import { useTheme }                         from '../shared/lib/theme'
 import { useRealtimeSync }                  from './hooks/useRealtimeSync'
 import { useHashRouter }                    from './hooks/useHashRouter'
 import { useUIStore }                       from '../shared/store/uiStore'
 import { useCreateTournamentMutation }      from '../entities/tournament/model/queries'
-import { useJoinGroupMutation }             from '../entities/group' // Added for background joining
+import { useJoinGroupMutation }             from '../entities/group'
 
 import ViewRouter                           from './ViewRouter'
 import type { TemplateKey }                 from '../shared/types'
@@ -29,8 +19,6 @@ export default function AppShell() {
   const theme = useTheme()
 
   const {
-    sidebarOpen,       setSidebarOpen,
-    mobileMenuOpen,    setMobileMenuOpen,
     showAddTournament, closeAddTournament,
     isCreateGroupOpen, closeCreateGroup,
     isJoinGroupOpen,   closeJoinGroup,
@@ -41,7 +29,7 @@ export default function AppShell() {
   } = useUIStore()
 
   const createTournamentM = useCreateTournamentMutation()
-  const joinGroupM        = useJoinGroupMutation() // Hooked up the mutation
+  const joinGroupM        = useJoinGroupMutation()
 
   useRealtimeSync()
   useHashRouter()
@@ -52,11 +40,9 @@ export default function AppShell() {
 
     pushToast('Joining group...', 'info')
 
-    // Execute the join mutation silently in the background
     joinGroupM.mutate(pendingInviteCode, {
       onSuccess: (groupId) => {
         pushToast('Successfully joined the group!', 'success')
-        // Instantly teleport the user to the group view
         useUIStore.getState().setActiveGroup(groupId)
         useUIStore.getState().setActiveView('group')
       },
@@ -64,7 +50,6 @@ export default function AppShell() {
         pushToast(err.message || 'Failed to join group. Invalid code.', 'error')
       },
       onSettled: () => {
-        // Clear the code so it doesn't fire again
         setPendingInviteCode(null)
       }
     })
@@ -101,57 +86,16 @@ export default function AppShell() {
   }, [createTournamentM, pushToast])
 
   return (
-    <div className={`flex h-screen overflow-hidden ${theme.appBg} text-slate-900 dark:text-white transition-colors duration-300`}>
+    // ── LAYOUT CHANGED TO FLEX-COL ──
+    <div className={`flex flex-col h-screen w-screen overflow-hidden ${theme.appBg} text-slate-900 dark:text-white transition-colors duration-300`}>
+      
+      {/* ── TOP NAV ── */}
+      <Navbar />
 
-      {/* Desktop Sidebar — expanded */}
-      {sidebarOpen && (
-        <div className="hidden md:flex">
-          <Sidebar
-            onClose={() => {}}
-            onOpenAddTournament={() => useUIStore.getState().openAddTournament()}
-            onToggleDesktop={() => setSidebarOpen(false)}
-          />
-        </div>
-      )}
-
-      {/* Desktop Sidebar — minimised stub */}
-      {!sidebarOpen && (
-        <div className={`hidden md:flex flex-col items-center py-4 w-16 border-r border-slate-200 dark:border-slate-800 flex-shrink-0 ${theme.sidebarBg} transition-colors duration-300`}>
-          <button
-            onClick={() => setSidebarOpen(true)}
-            className="p-2 rounded-lg text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
-            title="Expand sidebar"
-          >
-            <PanelLeftOpen size={18} />
-          </button>
-        </div>
-      )}
-
-      {/* Mobile Sidebar overlay */}
-      {mobileMenuOpen && (
-        <div className="md:hidden fixed inset-0 z-40 flex">
-          <div
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-            onClick={() => setMobileMenuOpen(false)}
-          />
-          <div className="relative z-50">
-            <Sidebar
-              onClose={() => setMobileMenuOpen(false)}
-              onOpenAddTournament={() => useUIStore.getState().openAddTournament()}
-            />
-          </div>
-        </div>
-      )}
-
-      {/* Main content area */}
-      <div className="flex flex-col flex-1 min-w-0 overflow-hidden relative">
-        <MobileHeader
-          onMenuOpen={() => setMobileMenuOpen(true)}
-        />
-        <main className="flex-1 overflow-y-auto scrollbar-thin">
-          <ViewRouter />
-        </main>
-      </div>
+      {/* ── MAIN CONTENT AREA ── */}
+      <main className="flex-1 overflow-y-auto scrollbar-thin relative min-h-0">
+        <ViewRouter />
+      </main>
 
       {/* ── Global overlays ── */}
       {snoopTargetId && (
@@ -169,7 +113,6 @@ export default function AppShell() {
         <CreateGroupModal onClose={closeCreateGroup} />
       )}
 
-      {/* Modal is now just for manual entry via the sidebar button! */}
       {isJoinGroupOpen && (
         <JoinGroupModal onClose={closeJoinGroup} />
       )}

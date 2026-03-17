@@ -1,165 +1,18 @@
-// src/widgets/tournament-list/ui/TournamentListView.tsx
-
 import { useState, useMemo }                        from 'react'
-import { ChevronDown, Globe, Users, Skull, Eye }    from 'lucide-react'
+import { ChevronDown, Globe, Users }                from 'lucide-react'
 import { useTheme }                                 from '../../../shared/lib/theme'
-import { isPicksLocked, getActiveSurvivorRound }    from '../../../shared/lib/time'
-import { statusLabel, statusIcon }                  from '../../../shared/lib/helpers'
-import { deriveEffectiveNames, deriveChampion }     from '../../../shared/lib/bracketMath'
+import { isPicksLocked }                            from '../../../shared/lib/time'
 import { useAuth }                                  from '../../../features/auth'
 import { useUIStore }                               from '../../../shared/store/uiStore'
-import { useTournamentListQuery, useGames }         from '../../../entities/tournament/model/queries'
-import { useMyPicks }                               from '../../../entities/pick/model/queries'
+import { useTournamentListQuery }                   from '../../../entities/tournament/model/queries'
 import { useUserGroupsQuery, useGroupMembersQuery } from '../../../entities/group/model/queries'
 import { useLeaderboardRaw }                        from '../../../entities/leaderboard/model/queries'
 import { computeLeaderboard }                       from '../../../features/leaderboard/model/selectors'
-import { Avatar }                                   from '../../../shared/ui'
+import { StandardStandingsTable }                   from '../../../features/leaderboard/ui/StandardStandingsTable'
+import { SurvivorStandingsTable }                   from '../../../features/leaderboard/ui/SurvivorStandingsTable'
+import { StandardTournamentCard, SurvivorTournamentCard } from '../../../entities/tournament'
 import type { Tournament }                          from '../../../shared/types'
 
-// ── TournamentCard ────────────────────────────────────────────
-interface CardProps {
-  t:        Tournament
-  isAdmin:  boolean
-  onSelect: (t: Tournament) => void
-}
-
-function TournamentCard({ t, isAdmin, onSelect }: CardProps) {
-  const theme = useTheme()
-  const { data: games = [] } = useGames(t.id)
-  const { data: picks = [] } = useMyPicks(t.id, games)
-
-  const locked              = isPicksLocked(t, isAdmin)
-  const isEffectivelyLocked = t.status === 'locked' || t.status === 'completed' || (t.status === 'open' && locked)
-  const isSurvivor          = t.game_type === 'survivor'
-
-  const activeRound   = isSurvivor ? getActiveSurvivorRound(t) : 0
-  const requiredPicks = isSurvivor ? 1 : games.length
-  let myPickCount     = picks.length
-  let currentRoundPickTeam: string | null = null
-  let championPickTeam:     string | null = null
-
-  if (isSurvivor) {
-    if (activeRound === 0) {
-      myPickCount = 0
-    } else {
-      const pick = picks.find(p => {
-        const g = games.find(game => game.id === p.game_id)
-        return g?.round_num === activeRound
-      })
-      myPickCount = pick ? 1 : 0
-
-      if (pick) {
-        const g = games.find(game => game.id === pick.game_id)
-        if (g) {
-          currentRoundPickTeam =
-            pick.predicted_winner === 'team1' ? g.team1_name :
-            pick.predicted_winner === 'team2' ? g.team2_name :
-            pick.predicted_winner
-        }
-      }
-    }
-  } else {
-    // Use deriveEffectiveNames + deriveChampion so that slot keys ('team1'/'team2')
-    // are resolved through the full predicted bracket chain, not just the raw
-    // game.team1_name which may still be a "Winner of Game #N" placeholder.
-    if (games.length > 0) {
-      const effectiveNames = deriveEffectiveNames(games, picks)
-      championPickTeam     = deriveChampion(games, picks, effectiveNames)
-    }
-  }
-
-  const pct = requiredPicks > 0 ? Math.round((myPickCount / requiredPicks) * 100) : 0
-
-  const displayStatus =
-    t.status === 'completed'   ? 'completed' :
-    t.status === 'draft'       ? 'draft'     :
-    isEffectivelyLocked        ? 'locked'    :
-    'open'
-
-  const cardBorderCls =
-    displayStatus === 'open'      ? `border-2 ${theme.border} ${theme.bg} hover:${theme.bgMd}` :
-    displayStatus === 'completed' ? 'border-2 border-violet-500/40 bg-violet-500/5 hover:border-violet-400/60' :
-    'border-2 border-slate-300 dark:border-slate-800 bg-slate-100 dark:bg-slate-900/40 hover:border-slate-400 dark:hover:border-slate-700'
-
-  const badgeCls =
-    displayStatus === 'open'      ? `${theme.bg} ${theme.accent}` :
-    displayStatus === 'draft'     ? 'bg-amber-100 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400' :
-    displayStatus === 'completed' ? 'bg-violet-100 dark:bg-violet-500/20 text-violet-600 dark:text-violet-300' :
-    'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-500'
-
-  const borderTopCls =
-    displayStatus === 'completed' ? 'border-violet-500/20' :
-    'border-slate-200 dark:border-slate-800/50'
-
-  return (
-    <button
-      onClick={() => onSelect(t)}
-      className={`text-left p-5 rounded-2xl transition-all hover:scale-[1.02] active:scale-[0.99] w-full flex flex-col h-[180px] ${cardBorderCls}`}
-    >
-      <div className="flex items-start justify-between gap-3 w-full mb-2">
-        <h3 className="font-display text-xl font-bold text-slate-900 dark:text-white uppercase tracking-wide leading-tight line-clamp-2">
-          {t.name}
-        </h3>
-        <span className={`flex-shrink-0 flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-lg uppercase tracking-widest ${badgeCls}`}>
-          {statusIcon(t.status)} {statusLabel(t.status)}
-        </span>
-      </div>
-
-      <div className={`mt-auto w-full pt-4 border-t flex flex-col justify-center min-h-[44px] ${borderTopCls}`}>
-        {displayStatus === 'open' && !isAdmin && games.length > 0 && (
-          <div className="w-full">
-            <div className="flex items-center justify-between mb-1.5">
-              <span className="text-[10px] text-slate-500 uppercase tracking-widest font-bold flex items-center gap-1.5 min-w-0 overflow-hidden">
-                {isSurvivor ? 'Current Round Pick:' : 'Champion Pick:'}
-                {isSurvivor && currentRoundPickTeam && (
-                  <span className="text-xs font-black text-emerald-600 dark:text-emerald-400 normal-case tracking-normal truncate">
-                    {currentRoundPickTeam}
-                  </span>
-                )}
-                {!isSurvivor && championPickTeam && (
-                  <span className="text-xs font-black text-emerald-600 dark:text-emerald-400 normal-case tracking-normal truncate">
-                    {championPickTeam}
-                  </span>
-                )}
-              </span>
-              <span className={`text-[10px] font-bold flex-shrink-0 ml-2 ${pct === 100
-                ? 'text-emerald-600 dark:text-emerald-400'
-                : theme.accent}`}>
-                {myPickCount}&nbsp;/&nbsp;{requiredPicks}
-              </span>
-            </div>
-            <div className="h-1.5 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
-              <div
-                className={`h-full rounded-full transition-all ${pct === 100 ? 'bg-emerald-500' : theme.btn.split(' ')[0]}`}
-                style={{ width: `${pct}%` }}
-              />
-            </div>
-          </div>
-        )}
-
-        {displayStatus === 'draft' && isAdmin && (
-          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 text-center">
-            {games.length} game{games.length !== 1 ? 's' : ''} · Draft
-          </p>
-        )}
-
-        {displayStatus === 'completed' && (
-          <p className="text-[10px] font-bold uppercase tracking-widest text-violet-500 dark:text-violet-400 text-center">
-            Results final
-          </p>
-        )}
-
-        {(displayStatus === 'locked' || (displayStatus === 'open' && isAdmin)) && (
-          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 text-center">
-            {displayStatus === 'locked' ? 'Picks Locked' : `${games.length} games`}
-          </p>
-        )}
-      </div>
-    </button>
-  )
-}
-
-// ── Command Center View ───────────────────────────────────────
 export default function TournamentListView() {
   const theme = useTheme()
   const { profile }                = useAuth()
@@ -168,7 +21,6 @@ export default function TournamentListView() {
   const { data: rawData }          = useLeaderboardRaw()
 
   const selectTournamentId = useUIStore((s) => s.selectTournament)
-  const openSnoop          = useUIStore((s) => s.openSnoop)
 
   const [activeContext, setActiveContext] = useState<string>('global')
   const [dropdownOpen, setDropdownOpen]   = useState(false)
@@ -178,6 +30,7 @@ export default function TournamentListView() {
   )
 
   const isAdmin = profile?.is_admin ?? false
+  const isMe    = (id: string) => id === profile?.id
 
   const activeTournaments = useMemo(() => tournaments.filter((t: Tournament) => {
     if (activeContext === 'global') return !t.group_id
@@ -236,17 +89,9 @@ export default function TournamentListView() {
 
   if (!profile) return null
 
-  const open = activeTournaments.filter(
-    (t: Tournament) => t.status === 'open' && !isPicksLocked(t, isAdmin),
-  )
-  const draft = isAdmin
-    ? activeTournaments.filter((t: Tournament) => t.status === 'draft')
-    : []
-  const locked = activeTournaments.filter(
-    (t: Tournament) =>
-      t.status === 'locked' ||
-      (t.status === 'open' && isPicksLocked(t, isAdmin)),
-  )
+  const open = activeTournaments.filter((t: Tournament) => t.status === 'open' && !isPicksLocked(t, isAdmin))
+  const draft = isAdmin ? activeTournaments.filter((t: Tournament) => t.status === 'draft') : []
+  const locked = activeTournaments.filter((t: Tournament) => t.status === 'locked' || (t.status === 'open' && isPicksLocked(t, isAdmin)))
   const completed = activeTournaments.filter((t: Tournament) => t.status === 'completed')
 
   const handleSelect = (t: Tournament) => selectTournamentId(t.id)
@@ -264,7 +109,9 @@ export default function TournamentListView() {
         </div>
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 w-full">
           {items.map((t: Tournament) => (
-            <TournamentCard key={t.id} t={t} isAdmin={isAdmin} onSelect={handleSelect} />
+             t.game_type === 'survivor' 
+               ? <SurvivorTournamentCard key={t.id} tournament={t} isAdmin={isAdmin} onSelect={handleSelect} variant="compact" />
+               : <StandardTournamentCard key={t.id} tournament={t} isAdmin={isAdmin} onSelect={handleSelect} variant="compact" />
           ))}
         </div>
       </div>
@@ -292,10 +139,7 @@ export default function TournamentListView() {
               onClick={() => setDropdownOpen(!dropdownOpen)}
               className={`flex items-center gap-2 px-4 py-2 rounded-xl border transition-all ${theme.panelBg} ${theme.borderBase} hover:border-amber-500/50 shadow-sm`}
             >
-              {activeContext === 'global'
-                ? <Globe size={18} className={theme.textMuted} />
-                : <Users size={18} className={theme.textMuted} />
-              }
+              {activeContext === 'global' ? <Globe size={18} className={theme.textMuted} /> : <Users size={18} className={theme.textMuted} />}
               <span className={`font-bold text-sm ${theme.textBase}`}>{activeGroupName}</span>
               <ChevronDown size={16} className={`${theme.textMuted} transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} />
             </button>
@@ -304,11 +148,7 @@ export default function TournamentListView() {
               <div className={`absolute right-0 top-full mt-2 w-56 rounded-xl border shadow-xl z-50 overflow-hidden ${theme.panelBg} ${theme.borderBase}`}>
                 <button
                   onClick={() => { setActiveContext('global'); setDropdownOpen(false) }}
-                  className={`w-full flex items-center gap-2 px-4 py-3 text-sm font-bold transition-all ${
-                    activeContext === 'global'
-                      ? `${theme.bgMd} ${theme.accent}`
-                      : `${theme.textBase} hover:bg-slate-100 dark:hover:bg-slate-800`
-                  }`}
+                  className={`w-full flex items-center gap-2 px-4 py-3 text-sm font-bold transition-all ${activeContext === 'global' ? `${theme.bgMd} ${theme.accent}` : `${theme.textBase} hover:bg-slate-100 dark:hover:bg-slate-800`}`}
                 >
                   <Globe size={16} /> Global
                 </button>
@@ -316,11 +156,7 @@ export default function TournamentListView() {
                   <button
                     key={g.id}
                     onClick={() => { setActiveContext(g.id); setDropdownOpen(false) }}
-                    className={`w-full flex items-center gap-2 px-4 py-3 text-sm font-bold transition-all ${
-                      activeContext === g.id
-                        ? `${theme.bgMd} ${theme.accent}`
-                        : `${theme.textBase} hover:bg-slate-100 dark:hover:bg-slate-800`
-                    }`}
+                    className={`w-full flex items-center gap-2 px-4 py-3 text-sm font-bold transition-all ${activeContext === g.id ? `${theme.bgMd} ${theme.accent}` : `${theme.textBase} hover:bg-slate-100 dark:hover:bg-slate-800`}`}
                   >
                     <Users size={16} /> {g.name}
                   </button>
@@ -350,96 +186,12 @@ export default function TournamentListView() {
                   {activeGroupName} Standings
                 </h2>
                 <div className={`grid grid-cols-1 ${(standardTourneys.length > 0 && survivorTourneys.length > 0) ? 'xl:grid-cols-2' : 'max-w-4xl mx-auto'} gap-8 items-start w-full max-w-7xl`}>
-
                   {standardTourneys.length > 0 && (
-                    <div className={`flex flex-col rounded-2xl border ${theme.panelBg} ${theme.borderBase} overflow-hidden shadow-sm`}>
-                      <div className={`px-5 py-4 border-b ${theme.borderBase} bg-slate-100/50 dark:bg-black/20`}>
-                        <h3 className={`font-display text-lg font-black uppercase tracking-widest ${theme.textBase}`}>
-                          Overall Bracket Standings
-                        </h3>
-                      </div>
-                      <div className="flex-1 p-4">
-                        {standardBoard.length === 0 ? (
-                          <p className={`text-sm text-center py-8 ${theme.textMuted}`}>No active players.</p>
-                        ) : (
-                          <div className="flex flex-col gap-2">
-                            {standardBoard.map((entry, i) => {
-                              const isMe = entry.profile.id === profile?.id
-                              return (
-                                <div key={entry.profile.id} className={`flex items-center gap-3 p-3 rounded-xl border ${theme.borderBase} ${isMe ? `${theme.bgMd} border-amber-500/30` : 'bg-white dark:bg-[#11141d]'}`}>
-                                  <span className="w-6 text-center font-bold text-slate-500 text-xs">#{i + 1}</span>
-                                  <Avatar profile={entry.profile} size="sm" />
-                                  <span className={`flex-1 font-semibold text-sm truncate ${theme.textBase}`}>
-                                    {entry.profile.display_name} {isMe && <span className="text-[10px] font-normal text-slate-500 ml-1">(you)</span>}
-                                  </span>
-                                  <div className="text-right flex-shrink-0">
-                                    <p className={`font-bold ${theme.accent}`}>{entry.points} pts</p>
-                                    {entry.tiebreakerScore !== null && (
-                                      <p className="text-[9px] text-slate-500">TB: {entry.tiebreakerScore}</p>
-                                    )}
-                                  </div>
-                                  {isAdmin && (
-                                    <div className="w-10 flex items-center justify-center flex-shrink-0">
-                                      {!isMe && (
-                                        <button onClick={(e) => { e.stopPropagation(); openSnoop(entry.profile.id) }}
-                                          className="p-1.5 text-slate-400 hover:text-amber-500 transition-colors rounded-md hover:bg-slate-100 dark:hover:bg-slate-800">
-                                          <Eye size={16} />
-                                        </button>
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
-                              )
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    </div>
+                    <StandardStandingsTable title="Overall Bracket Standings" board={standardBoard} isMe={isMe} isAdmin={isAdmin} showTiebreaker={standardTourneys.some(t => t.requires_tiebreaker === true)} variant="compact" />
                   )}
-
                   {survivorBoards.map(({ tournamentName, board }) => (
-                    <div key={tournamentName} className={`flex flex-col rounded-2xl border ${theme.panelBg} ${theme.borderBase} overflow-hidden shadow-sm`}>
-                      <div className={`px-5 py-4 border-b ${theme.borderBase} bg-slate-100/50 dark:bg-black/20`}>
-                        <h3 className={`font-display text-lg font-black uppercase tracking-widest ${theme.textBase}`}>
-                          {tournamentName} — Survivor
-                        </h3>
-                      </div>
-                      <div className="flex-1 p-4">
-                        {board.length === 0 ? (
-                          <p className={`text-sm text-center py-8 ${theme.textMuted}`}>No active players.</p>
-                        ) : (
-                          <div className="flex flex-col gap-2">
-                            {board.map((entry, i) => {
-                              const isMe = entry.profile.id === profile?.id
-                              return (
-                                <div key={entry.profile.id} className={`flex items-center gap-3 p-3 rounded-xl border ${theme.borderBase} ${entry.isEliminated ? 'opacity-50 grayscale' : ''} ${isMe && !entry.isEliminated ? `${theme.bgMd} border-amber-500/30` : 'bg-white dark:bg-[#11141d]'}`}>
-                                  <span className="w-6 text-center font-bold text-slate-500 text-xs flex-shrink-0">
-                                    {entry.isEliminated ? <Skull size={14} className="mx-auto text-rose-500" /> : `#${i + 1}`}
-                                  </span>
-                                  <Avatar profile={entry.profile} size="sm" />
-                                  <div className="flex-1 flex flex-col min-w-0">
-                                    <span className={`font-semibold text-sm truncate ${entry.isEliminated ? 'text-slate-400 line-through' : theme.textBase}`}>
-                                      {entry.profile.display_name} {isMe && <span className="text-[10px] font-normal text-slate-500 ml-1">(you)</span>}
-                                    </span>
-                                    {entry.isEliminated && (
-                                      <span className="text-[9px] font-bold uppercase tracking-widest text-rose-400">Eliminated</span>
-                                    )}
-                                  </div>
-                                  {isAdmin && !isMe && (
-                                    <button onClick={(e) => { e.stopPropagation(); openSnoop(entry.profile.id) }}
-                                      className="p-1.5 text-slate-400 hover:text-amber-500 transition-colors rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 flex-shrink-0">
-                                      <Eye size={16} />
-                                    </button>
-                                  )}
-                                </div>
-                              )
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    </div>
+                    <SurvivorStandingsTable key={tournamentName} title={`${tournamentName} — Survivor`} board={board} isMe={isMe} isAdmin={isAdmin} variant="compact" />
                   ))}
-
                 </div>
               </div>
             )}

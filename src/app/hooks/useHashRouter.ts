@@ -5,7 +5,7 @@ import { useUIStore }        from '../../shared/store/uiStore'
 import type { ActiveView }   from '../../shared/types'
 
 const VALID: ReadonlySet<string> = new Set([
-  'home', 'bracket', 'admin', 'settings', 'group',
+  'home', 'bracket', 'admin', 'settings', 'group', 'standings'
 ])
 
 function fromHash(hash: string): ActiveView | null {

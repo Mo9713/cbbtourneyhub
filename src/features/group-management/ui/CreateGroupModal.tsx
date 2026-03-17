@@ -95,7 +95,7 @@ export function CreateGroupModal({ onClose }: Props) {
               </button>
             </div>
             <p className={`text-xs ${theme.textMuted}`}>
-              Share this code with users you want to invite.
+              Invite people using this code.
             </p>
           </div>
 

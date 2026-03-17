@@ -1,11 +1,11 @@
 // src/app/ViewRouter.tsx
-
 import { useAuth }                                from '../features/auth'
 import { HomePage as HomeView }                   from '../pages/home'
 import { AdminBuilderPage as AdminBuilderView }   from '../pages/admin'
 import { BracketPage as BracketView }             from '../pages/bracket'
 import { GroupPage }                              from '../pages/group'
 import { SettingsPage }                           from '../pages/settings'
+import StandingsPage                              from '../pages/standings/ui/StandingsPage' // ── NEW IMPORT ──
 import { useUIStore }                             from '../shared/store/uiStore'
 
 export default function ViewRouter() {
@@ -14,9 +14,6 @@ export default function ViewRouter() {
 
   if (!profile) return null
 
-  // Strict enum mapping enforces isolation of the activeView state.
-  // The previous ambiguous fallback (selectedTournamentId ? BracketView : HomeView)
-  // caused the router to hijack the 'home' view when context IDs were preserved.
   switch (activeView) {
     case 'admin':
       return profile.is_admin ? <AdminBuilderView /> : <BracketView />
@@ -29,6 +26,9 @@ export default function ViewRouter() {
 
     case 'group':
       return <GroupPage />
+
+    case 'standings':
+      return <StandingsPage /> // ── NEW ROUTE ──
 
     case 'home':
     default:

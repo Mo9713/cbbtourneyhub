@@ -1,22 +1,4 @@
 // src/features/leaderboard/model/selectors.ts
-//
-// FIX M-NEW-2: tiebreakerScore added to LeaderboardEntry. The championship
-// game pick's tiebreaker_score is now read and used in the sort chain for
-// tournaments where requires_tiebreaker is true. Ranking is by closest
-// absolute delta to the actual combined score (lower delta = better).
-// Users who did not submit a tiebreaker, or whose game has not yet
-// resolved scores, receive null delta and rank last in that tier.
-//
-// FIX M-NEW-3: revive_all mass-elimination evaluation now delegates to
-// isMassRevivalRound from shared/lib/bracketMath. The duplicate inline
-// implementation that previously lived here has been removed. This
-// guarantees the leaderboard and the SurvivorGameCard elimination check
-// use identical logic and cannot silently diverge.
-//
-// FIX N-NEW-2: seedScore is now accumulated for standard bracket picks,
-// not only survivor picks. When a standard bracket pick is correct, the
-// winner's seed (via effectiveNames) is added to the user's seedScore.
-// This makes the seedScore tiebreaker tier meaningful for all game types.
 
 import {
   deriveEffectiveNames,
@@ -325,4 +307,23 @@ export function computeLeaderboard(
 
     return publicEntry
   })
+}
+
+export function selectGroupLeaderboards(rawData: any, tournaments: Tournament[], members: any[]) {
+  if (!rawData || !tournaments.length) return { standard: [], survivor: [] }
+  const standardTourneys = tournaments.filter(t => t.game_type !== 'survivor')
+  const survivorTourneys = tournaments.filter(t => t.game_type === 'survivor')
+  const memberUserIds = new Set(members.map(m => m.user_id))
+  const groupProfiles = rawData.allProfiles.filter((p: Profile) => memberUserIds.has(p.id))
+
+  const getBoard = (tList: Tournament[]) => {
+    const tMap = new Map(tList.map(t => [t.id, t]))
+    const games = rawData.allGames.filter((g: Game) => tMap.has(g.tournament_id))
+    // FIX: Typed 'g' as Game
+    const gameIds = new Set(games.map((g: Game) => g.id))
+    const picks = rawData.allPicks.filter((p: Pick) => gameIds.has(p.game_id))
+    return computeLeaderboard(picks, games, rawData.allGames, groupProfiles, tMap)
+  }
+
+  return { standard: getBoard(standardTourneys), survivor: getBoard(survivorTourneys) }
 }

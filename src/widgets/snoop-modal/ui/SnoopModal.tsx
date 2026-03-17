@@ -39,26 +39,11 @@ export default function SnoopModal({ targetId, onClose }: Props) {
     [raw, targetId],
   )
 
-  // M-04 FIX: Derive the set of tournament IDs in which the target user
-  // has actually made at least one pick. This is the authoritative
-  // participation signal — group membership, admin status, and other
-  // contextual access controls are implicitly satisfied by having picks.
-  const targetParticipatingTids = useMemo(() => {
-    const allGames = raw?.allGames ?? []
-    return new Set(
-      targetPicks
-        .map(p => allGames.find((g: Game) => g.id === p.game_id)?.tournament_id)
-        .filter((tid): tid is string => !!tid),
-    )
-  }, [targetPicks, raw])
+  
 
-  // Only show tournaments the target user has picks in, and which are
-  // not in draft status. Draft tournaments are admin-only admin tools.
   const visibleTournaments = useMemo(
-    () => tournaments.filter((t: Tournament) =>
-      t.status !== 'draft' && targetParticipatingTids.has(t.id),
-    ),
-    [tournaments, targetParticipatingTids],
+    () => tournaments.filter((t: Tournament) => t.status !== 'draft'),
+    [tournaments],
   )
 
   const [selectedTid, setSelectedTid] = useState<string | null>(
