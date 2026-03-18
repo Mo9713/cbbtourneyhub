@@ -37,9 +37,10 @@ export default function HomePage() {
   const setActiveGroup    = useUIStore(s => s.setActiveGroup)
   const setActiveView     = useUIStore(s => s.setActiveView)
 
-  const { data: allTournaments, isFetching: isFetchingTourneys } = useTournamentListQuery()
-  const { data: groups,         isFetching: isFetchingGroups }   = useUserGroupsQuery()
-  const { data: rawData,        isFetching: isFetchingBoard }    = useLeaderboardRaw()
+  // ── FIX: isLoading prevents realtime flashing ──
+  const { data: allTournaments, isLoading: isLoadingTourneys } = useTournamentListQuery()
+  const { data: groups,         isLoading: isLoadingGroups }   = useUserGroupsQuery()
+  const { data: rawData,        isLoading: isLoadingBoard }    = useLeaderboardRaw()
 
   const isAdmin = profile?.is_admin
 
@@ -96,10 +97,10 @@ export default function HomePage() {
   const incompleteTournaments = openTournaments.filter(t => completionMap[t.id] === false)
   const allPicksComplete = openTournaments.length > 0 && incompleteTournaments.length === 0
 
-  const isDataLoading = isFetchingTourneys || isFetchingGroups || isFetchingBoard || !allTournaments || !groups || !rawData || !profile || isCalculatingProgress;
-  const showSkeleton = useStabilizedLoading(isDataLoading, 400);
+  const isDataLoading = isLoadingTourneys || isLoadingGroups || isLoadingBoard || !allTournaments || !groups || !rawData || !profile || isCalculatingProgress;
+  // ── SMART LOADING: 150ms ──
+  const showSkeleton = useStabilizedLoading(isDataLoading, 150);
 
-  // ── FIX: Added the data variables to the IF statement to satisfy TypeScript ──
   if (showSkeleton || !allTournaments || !groups || !rawData || !profile) {
     return (
       <>
@@ -110,7 +111,7 @@ export default function HomePage() {
         </div>
 
         <div className={`w-full h-full flex flex-col overflow-y-auto p-4 md:p-8 ${theme.appBg}`}>
-          <div className="max-w-7xl mx-auto w-full space-y-8 pb-12">
+          <div className="max-w-7xl mx-auto w-full space-y-8 pb-12 animate-in fade-in duration-300">
             <div className="w-full h-[320px] rounded-[2rem] bg-slate-200 dark:bg-slate-800/50 animate-pulse border border-slate-300 dark:border-slate-800" />
             <div className="flex gap-3 md:gap-4 overflow-hidden">
               {[...Array(3)].map((_, i) => (

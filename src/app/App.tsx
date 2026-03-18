@@ -1,3 +1,4 @@
+// src/app/App.tsx
 import { useEffect } from 'react'
 import { ErrorBoundary } from '../shared/ui'
 import AppShell          from './AppShell'

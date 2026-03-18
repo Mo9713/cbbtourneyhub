@@ -1,3 +1,4 @@
+//src/app/AppShell.tsx
 import { useCallback, useEffect, useRef }   from 'react' // ── ADDED useRef ──
 import { SnoopModal }                       from '../widgets/snoop-modal'
 import { AddTournamentModal }               from '../features/tournament'

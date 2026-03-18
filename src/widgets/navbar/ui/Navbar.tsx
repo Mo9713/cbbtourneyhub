@@ -25,7 +25,7 @@ export function Navbar() {
   const ui = useUIStore()
   
   const { data: tournaments = [] } = useTournamentListQuery()
-  const { data: groups = [] } = useUserGroupsQuery() // Fetched to fix routing
+  const { data: groups = [] } = useUserGroupsQuery() 
   
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [bracketsDropdownOpen, setBracketsDropdownOpen] = useState(false)
@@ -35,7 +35,6 @@ export function Navbar() {
   const [currentTime, setCurrentTime] = useState(Date.now())
   
   useEffect(() => {
-    // Ticking every 1 second for smooth countdown
     const timer = setInterval(() => setCurrentTime(Date.now()), 1000)
     return () => clearInterval(timer)
   }, [])
@@ -45,7 +44,6 @@ export function Navbar() {
     let earliestName = ''
     
     tournaments.forEach(t => {
-      // ONLY look at open Survivor tournaments
       if (t.status !== 'open' || t.game_type !== 'survivor' || !t.round_locks) return
       
       Object.values(t.round_locks).forEach(lock => {
@@ -60,7 +58,6 @@ export function Navbar() {
     return earliestTime === Infinity ? null : { time: earliestTime, name: earliestName }
   }, [tournaments, currentTime])
 
-  // ── Click Outside Handler ──
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -71,9 +68,7 @@ export function Navbar() {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  // ── Smart Navigation ──
   const navigateTo = (view: ActiveView) => {
-    // FIX: Auto-select first group if none is active
     if (view === 'group' && !ui.activeGroupId && groups.length > 0) {
       ui.setActiveGroup(groups[0].id)
     }
@@ -103,7 +98,7 @@ export function Navbar() {
       <div className="max-w-[79rem] mx-auto px-4 md:px-6">
         <div className="flex items-center justify-between h-[72px]">
           
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-3 md:gap-6">
             {/* ── Left: Avatar (Acts as Logo) ── */}
             <div 
               className="flex-shrink-0 flex items-center cursor-pointer hover:scale-105 transition-transform" 
@@ -115,6 +110,28 @@ export function Navbar() {
 
             {/* Stark Divider */}
             <div className="hidden md:block w-px h-8 bg-slate-800" />
+
+            {/* ── Center: Mobile Navigation (Icons Only) ── */}
+            <div className="flex md:hidden items-center gap-1 sm:gap-2">
+              {navLinks.map((link) => {
+                const Icon = link.icon
+                const isActive = ui.activeView === link.id
+                return (
+                  <button
+                    key={link.id}
+                    onClick={() => navigateTo(link.id as ActiveView)}
+                    title={link.label}
+                    className={`p-2.5 rounded-xl transition-all ${
+                      isActive 
+                        ? `bg-white text-slate-950 shadow-md` 
+                        : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                    }`}
+                  >
+                    <Icon size={20} className={isActive ? 'text-slate-900' : 'opacity-70'} />
+                  </button>
+                )
+              })}
+            </div>
 
             {/* ── Center: Desktop Navigation ── */}
             <div className="hidden md:flex items-center gap-2">
@@ -179,7 +196,7 @@ export function Navbar() {
           </div>
 
           {/* ── Right: Survivor Timer & Mobile Menu ── */}
-          <div className="flex items-center gap-5">
+          <div className="flex items-center gap-3 md:gap-5">
             
             {/* Next Lock Countdown (Desktop Only) */}
             {nextSurvivorLock && (
@@ -225,25 +242,10 @@ export function Navbar() {
               </span>
             </div>
           )}
-
-          {navLinks.map((link) => {
-            const Icon = link.icon
-            const isActive = ui.activeView === link.id
-            return (
-              <button
-                key={link.id}
-                onClick={() => navigateTo(link.id as ActiveView)}
-                className={`flex items-center gap-3 w-full px-5 py-4 rounded-xl text-base font-black tracking-wide transition-all ${
-                  isActive ? `bg-white text-slate-950` : 'text-slate-400 hover:bg-slate-900 hover:text-white'
-                }`}
-              >
-                <Icon size={20} className={isActive ? 'text-slate-900' : 'opacity-70'} />
-                {link.label}
-              </button>
-            )
-          })}
           
-          <div className="pt-4 mt-4 border-t border-slate-800">
+          {/* Removed the navLinks mapping from here since they are in the header now! */}
+          
+          <div className="pt-2">
             <div className="px-5 mb-2 text-xs font-black uppercase tracking-widest text-slate-500">My Brackets</div>
             {tournaments.map((t: Tournament) => (
               <button
@@ -255,6 +257,9 @@ export function Navbar() {
                 <span className="truncate">{t.name}</span>
               </button>
             ))}
+            {tournaments.length === 0 && (
+              <div className="px-5 py-3 text-sm text-slate-500 font-bold">No active brackets.</div>
+            )}
           </div>
         </div>
       )}

@@ -11,6 +11,7 @@ import { computeLeaderboard }                       from '../../../features/lead
 import { StandardStandingsTable }                   from '../../../features/leaderboard/ui/StandardStandingsTable'
 import { SurvivorStandingsTable }                   from '../../../features/leaderboard/ui/SurvivorStandingsTable'
 import { StandardTournamentCard, SurvivorTournamentCard } from '../../../entities/tournament'
+import { useStabilizedLoading }                     from '../../../shared/lib/useStabilizedLoading'
 import type { Tournament }                          from '../../../shared/types'
 
 export default function TournamentListView() {
@@ -25,7 +26,7 @@ export default function TournamentListView() {
   const [activeContext, setActiveContext] = useState<string>('global')
   const [dropdownOpen, setDropdownOpen]   = useState(false)
 
-  const { data: activeGroupMembers = [] } = useGroupMembersQuery(
+  const { data: activeGroupMembers = [], isLoading: isLoadingMembers } = useGroupMembersQuery(
     activeContext !== 'global' ? activeContext : '',
   )
 
@@ -88,25 +89,28 @@ export default function TournamentListView() {
     })
   }, [rawData, survivorTourneys, activeGroupMembers, activeContext])
 
-  if (isLoadingTourneys || isLoadingGroups || isLoadingBoard || !profile) {
+  const isDataLoading = isLoadingTourneys || isLoadingGroups || isLoadingBoard || isLoadingMembers || !profile;
+  const showSkeleton = useStabilizedLoading(isDataLoading, 150);
+
+  if (showSkeleton || !profile) {
     return (
-      <div className="flex flex-col h-full max-w-7xl mx-auto w-full animate-pulse">
+      <div className="flex flex-col h-full max-w-7xl mx-auto w-full animate-in fade-in duration-300">
         <div className={`px-6 py-5 border-b flex-shrink-0 flex items-center justify-between ${theme.headerBg}`}>
           <div className="space-y-2">
-            <div className="w-48 h-8 bg-slate-200 dark:bg-slate-800 rounded-lg" />
-            <div className="w-64 h-4 bg-slate-200 dark:bg-slate-800 rounded" />
+            <div className="w-48 h-8 bg-slate-200 dark:bg-slate-800 rounded-lg animate-pulse" />
+            <div className="w-64 h-4 bg-slate-200 dark:bg-slate-800 rounded animate-pulse" />
           </div>
-          <div className="w-32 h-10 bg-slate-200 dark:bg-slate-800 rounded-xl" />
+          <div className="w-32 h-10 bg-slate-200 dark:bg-slate-800 rounded-xl animate-pulse" />
         </div>
         <div className="flex-1 p-6 md:p-10 w-full max-w-5xl mx-auto space-y-10">
           <div className="flex items-center justify-center gap-4 w-full">
             <div className={`h-px flex-1 ${theme.borderBase} bg-slate-200 dark:bg-slate-800`} />
-            <div className="w-32 h-4 bg-slate-200 dark:bg-slate-800 rounded" />
+            <div className="w-32 h-4 bg-slate-200 dark:bg-slate-800 rounded animate-pulse" />
             <div className={`h-px flex-1 ${theme.borderBase} bg-slate-200 dark:bg-slate-800`} />
           </div>
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 w-full">
             {[...Array(6)].map((_, i) => (
-              <div key={i} className="w-full h-40 bg-slate-200 dark:bg-slate-800 rounded-2xl" />
+              <div key={i} className="w-full h-40 bg-slate-200 dark:bg-slate-800 rounded-2xl animate-pulse" />
             ))}
           </div>
         </div>

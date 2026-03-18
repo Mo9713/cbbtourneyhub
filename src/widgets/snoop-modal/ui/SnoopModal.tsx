@@ -9,7 +9,7 @@ import type { Game, Pick, Profile, Tournament } from '../../../shared/types'
 
 interface Props {
   targetId: string
-  initialTid?: string | null // ── NEW PROP ──
+  initialTid?: string | null
   onClose:  () => void
 }
 
@@ -35,8 +35,6 @@ export default function SnoopModal({ targetId, initialTid, onClose }: Props) {
     [tournaments],
   )
 
-  // ── SMART TAB SELECTION ──
-  // If initialTid is passed and valid, use it. Otherwise fallback to the first available.
   const [selectedTid, setSelectedTid] = useState<string | null>(null)
 
   useEffect(() => {
@@ -69,11 +67,34 @@ export default function SnoopModal({ targetId, initialTid, onClose }: Props) {
     ? (isTournamentLocked || adminOverride)
     : isTournamentLocked
 
-  // Close on Escape key
+  // ── 1. HARDWARE ESCAPE KEY ──
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', handleEsc)
     return () => window.removeEventListener('keydown', handleEsc)
+  }, [onClose])
+
+  // ── 2. THE BROWSER BACK BUTTON (FAKE HISTORY STEP) ──
+  useEffect(() => {
+    // 1. Push a fake state into the browser history the moment the modal opens
+    window.history.pushState({ snoopModalOpen: true }, '')
+
+    // 2. Listen for the "Pop" (User clicking Back on phone or browser)
+    const handlePopState = () => {
+      // The fake state was popped, meaning they pressed back. Close the modal!
+      onClose()
+    }
+
+    window.addEventListener('popstate', handlePopState)
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState)
+      // 3. Cleanup: If they click the "X" instead of the Back button, 
+      // we must manually pop the fake state off the stack so they don't get trapped.
+      if (window.history.state?.snoopModalOpen) {
+        window.history.back()
+      }
+    }
   }, [onClose])
 
   if (isLoading) {
@@ -85,7 +106,6 @@ export default function SnoopModal({ targetId, initialTid, onClose }: Props) {
   }
 
   return (
-    // ── TRUE FULLSCREEN TAKEOVER ──
     <div className="fixed inset-0 z-[100] flex flex-col bg-slate-950 animate-in fade-in zoom-in-95 duration-200">
       
       {/* ── Premium Header ── */}

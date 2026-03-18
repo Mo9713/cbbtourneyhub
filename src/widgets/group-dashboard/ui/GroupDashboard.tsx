@@ -18,10 +18,10 @@ export function GroupDashboard({ groupId }: { groupId: string }) {
   const { profile } = useAuth()
   const ui = useUIStore()
   
-  const { data: group,       isFetching: isFetchingGroup }   = useGroupDetailsQuery(groupId)
-  const { data: members,     isFetching: isFetchingMembers } = useGroupMembersQuery(groupId)
-  const { data: tournaments, isFetching: isFetchingTourneys } = useTournamentListQuery()
-  const { data: rawData,     isFetching: isFetchingBoard }   = useLeaderboardRaw()
+  const { data: group,       isLoading: isLoadingGroup }   = useGroupDetailsQuery(groupId)
+  const { data: members,     isLoading: isLoadingMembers } = useGroupMembersQuery(groupId)
+  const { data: tournaments, isLoading: isLoadingTourneys } = useTournamentListQuery()
+  const { data: rawData,     isLoading: isLoadingBoard }   = useLeaderboardRaw()
 
   const isAdmin = profile?.is_admin ?? false
   const groupTournaments = (tournaments || []).filter((t: Tournament) => t.group_id === groupId && (isAdmin || t.status !== 'draft'))
@@ -46,13 +46,12 @@ export function GroupDashboard({ groupId }: { groupId: string }) {
     ui.setActiveView('bracket')
   }
 
-  const isDataLoading = isFetchingGroup || isFetchingMembers || isFetchingTourneys || isFetchingBoard || !group || !members || !tournaments || !rawData || !profile;
-  const showSkeleton = useStabilizedLoading(isDataLoading, 400);
+  const isDataLoading = isLoadingGroup || isLoadingMembers || isLoadingTourneys || isLoadingBoard || !group || !members || !tournaments || !rawData || !profile;
+  const showSkeleton = useStabilizedLoading(isDataLoading, 150);
 
-  // ── FIX: Added the data variables to the IF statement to satisfy TypeScript ──
   if (showSkeleton || !group || !members || !tournaments || !rawData || !profile) {
     return (
-      <div className="flex flex-col w-full max-w-7xl mx-auto p-4 md:p-8 gap-8">
+      <div className="flex flex-col w-full max-w-7xl mx-auto p-4 md:p-8 gap-8 animate-in fade-in duration-300">
         <header className={`relative overflow-hidden rounded-2xl border p-8 md:p-10 shadow-sm ${theme.panelBg} ${theme.borderBase} flex flex-col items-center text-center gap-6`}>
           <div className={`absolute top-0 left-0 w-full h-2 ${theme.bgMd}`} />
           <div className="w-64 h-12 bg-slate-200 dark:bg-slate-800/50 rounded-xl animate-pulse" />

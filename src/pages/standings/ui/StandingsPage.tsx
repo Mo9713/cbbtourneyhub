@@ -18,12 +18,12 @@ export default function StandingsPage() {
   const [activeTab, setActiveTab] = useState<'bracket' | 'survivor'>('bracket')
   const [dropdownOpen, setDropdownOpen] = useState(false)
 
-  const { data: tournaments, isFetching: isFetchingTourneys } = useTournamentListQuery()
-  const { data: groups,      isFetching: isFetchingGroups }   = useUserGroupsQuery()
-  const { data: rawData,     isFetching: isFetchingBoard }    = useLeaderboardRaw()
+  const { data: tournaments, isLoading: isLoadingTourneys } = useTournamentListQuery()
+  const { data: groups,      isLoading: isLoadingGroups }   = useUserGroupsQuery()
+  const { data: rawData,     isLoading: isLoadingBoard }    = useLeaderboardRaw()
   
   const effectiveGroupId = ui.activeGroupId || (groups && groups.length > 0 ? groups[0].id : null)
-  const { data: members,     isFetching: isFetchingMembers }  = useGroupMembersQuery(effectiveGroupId || '')
+  const { data: members,     isLoading: isLoadingMembers }  = useGroupMembersQuery(effectiveGroupId || '')
 
   const isAdmin = profile?.is_admin ?? false
   const isMe = (userId: string) => userId === profile?.id
@@ -50,14 +50,13 @@ export default function StandingsPage() {
   const hasStandard = boards.standard.length > 0
   const hasSurvivor = boards.survivor.length > 0
 
-  const isDataLoading = isFetchingTourneys || isFetchingBoard || isFetchingGroups || isFetchingMembers || !tournaments || !groups || !rawData || !members || !profile;
-  const showSkeleton = useStabilizedLoading(isDataLoading, 400);
+  const isDataLoading = isLoadingTourneys || isLoadingBoard || isLoadingGroups || isLoadingMembers || !tournaments || !groups || !rawData || !members || !profile;
+  const showSkeleton = useStabilizedLoading(isDataLoading, 150);
 
-  // ── FIX: Added the data variables to the IF statement to satisfy TypeScript ──
   if (showSkeleton || !tournaments || !groups || !rawData || !members || !profile) {
     return (
       <div className={`w-full h-full flex flex-col p-4 md:p-8 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-700 ${theme.appBg}`}>
-        <div className="max-w-5xl mx-auto w-full space-y-6 pb-12">
+        <div className="max-w-5xl mx-auto w-full space-y-6 pb-12 animate-in fade-in duration-300">
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-2">
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-xl bg-slate-200 dark:bg-slate-800/50 animate-pulse border border-slate-300 dark:border-slate-800" />
