@@ -32,6 +32,8 @@ export interface BracketViewProps {
   overridePicks?:      Pick[]
   overrideTournament?: Tournament
   overrideGames?:      Game[]
+  overrideUserId?:     string
+  adminOverride?:      boolean
 }
 
 export default function BracketView({
@@ -40,6 +42,8 @@ export default function BracketView({
   overridePicks,
   overrideTournament,
   overrideGames,
+  overrideUserId,
+  adminOverride     = false,
 }: BracketViewProps) {
   const theme = useTheme()
 
@@ -47,7 +51,6 @@ export default function BracketView({
   const { data: tournaments = [] } = useTournamentListQuery()
   const selectedTournamentId       = useUIStore((s) => s.selectedTournamentId)
 
-  // ── REMOVED viewMode STATE ──
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null)
 
   const selectedTournament = useMemo(
@@ -127,33 +130,43 @@ export default function BracketView({
   const { mutateAsync: saveTiebreaker } = useSaveTiebreaker()
 
   const handlePick = useCallback(async (game: Game, team: string) => {
-    if (!tournament || readOnly || isLocked) return
+    if (!tournament || readOnly || (isLocked && !adminOverride)) return
     const existingPick = pickMap.get(game.id)
-    await makePick({ game, team, tournamentId: tournament.id, games, existingPick })
-  }, [tournament, readOnly, isLocked, pickMap, makePick, games])
+    await makePick({ game, team, tournamentId: tournament.id, games, existingPick, overrideUserId })
+  }, [tournament, readOnly, isLocked, adminOverride, pickMap, makePick, games, overrideUserId])
 
   const handleSurvivorPick = useCallback((
     gameId: string, teamName: string | null, roundNum: number,
   ) => {
-    if (!tournament || readOnly || isLocked) return
-    makeSurvivorPick({ tournamentId: tournament.id, gameId, predictedWinner: teamName, roundNum, gameIds })
-  }, [tournament, readOnly, isLocked, makeSurvivorPick, gameIds])
+    if (!tournament || readOnly || (isLocked && !adminOverride)) return
+    const roundGameIds = games.filter(g => g.round_num === roundNum).map(g => g.id)
+    makeSurvivorPick({ 
+      tournamentId: tournament.id, 
+      gameId, 
+      predictedWinner: teamName, 
+      roundNum, 
+      tournamentGameIds: gameIds,
+      roundGameIds,
+      overrideUserId 
+    })
+  }, [tournament, readOnly, isLocked, adminOverride, makeSurvivorPick, gameIds, games, overrideUserId])
 
   const handleTiebreaker = useCallback(async (
     gameId: string, predictedWinner: string, score: number,
   ): Promise<string | null> => {
     if (!tournament) return 'No active tournament'
     try {
-      await saveTiebreaker({ gameId, predictedWinner, score, tournamentId: tournament.id, gameIds })
+      await saveTiebreaker({ gameId, predictedWinner, score, tournamentId: tournament.id, gameIds, overrideUserId })
       return null
     } catch (err: unknown) {
       return err instanceof Error ? err.message : 'Failed to save tiebreaker'
     }
-  }, [saveTiebreaker, tournament, gameIds])
+  }, [saveTiebreaker, tournament, gameIds, overrideUserId])
 
   const bracketViewValue = useMemo(() => ({
-    isLocked:           isLocked || readOnly,
+    isLocked:           (isLocked && !adminOverride) || readOnly,
     readOnly,
+    adminOverride,
     ownerName,
     onPick:             handlePick,
     onSurvivorPick:     isSurvivor ? handleSurvivorPick : undefined,
@@ -161,7 +174,7 @@ export default function BracketView({
     isTournamentOver,
     showGameNumbers:    tournament?.show_game_numbers ?? false,
     theme,
-  }), [isLocked, readOnly, ownerName, handlePick, isSurvivor, handleSurvivorPick, allTournamentPicks, isTournamentOver, tournament, theme])
+  }), [isLocked, adminOverride, readOnly, ownerName, handlePick, isSurvivor, handleSurvivorPick, allTournamentPicks, isTournamentOver, tournament, theme])
 
   if (!tournament || !profile) return null
 

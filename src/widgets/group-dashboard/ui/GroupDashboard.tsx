@@ -1,13 +1,10 @@
 import { useMemo } from 'react'
-import { Users } from 'lucide-react'
+import { Users, ArrowRight } from 'lucide-react'
 import { useGroupDetailsQuery, useGroupMembersQuery } from '../../../entities/group'
 import { useTournamentListQuery } from '../../../entities/tournament/model/queries'
-import { useLeaderboardRaw } from '../../../entities/leaderboard/model/queries'
-import { selectGroupLeaderboards } from '../../../features/leaderboard/model/selectors'
 import { useTheme } from '../../../shared/lib/theme'
 import { useAuth } from '../../../features/auth'
 import { useUIStore } from '../../../shared/store/uiStore'
-import { StandardStandingsTable, SurvivorStandingsTable } from '../../../features/leaderboard'
 import { CopyInviteLink, DeleteGroupButton, LeaveGroupButton } from '../../../features/group-management'
 import { StandardTournamentCard, SurvivorTournamentCard } from '../../../entities/tournament'
 import { useStabilizedLoading } from '../../../shared/lib/useStabilizedLoading'
@@ -21,35 +18,22 @@ export function GroupDashboard({ groupId }: { groupId: string }) {
   const { data: group,       isLoading: isLoadingGroup }   = useGroupDetailsQuery(groupId)
   const { data: members,     isLoading: isLoadingMembers } = useGroupMembersQuery(groupId)
   const { data: tournaments, isLoading: isLoadingTourneys } = useTournamentListQuery()
-  const { data: rawData,     isLoading: isLoadingBoard }   = useLeaderboardRaw()
 
   const isAdmin = profile?.is_admin ?? false
   const groupTournaments = (tournaments || []).filter((t: Tournament) => t.group_id === groupId && (isAdmin || t.status !== 'draft'))
   
-  const boards = useMemo(() => {
-    if (!rawData || !members) return { standard: [], survivor: [] }
-    return selectGroupLeaderboards(rawData, groupTournaments, members)
-  }, [rawData, groupTournaments, members])
-
-  const bracketTourneyId = useMemo(() => 
-    groupTournaments.find(t => t.game_type !== 'survivor')?.id, 
-  [groupTournaments])
-
-  const survivorTourneyId = useMemo(() => 
-    groupTournaments.find(t => t.game_type === 'survivor')?.id, 
-  [groupTournaments])
-
-  const isMe = (userId: string) => userId === profile?.id
+  const standardTournaments = useMemo(() => groupTournaments.filter(t => t.game_type !== 'survivor'), [groupTournaments])
+  const survivorTournaments = useMemo(() => groupTournaments.filter(t => t.game_type === 'survivor'), [groupTournaments])
 
   const handleSelectTournament = (t: Tournament) => {
     ui.selectTournament(t.id)
     ui.setActiveView('bracket')
   }
 
-  const isDataLoading = isLoadingGroup || isLoadingMembers || isLoadingTourneys || isLoadingBoard || !group || !members || !tournaments || !rawData || !profile;
+  const isDataLoading = isLoadingGroup || isLoadingMembers || isLoadingTourneys || !group || !members || !tournaments || !profile;
   const showSkeleton = useStabilizedLoading(isDataLoading, 150);
 
-  if (showSkeleton || !group || !members || !tournaments || !rawData || !profile) {
+  if (showSkeleton || !group || !members || !tournaments || !profile) {
     return (
       <div className="flex flex-col w-full max-w-7xl mx-auto p-4 md:p-8 gap-8 animate-in fade-in duration-300">
         <header className={`relative overflow-hidden rounded-2xl border p-8 md:p-10 shadow-sm ${theme.panelBg} ${theme.borderBase} flex flex-col items-center text-center gap-6`}>
@@ -66,12 +50,13 @@ export function GroupDashboard({ groupId }: { groupId: string }) {
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 items-start w-full">
             <div className="flex flex-col gap-6 w-full">
               <div className="w-full h-40 bg-slate-200 dark:bg-slate-800/50 rounded-2xl animate-pulse border border-slate-300 dark:border-slate-800" />
-              <div className="w-full h-64 bg-slate-200 dark:bg-slate-800/50 rounded-[2rem] animate-pulse border border-slate-300 dark:border-slate-800" />
             </div>
             <div className="flex flex-col gap-6 w-full">
               <div className="w-full h-40 bg-slate-200 dark:bg-slate-800/50 rounded-2xl animate-pulse border border-slate-300 dark:border-slate-800" />
-              <div className="w-full h-64 bg-slate-200 dark:bg-slate-800/50 rounded-[2rem] animate-pulse border border-slate-300 dark:border-slate-800" />
             </div>
+          </div>
+          <div className="flex justify-center w-full mt-4">
+            <div className="w-full max-w-lg h-16 bg-slate-200 dark:bg-slate-800/50 rounded-2xl animate-pulse border border-slate-300 dark:border-slate-800" />
           </div>
         </section>
       </div>
@@ -113,8 +98,8 @@ export function GroupDashboard({ groupId }: { groupId: string }) {
         </div>
       </header>
 
-      <section className="flex flex-col gap-6">
-        <div className="relative flex flex-col md:flex-row items-center justify-center w-full mb-2">
+      <section className="flex flex-col gap-8">
+        <div className="relative flex flex-col md:flex-row items-center justify-center w-full">
           <h2 className={`text-3xl font-black uppercase tracking-wider ${theme.textBase}`}>Tournaments</h2>
         </div>
 
@@ -127,12 +112,12 @@ export function GroupDashboard({ groupId }: { groupId: string }) {
             </p>
           </div>
         ) : (
-          <div className={`grid grid-cols-1 ${(boards.standard.length > 0 && boards.survivor.length > 0) ? 'xl:grid-cols-2' : 'max-w-4xl mx-auto'} gap-8 items-start w-full`}>
-
-            {boards.standard.length > 0 && (
-              <div className="flex flex-col gap-6 w-full">
-                <div className="flex flex-col gap-4">
-                  {groupTournaments.filter(t => t.game_type !== 'survivor').map(t => (
+          <div className="flex flex-col w-full gap-8">
+            <div className={`grid grid-cols-1 ${(standardTournaments.length > 0 && survivorTournaments.length > 0) ? 'xl:grid-cols-2' : 'max-w-4xl mx-auto'} gap-8 items-start w-full`}>
+              
+              {standardTournaments.length > 0 && (
+                <div className="flex flex-col gap-4 w-full">
+                  {standardTournaments.map(t => (
                     <StandardTournamentCard 
                       key={t.id} 
                       tournament={t} 
@@ -143,21 +128,11 @@ export function GroupDashboard({ groupId }: { groupId: string }) {
                     />
                   ))}
                 </div>
-                <StandardStandingsTable
-                  title="Bracket Standings"
-                  board={boards.standard}
-                  isMe={isMe}
-                  tournamentId={bracketTourneyId}
-                  showTiebreaker={groupTournaments.some(t => t.game_type !== 'survivor' && t.requires_tiebreaker === true)}
-                  variant="compact"
-                />
-              </div>
-            )}
+              )}
 
-            {boards.survivor.length > 0 && (
-              <div className="flex flex-col gap-6 w-full">
-                <div className="flex flex-col gap-4">
-                  {groupTournaments.filter(t => t.game_type === 'survivor').map(t => (
+              {survivorTournaments.length > 0 && (
+                <div className="flex flex-col gap-4 w-full">
+                  {survivorTournaments.map(t => (
                     <SurvivorTournamentCard 
                       key={t.id} 
                       tournament={t} 
@@ -168,16 +143,19 @@ export function GroupDashboard({ groupId }: { groupId: string }) {
                     />
                   ))}
                 </div>
-                <SurvivorStandingsTable
-                  title="Survivor Standings"
-                  board={boards.survivor}
-                  isMe={isMe}
-                  tournamentId={survivorTourneyId}
-                  variant="compact"
-                />
-              </div>
-            )}
+              )}
+              
+            </div>
 
+            <div className="flex justify-center w-full mt-2">
+              <button
+                onClick={() => ui.setActiveView('standings')}
+                className={`group flex items-center justify-center gap-4 w-full max-w-lg px-6 py-5 rounded-2xl border ${theme.borderBase} ${theme.panelBg} hover:bg-slate-50 dark:hover:bg-slate-800/80 transition-all hover:border-amber-500/50 shadow-sm hover:shadow-md`}
+              >
+                <span className={`font-black uppercase tracking-widest text-base md:text-lg ${theme.textBase}`}>Go to Standings</span>
+                <ArrowRight size={24} className={`${theme.textMuted} group-hover:text-amber-500 group-hover:translate-x-2 transition-all`} />
+              </button>
+            </div>
           </div>
         )}
       </section>

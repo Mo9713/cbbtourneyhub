@@ -19,8 +19,8 @@ export function StandardStandingsTable({ title, board, isMe, showTiebreaker = fa
   const isFull    = variant === 'full'
 
   return (
-    <div className={`flex flex-col rounded-[2rem] border ${theme.panelBg} ${theme.borderBase} overflow-hidden shadow-xl h-full`}>
-      <div className={`px-6 py-5 border-b ${theme.borderBase} bg-slate-900/40 flex items-center justify-between gap-3`}>
+    <div className="flex flex-col h-full w-full">
+      <div className="flex items-center justify-between gap-3 mb-4 px-1">
         <h3 className={`font-display ${isFull ? 'text-2xl' : 'text-lg'} font-black uppercase tracking-widest ${theme.textBase}`}>
           {title}
         </h3>
@@ -32,7 +32,7 @@ export function StandardStandingsTable({ title, board, isMe, showTiebreaker = fa
         )}
       </div>
 
-      <div className="flex-1 p-5 overflow-y-auto scrollbar-thin">
+      <div className="flex-1 overflow-y-auto scrollbar-thin pb-10">
         {board.length === 0 ? (
           <div className={`flex flex-col items-center justify-center h-32 text-sm ${theme.textMuted}`}>
             No active players.
@@ -44,13 +44,11 @@ export function StandardStandingsTable({ title, board, isMe, showTiebreaker = fa
               return (
                 <div
                   key={entry.profile.id}
-                  // ── REMOVED onClick FROM HERE ──
                   className={`group relative overflow-hidden flex items-center gap-4 p-4 rounded-2xl border transition-all ${
                     me 
                       ? `${theme.bgMd} border-amber-500/40 shadow-sm` 
-                      : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800'
+                      : `${theme.panelBg} border-slate-200 dark:border-slate-800`
                   } ${
-                    // ── REMOVED cursor-pointer FROM HERE ──
                     !me
                       ? 'hover:scale-[1.01] hover:border-amber-500/50 hover:shadow-lg hover:bg-slate-100 dark:hover:bg-slate-800'
                       : ''
@@ -96,7 +94,6 @@ export function StandardStandingsTable({ title, board, isMe, showTiebreaker = fa
                     </p>
                   </div>
 
-                  {/* ── SLEEK SNOOP OVERLAY (NOW CLICKABLE!) ── */}
                   {!me && (
                     <div 
                       onClick={() => openSnoop(entry.profile.id, tournamentId)}

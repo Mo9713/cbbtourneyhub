@@ -55,8 +55,8 @@ export default function StandingsPage() {
 
   if (showSkeleton || !tournaments || !groups || !rawData || !members || !profile) {
     return (
-      <div className={`w-full h-full flex flex-col p-4 md:p-8 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-700 ${theme.appBg}`}>
-        <div className="max-w-5xl mx-auto w-full space-y-6 pb-12 animate-in fade-in duration-300">
+      <div className={`w-full h-full flex flex-col px-4 md:px-6 py-6 md:py-8 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-700 ${theme.appBg}`}>
+        <div className="max-w-[79rem] mx-auto w-full space-y-6 pb-12 animate-in fade-in duration-300">
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-2">
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-xl bg-slate-200 dark:bg-slate-800/50 animate-pulse border border-slate-300 dark:border-slate-800" />
@@ -65,16 +65,15 @@ export default function StandingsPage() {
             <div className="w-40 h-10 rounded-xl bg-slate-200 dark:bg-slate-800/50 animate-pulse border border-slate-300 dark:border-slate-800" />
           </div>
 
-          <div className={`flex flex-col rounded-[2rem] border shadow-xl overflow-hidden ${theme.panelBg} ${theme.borderBase}`}>
-            <div className="border-b border-slate-200 dark:border-slate-800 px-8 flex gap-8 items-end pt-5 pb-0">
-               <div className="w-24 h-10 bg-slate-200 dark:bg-slate-800/50 rounded-t-lg animate-pulse" />
-               <div className="w-24 h-10 bg-slate-200 dark:bg-slate-800/50 rounded-t-lg animate-pulse" />
-            </div>
-            <div className="p-6 md:p-8 space-y-4">
-              {[...Array(5)].map((_, i) => (
-                <div key={i} className="w-full h-20 rounded-2xl bg-slate-200 dark:bg-slate-800/50 animate-pulse border border-slate-300 dark:border-slate-800" />
-              ))}
-            </div>
+          <div className="border-b border-slate-200 dark:border-slate-800 flex gap-8 items-end pb-0">
+             <div className="w-24 h-10 bg-slate-200 dark:bg-slate-800/50 rounded-t-lg animate-pulse" />
+             <div className="w-24 h-10 bg-slate-200 dark:bg-slate-800/50 rounded-t-lg animate-pulse" />
+          </div>
+          
+          <div className="pt-2 space-y-3">
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className="w-full h-20 rounded-2xl bg-slate-200 dark:bg-slate-800/50 animate-pulse border border-slate-300 dark:border-slate-800" />
+            ))}
           </div>
         </div>
       </div>
@@ -98,8 +97,8 @@ export default function StandingsPage() {
   }
 
   return (
-    <div className={`w-full h-full flex flex-col p-4 md:p-8 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-700 ${theme.appBg}`}>
-      <div className="max-w-5xl mx-auto w-full space-y-6 pb-12">
+    <div className={`w-full h-full flex flex-col px-4 md:px-6 py-6 md:py-8 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-700 ${theme.appBg}`}>
+      <div className="max-w-[79rem] mx-auto w-full space-y-6 pb-12">
         
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div className="flex flex-col gap-2">
@@ -114,7 +113,7 @@ export default function StandingsPage() {
           </div>
 
           {groups.length > 0 && (
-            <div className="relative">
+            <div className="relative z-50">
               <button
                 onClick={() => setDropdownOpen(!dropdownOpen)}
                 className={`flex items-center gap-2 px-4 py-2 rounded-xl border transition-all ${theme.panelBg} ${theme.borderBase} hover:border-amber-500/50 shadow-sm`}
@@ -125,7 +124,7 @@ export default function StandingsPage() {
               </button>
 
               {dropdownOpen && (
-                <div className={`absolute right-0 top-full mt-2 w-64 rounded-xl border shadow-xl z-50 overflow-hidden ${theme.panelBg} ${theme.borderBase}`}>
+                <div className={`absolute right-0 top-full mt-2 w-64 rounded-xl border shadow-xl overflow-hidden ${theme.panelBg} ${theme.borderBase}`}>
                   {groups.map((g: any) => (
                     <button
                       key={g.id}
@@ -148,9 +147,8 @@ export default function StandingsPage() {
             <p className={`text-sm max-w-sm ${theme.textMuted}`}>This group doesn't have any active brackets yet.</p>
           </div>
         ) : (
-          <div className={`flex flex-col rounded-3xl border shadow-sm overflow-hidden ${theme.panelBg} ${theme.borderBase}`}>
-            
-            <div className="border-b border-slate-200 dark:border-slate-800 px-6">
+          <div className="flex flex-col w-full space-y-6">
+            <div className="border-b border-slate-200 dark:border-slate-800">
               <nav className="-mb-px flex gap-8" aria-label="Tabs">
                 <button
                   onClick={() => setActiveTab('bracket')}
@@ -181,33 +179,28 @@ export default function StandingsPage() {
               </nav>
             </div>
 
-            <div className="p-6 md:p-8">
+            <div className="w-full">
               {activeTab === 'bracket' && hasStandard && (
-                <div className="w-full">
-                  <StandardStandingsTable
-                    title="Bracket Leaderboard"
-                    board={boards.standard}
-                    isMe={isMe}
-                    tournamentId={bracketTourneyId}
-                    showTiebreaker={groupTournaments.some(t => t.game_type !== 'survivor' && t.requires_tiebreaker === true)}
-                    variant="full"
-                  />
-                </div>
+                <StandardStandingsTable
+                  title="Bracket Leaderboard"
+                  board={boards.standard}
+                  isMe={isMe}
+                  tournamentId={bracketTourneyId}
+                  showTiebreaker={groupTournaments.some(t => t.game_type !== 'survivor' && t.requires_tiebreaker === true)}
+                  variant="full"
+                />
               )}
 
               {activeTab === 'survivor' && hasSurvivor && (
-                <div className="w-full">
-                  <SurvivorStandingsTable
-                    title="Survivor Leaderboard"
-                    board={boards.survivor}
-                    isMe={isMe}
-                    tournamentId={survivorTourneyId}
-                    variant="full"
-                  />
-                </div>
+                <SurvivorStandingsTable
+                  title="Survivor Leaderboard"
+                  board={boards.survivor}
+                  isMe={isMe}
+                  tournamentId={survivorTourneyId}
+                  variant="full"
+                />
               )}
             </div>
-
           </div>
         )}
       </div>

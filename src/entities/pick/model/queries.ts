@@ -3,14 +3,6 @@
 // ── Query Key Contract ────────────────────────────────────────
 // useMyPicks registers its observer under the COMPOUND key:
 //   ['picks', 'mine', tournamentId, gameIds[]]
-//
-// All cache operations that must be visible to that observer (getQueryData,
-// setQueryData) MUST use this exact compound key. cancelQueries and
-// invalidateQueries use prefix/fuzzy matching by default and are correct
-// with the base key pickKeys.mine(tournamentId) — but getQueryData /
-// setQueryData are EXACT-MATCH only and will silently miss the compound
-// key if only the base is supplied. MakePickContext carries exactKey
-// so both onMutate and onError target the live cache entry.
 
 import {
   useQuery, useMutation, useQueryClient,
@@ -37,11 +29,13 @@ interface MakePickVars {
   tournamentId: string
   games:        Game[]
   existingPick: Pick | undefined
+  overrideUserId?: string
 }
 
 type MakePickContext = {
   prev:     Pick[] | undefined
   exactKey: readonly unknown[]
+  prevRaw:  any | undefined
 }
 
 type SaveTiebreakerVars = {
@@ -50,11 +44,13 @@ type SaveTiebreakerVars = {
   score:           number
   tournamentId:    string
   gameIds:         string[]
+  overrideUserId?: string
 }
 
 type SaveTiebreakerContext = {
   prev:     Pick[] | undefined
   exactKey: readonly unknown[]
+  prevRaw:  any | undefined
 }
 
 // ── Queries ───────────────────────────────────────────────────
@@ -84,38 +80,43 @@ export function useMakePick() {
 
   return useMutation<Pick | null, Error, MakePickVars, MakePickContext>({
     mutationKey: ['makePick'], // Tracks inflight click spamming
-    mutationFn: async ({ game, team, games, existingPick }) => {
+    mutationFn: async ({ game, team, games, existingPick, overrideUserId }) => {
       const downstreamIds = collectDownstreamGameIds(game, games)
 
       if (existingPick) {
         if (existingPick.predicted_winner === team) {
-          await unwrap(api.deletePick(existingPick.id))
+          await unwrap(api.deletePick(existingPick.id, overrideUserId))
           if (downstreamIds.length > 0) {
-            await unwrap(api.deletePicksForGames(downstreamIds))
+            await unwrap(api.deletePicksForGames(downstreamIds, overrideUserId))
           }
           return null
         } else {
           if (downstreamIds.length > 0) {
-            await unwrap(api.deletePicksForGames(downstreamIds))
+            await unwrap(api.deletePicksForGames(downstreamIds, overrideUserId))
           }
-          return unwrap(api.savePick(game.id, team))
+          return unwrap(api.savePick(game.id, team, overrideUserId))
         }
       }
       
-      return unwrap(api.savePick(game.id, team))
+      return unwrap(api.savePick(game.id, team, overrideUserId))
     },
 
-    onMutate: async ({ game, team, tournamentId, games, existingPick }): Promise<MakePickContext> => {
+    onMutate: async ({ game, team, tournamentId, games, existingPick, overrideUserId }): Promise<MakePickContext> => {
       const gameIds  = games.map((g: Game) => g.id)
       const exactKey = [...pickKeys.mine(tournamentId), gameIds] as const
 
       await qc.cancelQueries({ queryKey: pickKeys.mine(tournamentId) })
+      const prev = qc.getQueryData<Pick[]>(exactKey)
 
-      const prev           = qc.getQueryData<Pick[]>(exactKey)
+      const rawKey = ['leaderboard', 'raw'] as const
+      await qc.cancelQueries({ queryKey: rawKey })
+      const prevRaw = qc.getQueryData<any>(rawKey)
+
       const downstreamIds  = new Set(collectDownstreamGameIds(game, games))
       const isToggle       = existingPick?.predicted_winner === team
       const isChange       = !!existingPick && !isToggle
 
+      // 1. Optimistic Update for My Picks cache
       qc.setQueryData<Pick[]>(exactKey, (old = []) => {
         const filtered = old.filter((p: Pick) => {
           if (p.game_id === game.id) return false
@@ -127,7 +128,7 @@ export function useMakePick() {
 
         const optimistic: Pick = {
           id:               'optimistic-' + Date.now(),
-          user_id:          existingPick?.user_id ?? 'me',
+          user_id:          overrideUserId ?? existingPick?.user_id ?? 'me',
           game_id:          game.id,
           predicted_winner: team,
           tiebreaker_score: null,
@@ -135,18 +136,41 @@ export function useMakePick() {
         return [...filtered, optimistic]
       })
 
-      return { prev, exactKey }
+      // 2. Optimistic Update for Leaderboard Raw cache (for instant SnoopModal feedback)
+      if (overrideUserId) {
+        qc.setQueryData<any>(rawKey, (old: any) => {
+          if (!old) return old
+          const filtered = old.allPicks.filter((p: Pick) => {
+             if (p.user_id !== overrideUserId) return true
+             if (p.game_id === game.id) return false
+             if ((isToggle || isChange) && downstreamIds.has(p.game_id)) return false
+             return true
+          })
+          if (isToggle) return { ...old, allPicks: filtered }
+          const opt: Pick = {
+             id: 'opt-' + Date.now(),
+             user_id: overrideUserId,
+             game_id: game.id,
+             predicted_winner: team,
+             tiebreaker_score: null
+          }
+          return { ...old, allPicks: [...filtered, opt] }
+        })
+      }
+
+      return { prev, exactKey, prevRaw }
     },
 
     onError: (_err, _vars, ctx) => {
       if (ctx?.prev !== undefined) {
         qc.setQueryData(ctx.exactKey, ctx.prev)
       }
+      if (ctx?.prevRaw !== undefined) {
+        qc.setQueryData(['leaderboard', 'raw'], ctx.prevRaw)
+      }
     },
 
     onSettled: (_data, _err, vars) => {
-      // FIX: Only trigger a network cache flush if the user has STOPPED clicking.
-      // This stops the UI from wiping out uncommitted optimistic updates mid-click!
       setTimeout(() => {
         if (qc.isMutating({ mutationKey: ['makePick'] }) === 0) {
           qc.invalidateQueries({ queryKey: pickKeys.mine(vars.tournamentId) })
@@ -163,19 +187,23 @@ export function useSaveTiebreaker() {
 
   return useMutation<Pick, Error, SaveTiebreakerVars, SaveTiebreakerContext>({
     mutationKey: ['saveTiebreaker'],
-    mutationFn: ({ gameId, predictedWinner, score }) =>
-      unwrap(api.saveTiebreakerScore(gameId, predictedWinner, score)),
+    mutationFn: ({ gameId, predictedWinner, score, overrideUserId }) =>
+      unwrap(api.saveTiebreakerScore(gameId, predictedWinner, score, overrideUserId)),
 
-    onMutate: async ({ gameId, predictedWinner, score, tournamentId, gameIds }): Promise<SaveTiebreakerContext> => {
+    onMutate: async ({ gameId, predictedWinner, score, tournamentId, gameIds, overrideUserId }): Promise<SaveTiebreakerContext> => {
       const exactKey = [...pickKeys.mine(tournamentId), gameIds] as const
       await qc.cancelQueries({ queryKey: pickKeys.mine(tournamentId) })
       const prev = qc.getQueryData<Pick[]>(exactKey)
+
+      const rawKey = ['leaderboard', 'raw'] as const
+      await qc.cancelQueries({ queryKey: rawKey })
+      const prevRaw = qc.getQueryData<any>(rawKey)
 
       qc.setQueryData<Pick[]>(exactKey, (old = []) => {
         const existing = old.find((p: Pick) => p.game_id === gameId)
         const updated: Pick = {
           id:               existing?.id ?? 'optimistic-tb-' + Date.now(),
-          user_id:          existing?.user_id ?? 'me',
+          user_id:          overrideUserId ?? existing?.user_id ?? 'me',
           game_id:          gameId,
           predicted_winner: predictedWinner,
           tiebreaker_score: score,
@@ -185,18 +213,42 @@ export function useSaveTiebreaker() {
           : [...old, updated]
       })
 
-      return { prev, exactKey }
+      if (overrideUserId) {
+        qc.setQueryData<any>(rawKey, (old: any) => {
+          if (!old) return old
+          const existing = old.allPicks.find((p: Pick) => p.user_id === overrideUserId && p.game_id === gameId)
+          const updated: Pick = {
+            id:               existing?.id ?? 'optimistic-tb-' + Date.now(),
+            user_id:          overrideUserId,
+            game_id:          gameId,
+            predicted_winner: predictedWinner,
+            tiebreaker_score: score,
+          }
+          return {
+             ...old,
+             allPicks: existing
+                ? old.allPicks.map((p: Pick) => p.id === existing.id ? updated : p)
+                : [...old.allPicks, updated]
+          }
+        })
+      }
+
+      return { prev, exactKey, prevRaw }
     },
 
     onError: (_err, _vars, ctx) => {
       if (ctx?.prev !== undefined) {
         qc.setQueryData(ctx.exactKey, ctx.prev)
       }
+      if (ctx?.prevRaw !== undefined) {
+        qc.setQueryData(['leaderboard', 'raw'], ctx.prevRaw)
+      }
     },
 
     onSettled: (_data, _err, vars) => {
       safeInvalidate(qc, pickKeys.mine(vars.tournamentId))
       safeInvalidate(qc, pickKeys.allMine())
+      safeInvalidate(qc, ['leaderboard', 'raw'])
     },
   })
 }

@@ -1,3 +1,5 @@
+// src/widgets/survivor-bracket/ui/SurvivorBracketView.tsx
+
 import { useMemo }       from 'react'
 import { Ban, Trophy, Settings } from 'lucide-react'
 import { useTheme }      from '../../../shared/lib/theme'
@@ -92,7 +94,15 @@ export function SurvivorBracketView({ tournamentId }: Props) {
   const finalGames   = games.filter((g: Game) => g.round_num >= 5)
 
   const handleMakePick = (gameId: string, teamName: string | null, roundNum: number) => {
-    pickMutation.mutate({ tournamentId, gameId, predictedWinner: teamName, roundNum, gameIds })
+    const roundGameIds = games.filter(g => g.round_num === roundNum).map(g => g.id)
+    pickMutation.mutate({ 
+      tournamentId, 
+      gameId, 
+      predictedWinner: teamName, 
+      roundNum, 
+      tournamentGameIds: gameIds,
+      roundGameIds
+    })
   }
 
   const renderRegion = (

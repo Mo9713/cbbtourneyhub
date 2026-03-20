@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { Skull, Flame, Trophy, Eye } from 'lucide-react'
 import { useTheme }   from '../../../shared/lib/theme'
 import { Avatar }     from '../../../shared/ui'
@@ -20,29 +21,37 @@ export function SurvivorStandingsTable({ title, board, isMe, variant = 'compact'
   const aliveCount = board.filter(e => !e.isEliminated).length
   const winnerId = aliveCount === 1 ? board.find(e => !e.isEliminated)?.profile.id : null
 
+  // Sort eliminated players to the bottom while preserving their score order
+  const sortedBoard = useMemo(() => {
+    return [...board].sort((a, b) => {
+      if (a.isEliminated && !b.isEliminated) return 1
+      if (!a.isEliminated && b.isEliminated) return -1
+      return 0
+    })
+  }, [board])
+
   return (
-    <div className={`flex flex-col rounded-[2rem] border ${theme.panelBg} ${theme.borderBase} overflow-hidden shadow-xl h-full`}>
-      <div className={`px-6 py-5 border-b ${theme.borderBase} bg-slate-900/40`}>
+    <div className="flex flex-col h-full w-full">
+      <div className="flex items-center justify-between gap-3 mb-4 px-1">
         <h3 className={`font-display ${isFull ? 'text-2xl' : 'text-lg'} font-black uppercase tracking-widest ${theme.textBase}`}>
           {title}
         </h3>
       </div>
 
-      <div className="flex-1 p-5 overflow-y-auto scrollbar-thin">
-        {board.length === 0 ? (
+      <div className="flex-1 overflow-y-auto scrollbar-thin pb-10">
+        {sortedBoard.length === 0 ? (
           <div className={`flex flex-col items-center justify-center h-32 text-sm ${theme.textMuted}`}>
             No active players.
           </div>
         ) : (
           <div className="flex flex-col gap-3">
-            {board.map((entry, i) => {
+            {sortedBoard.map((entry, i) => {
               const me = isMe(entry.profile.id)
               const isWinner = entry.profile.id === winnerId
 
               return (
                 <div
                   key={entry.profile.id}
-                  // ── REMOVED onClick FROM HERE ──
                   className={`group relative overflow-hidden flex items-center gap-4 p-4 rounded-2xl border transition-all ${
                     isWinner
                       ? 'bg-amber-500/10 border-amber-500 shadow-[0_0_15px_rgba(245,158,11,0.2)]'
@@ -50,9 +59,8 @@ export function SurvivorStandingsTable({ title, board, isMe, variant = 'compact'
                         ? 'opacity-60 grayscale border-slate-800 bg-black/20 hover:grayscale-0 hover:opacity-100' 
                         : me
                           ? `${theme.bgMd} border-amber-500/40 shadow-sm`
-                          : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800'
+                          : `${theme.panelBg} border-slate-200 dark:border-slate-800`
                   } ${
-                    // ── REMOVED cursor-pointer FROM HERE ──
                     !me 
                       ? 'hover:scale-[1.01] hover:border-amber-500/50 hover:shadow-lg hover:bg-slate-100 dark:hover:bg-slate-800'
                       : ''
@@ -89,7 +97,6 @@ export function SurvivorStandingsTable({ title, board, isMe, variant = 'compact'
                     <p className={`text-[10px] font-bold uppercase tracking-widest ${theme.textMuted}`}>Seed Pts</p>
                   </div>
 
-                  {/* ── SLEEK SNOOP OVERLAY (NOW CLICKABLE!) ── */}
                   {!me && (
                     <div 
                       onClick={() => openSnoop(entry.profile.id, tournamentId)}

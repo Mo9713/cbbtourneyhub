@@ -1,4 +1,3 @@
-// src/widgets/leaderboard/ui/LeaderboardView.tsx
 import { useMemo }                    from 'react'
 import { useAuth }                    from '../../../features/auth'
 import { useLeaderboardRaw }          from '../../../entities/leaderboard/model/queries'
@@ -53,14 +52,14 @@ export default function LeaderboardView({ tournament }: LeaderboardViewProps) {
 
   return (
     <div className="flex flex-col h-full bg-slate-50 dark:bg-slate-950">
-      <div className="flex-1 overflow-auto p-4 md:p-8 scrollbar-thin">
-        <div className="max-w-4xl mx-auto h-full">
+      <div className="flex-1 overflow-auto px-4 md:px-6 py-6 md:py-8 scrollbar-thin">
+        <div className="max-w-[79rem] mx-auto h-full">
           {isSurvivorMode ? (
             <SurvivorStandingsTable 
               title="Survivor Standings"
               board={leaderboard}
               isMe={isMe}
-              tournamentId={tournament.id} // ── PASSED ID HERE ──
+              tournamentId={tournament.id}
               variant="full"
             />
           ) : (
@@ -69,7 +68,7 @@ export default function LeaderboardView({ tournament }: LeaderboardViewProps) {
               board={leaderboard}
               isMe={isMe}
               showTiebreaker={showTiebreaker}
-              tournamentId={tournament.id} // ── PASSED ID HERE ──
+              tournamentId={tournament.id}
               variant="full"
             />
           )}

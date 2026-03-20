@@ -26,7 +26,7 @@ export default function GameCard({
   effectiveTeam1,
   effectiveTeam2,
 }: GameCardProps) {
-  const { isLocked, readOnly, onPick, showGameNumbers, theme } = useBracketView()
+  const { isLocked, readOnly, adminOverride, onPick, showGameNumbers, theme } = useBracketView()
 
   const hasWinner = !!game.actual_winner
 
@@ -89,7 +89,6 @@ export default function GameCard({
           const shouldStrikeThrough = isEliminated && (isPicked || isIncorrectAdvancement)
           const shouldFade = isEliminated && !shouldStrikeThrough
 
-          // FIX: Now ACTUALLY using the dynamic theme variable for the color fill!
           const rowBg = isWinner
             ? 'bg-emerald-50 dark:bg-[#022c22]'
             : shouldFade
@@ -121,7 +120,8 @@ export default function GameCard({
           }
 
           const scoreCls = isWinner ? 'text-emerald-600 dark:text-emerald-400 font-black' : 'text-slate-600 dark:text-slate-400'
-          const canPick  = !isTBD && !isLocked && !readOnly
+          
+          const canPick = !isTBD && (adminOverride || (!isLocked && !readOnly))
 
           const showCheck = isWinner && isPicked
           const showX     = isEliminated && isPicked

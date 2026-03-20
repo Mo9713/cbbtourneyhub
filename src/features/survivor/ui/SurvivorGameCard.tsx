@@ -22,6 +22,8 @@ interface Props {
   isEliminated:    boolean
   isTournamentOver: boolean
   onMakePick:      (gameId: string, teamName: string | null, roundNum: number) => void
+  readOnly?:       boolean
+  adminOverride?:  boolean
 }
 
 export function SurvivorGameCard({
@@ -32,10 +34,18 @@ export function SurvivorGameCard({
   isEliminated,
   isTournamentOver,
   onMakePick,
+  readOnly = false,
+  adminOverride = false,
 }: Props) {
   const theme = useTheme()
 
-  const isPickingLocked = activeRound !== game.round_num || isEliminated || isTournamentOver
+  // MASKING LOGIC: If a snooper is looking at a round that has not locked yet, hide the pick.
+  // A round is active/open if game.round_num >= activeRound (where activeRound > 0).
+  const isSecret = readOnly && !adminOverride && activeRound > 0 && game.round_num >= activeRound
+  const effectivePick = isSecret ? undefined : currentPick
+
+  const isPickingLocked = (activeRound !== game.round_num || isEliminated || isTournamentOver) && !adminOverride
+  const canPick = adminOverride || (!readOnly && !isPickingLocked)
 
   const renderTeam = (
     teamName:    string | null,
@@ -56,7 +66,7 @@ export function SurvivorGameCard({
       )
     }
 
-    const isPicked  = currentPick?.predicted_winner === slot
+    const isPicked  = effectivePick?.predicted_winner === slot
     const isBurned  = usedTeams.includes(teamName) && !isPicked
     const isWinner  = !!game.actual_winner && isTeamMatch(teamName, game.actual_winner)
     const isLoser   = !!game.actual_winner && !isWinner
@@ -70,25 +80,27 @@ export function SurvivorGameCard({
       (isPickingLocked && !game.actual_winner)  ? 'locked'        :
       'default'
 
+    // FIX: Admin Override forces teams to become interactive again
+    const isInteractive = canPick && teamState !== 'burned'
+
     const bgClass = {
-      'winner-picked': `bg-emerald-50 dark:bg-[#022c22] text-emerald-600 dark:text-emerald-400 font-bold`,
-      'loser-picked':  `opacity-60 line-through decoration-rose-500 ${theme.textMuted} bg-rose-500/5`,
-      'loser':         `opacity-50 line-through ${theme.textMuted} bg-black/5 dark:bg-white/5`,
+      'winner-picked': `bg-emerald-50 dark:bg-[#022c22] text-emerald-600 dark:text-emerald-400 font-bold ${isInteractive ? 'cursor-pointer' : ''}`,
+      'loser-picked':  `opacity-60 line-through decoration-rose-500 ${theme.textMuted} bg-rose-500/5 ${isInteractive ? 'cursor-pointer' : ''}`,
+      'loser':         `opacity-50 line-through ${theme.textMuted} bg-black/5 dark:bg-white/5 ${isInteractive ? 'cursor-pointer' : ''}`,
       'burned':        `opacity-40 ${theme.textMuted} bg-amber-500/5 border-l-2 border-amber-500/40 cursor-not-allowed`,
-      'picked':        `${theme.bgMd} font-bold text-amber-500`,
+      'picked':        `${theme.bgMd} font-bold text-amber-500 ${isInteractive ? 'cursor-pointer' : ''}`,
       'locked':        `opacity-50 cursor-not-allowed ${theme.textMuted}`,
-      'default':       `hover:bg-emerald-50 dark:hover:bg-[#022c22] cursor-pointer`,
+      'default':       `hover:bg-emerald-50 dark:hover:bg-[#022c22] ${isInteractive ? 'cursor-pointer' : ''}`,
     }[teamState]
 
     const titleAttr: string | undefined =
+      isSecret                      ? 'Pick is hidden until round locks'       :
       teamState === 'burned'        ? 'Already used — cannot pick again'       :
       teamState === 'loser'         ? 'Eliminated from this game'              :
       teamState === 'loser-picked'  ? 'Wrong pick — this team was eliminated'  :
       teamState === 'locked'        ? 'Round picks are not open'               :
       teamState === 'winner-picked' ? 'Correct pick!'                          :
       undefined
-
-    const isInteractive = teamState === 'default' || teamState === 'picked'
 
     return (
       <div
@@ -97,7 +109,7 @@ export function SurvivorGameCard({
         aria-disabled={!isInteractive}
         title={titleAttr}
         onClick={() => {
-          if (isPickingLocked || isBurned) return
+          if (!isInteractive) return
           onMakePick(game.id, isPicked ? null : slot, game.round_num)
         }}
         onKeyDown={(e) => {
@@ -117,7 +129,9 @@ export function SurvivorGameCard({
           {seed || '-'}
         </span>
 
-        <span className="truncate flex-1">{teamName}</span>
+        <span className={`truncate flex-1 ${isSecret ? 'italic opacity-60' : ''}`}>
+          {isSecret ? 'Hidden' : teamName}
+        </span>
 
         {teamState === 'winner-picked' && <Check  size={14} className="ml-1 shrink-0 text-emerald-500" />}
         {teamState === 'loser-picked'  && <Ban    size={14} className="ml-1 shrink-0 text-rose-500" />}
