@@ -1,5 +1,3 @@
-// src/widgets/admin-builder/ui/AdminBuilderView/index.tsx
-
 import React, { useState, useMemo, useCallback } from 'react'
 import { useQueryClient }                 from '@tanstack/react-query'
 
@@ -190,6 +188,14 @@ export default function AdminBuilderView() {
     const feeders = games
       .filter((g: Game) => g.next_game_id === targetId)
       .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+
+    // FIX A-04: Prevents silent overwrite corruption if an admin accidentally points 3 games into one
+    if (feeders.length >= 2) {
+      pushToast('This game already has two feeders. Unlink one first.', 'error')
+      setLinkingFromId(null)
+      return
+    }
+
     const slot = feeders.length > 0 ? 'team2_name' : 'team1_name'
 
     const result = await gameService.linkGames(fromGame, targetId, slot, fromGameNumber, games, gameNums)

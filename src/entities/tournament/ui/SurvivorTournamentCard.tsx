@@ -1,4 +1,4 @@
-// src/entities/tournament/ui/SurvivorTournamentCard.tsx
+import { Play, Lock } from 'lucide-react'
 import { useTheme } from '../../../shared/lib/theme'
 import { isPicksLocked, getActiveSurvivorRound } from '../../../shared/lib/time'
 import { statusLabel, statusIcon } from '../../../shared/lib/helpers'
@@ -13,9 +13,10 @@ interface Props {
   onSelect: (t: Tournament) => void
   timezone?: string | null
   variant?: 'compact' | 'full'
+  userStat?: { rank: number; totalPlayers: number; seedScore: number; isEliminated: boolean; firstPlaceSeed: number } | null
 }
 
-export function SurvivorTournamentCard({ tournament, isAdmin, onSelect, timezone = null, variant = 'compact' }: Props) {
+export function SurvivorTournamentCard({ tournament, isAdmin, onSelect, timezone = null, variant = 'compact', userStat }: Props) {
   const theme = useTheme()
   const progress = useTournamentProgress(tournament)
   const locked = isPicksLocked(tournament, isAdmin)
@@ -27,17 +28,18 @@ export function SurvivorTournamentCard({ tournament, isAdmin, onSelect, timezone
   const displayStatus =
     tournament.status === 'completed' ? 'completed' :
     tournament.status === 'draft'     ? 'draft'     :
-    isEffectivelyLocked               ? 'locked'    :
+    isEffectivelyLocked               ? 'active'    :
     'open'
 
-  const showPickBar = !isCompleted && tournament.status !== 'draft' && !locked && progress.requiredPicks > 0
+  const showPickBar = tournament.status !== 'draft' && !isCompleted && progress.requiredPicks > 0
 
   const cardClasses = isCompleted
     ? 'border-violet-500/40 bg-violet-500/5 hover:border-violet-400/60'
     : `${theme.panelBg} ${theme.borderBase} hover:border-amber-500/50`
 
-  const badgeCls =
+  const pickStatusBadgeCls =
     displayStatus === 'open'      ? `${theme.bg} ${theme.accent}` :
+    displayStatus === 'active'    ? 'bg-slate-200 dark:bg-slate-800 text-slate-500 dark:text-slate-400' :
     displayStatus === 'draft'     ? 'bg-amber-100 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400' :
     displayStatus === 'completed' ? 'bg-violet-100 dark:bg-violet-500/20 text-violet-600 dark:text-violet-300' :
     'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-500'
@@ -51,9 +53,25 @@ export function SurvivorTournamentCard({ tournament, isAdmin, onSelect, timezone
         <h3 className={`font-display text-xl font-bold uppercase tracking-wide leading-tight line-clamp-2 ${theme.textBase}`}>
           {tournament.name}
         </h3>
-        <span className={`flex-shrink-0 text-[10px] uppercase tracking-widest font-bold px-2 py-1 rounded-lg flex items-center gap-1 ${variant === 'compact' ? badgeCls : `${theme.bgMd} ${theme.textMuted}`}`}>
-          {variant === 'compact' ? <>{statusIcon(tournament.status)} {statusLabel(tournament.status)}</> : 'Survivor'}
-        </span>
+        
+        {variant === 'compact' ? (
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            {(displayStatus === 'open' || displayStatus === 'active') && activeRound > 0 && (
+              <span className="text-[10px] uppercase tracking-widest font-bold px-2 py-1 rounded-lg flex items-center gap-1 bg-blue-100 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400">
+                <Play size={12} /> Active
+              </span>
+            )}
+            <span className={`text-[10px] uppercase tracking-widest font-bold px-2 py-1 rounded-lg flex items-center gap-1 ${pickStatusBadgeCls}`}>
+              {displayStatus === 'active' ? <Lock size={12} /> : statusIcon(tournament.status)}
+              {' '}
+              {displayStatus === 'active' ? 'Locked' : statusLabel(tournament.status)}
+            </span>
+          </div>
+        ) : (
+          <span className={`flex-shrink-0 text-[10px] uppercase tracking-widest font-bold px-2 py-1 rounded-lg flex items-center gap-1 ${theme.bgMd} ${theme.textMuted}`}>
+            Survivor
+          </span>
+        )}
       </div>
 
       {variant === 'full' && (
@@ -65,9 +83,36 @@ export function SurvivorTournamentCard({ tournament, isAdmin, onSelect, timezone
       {variant === 'compact' && (
         <div className={`mt-auto w-full pt-4 border-t flex flex-col justify-center min-h-[44px] ${isCompleted ? 'border-violet-500/20' : 'border-slate-200 dark:border-slate-800/50'}`}>
           {showPickBar && <TournamentProgressBar compact={true} {...progress} />}
-          {displayStatus === 'draft' && isAdmin && <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 text-center">Draft</p>}
-          {displayStatus === 'completed' && <p className="text-[10px] font-bold uppercase tracking-widest text-violet-500 dark:text-violet-400 text-center">Results final</p>}
-          {displayStatus === 'locked' && <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 text-center">Picks Locked</p>}
+          
+          {/* Always render user stats if the tournament has started (activeRound > 0) */}
+          {userStat && activeRound > 0 ? (
+            <div className={`flex items-center justify-between px-3 bg-slate-100 dark:bg-slate-800/50 rounded-lg py-2 border border-slate-200 dark:border-slate-700/50 shadow-inner ${showPickBar ? 'mt-2' : ''}`}>
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-1">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Rank:</span>
+                  <span className="text-xs font-black text-amber-500">#{userStat.rank}<span className="text-[9px] text-slate-400 font-bold ml-0.5">/{userStat.totalPlayers}</span></span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Status:</span>
+                  <span className={`text-[10px] font-black uppercase tracking-widest ${userStat.isEliminated ? 'text-rose-500' : 'text-emerald-500'}`}>
+                    {userStat.isEliminated ? 'Eliminated' : 'Alive'}
+                  </span>
+                </div>
+              </div>
+              <div className="flex flex-col items-end gap-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Seed Pts:</span>
+                  <span className={`text-xs font-black ${theme.textBase}`}>{userStat.seedScore}</span>
+                </div>
+                <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400">1st Place: {userStat.firstPlaceSeed}</span>
+              </div>
+            </div>
+          ) : (
+            <>
+              {displayStatus === 'draft' && isAdmin && <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 text-center">Draft</p>}
+              {displayStatus === 'completed' && !userStat && <p className="text-[10px] font-bold uppercase tracking-widest text-violet-500 dark:text-violet-400 text-center">Results final</p>}
+            </>
+          )}
         </div>
       )}
 
@@ -77,8 +122,8 @@ export function SurvivorTournamentCard({ tournament, isAdmin, onSelect, timezone
               <span className="text-slate-500">
                 {isCompleted ? 'Status' : tournament.status === 'draft' ? 'Status' : activeRound === 0 ? 'Status' : `Round ${Math.max(activeRound - 1, 0)} Locked`}
               </span>
-              <span className={displayStatus === 'open' ? 'text-emerald-600 dark:text-emerald-500 font-black shadow-[0_0_8px_rgba(16,185,129,0.8)]' : displayStatus === 'completed' ? 'text-violet-500 dark:text-violet-400 font-black' : displayStatus === 'draft' ? 'text-amber-500 font-black' : 'text-slate-500 font-black'}>
-                {isCompleted ? 'Finished' : tournament.status === 'draft' ? 'Draft' : activeRound === 0 ? 'Locked' : displayStatus === 'open' ? `Round ${activeRound} Open` : 'Locked'}
+              <span className={displayStatus === 'open' ? 'text-emerald-600 dark:text-emerald-500 font-black shadow-[0_0_8px_rgba(16,185,129,0.8)]' : displayStatus === 'completed' ? 'text-violet-500 dark:text-violet-400 font-black' : displayStatus === 'draft' ? 'text-amber-500 font-black' : 'text-blue-500 dark:text-blue-400 font-black'}>
+                {isCompleted ? 'Finished' : tournament.status === 'draft' ? 'Draft' : activeRound === 0 ? 'Active' : displayStatus === 'open' ? `Round ${activeRound} Open` : 'Active'}
               </span>
            </div>
            {showPickBar && <TournamentProgressBar {...progress} />}

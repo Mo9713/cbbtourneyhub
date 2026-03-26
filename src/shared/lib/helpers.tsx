@@ -1,4 +1,3 @@
-// src/shared/lib/helpers.tsx
 import React from 'react'
 import { Globe, Edit3, Lock, CheckCircle2 } from 'lucide-react'
 import type { TournamentStatus } from '../types'
@@ -24,7 +23,12 @@ export function getScore(r: number): number {
   return b;
 }
 
-export function getRoundLabel(roundNum: number, maxRound: number): string {
+export function getRoundLabel(roundNum: number, maxRound: number, customNames?: string[] | null): string {
+  // If the admin set a custom name for this round, use it! (Arrays are 0-indexed, so Round 1 is index 0)
+  if (customNames && customNames[roundNum - 1] && customNames[roundNum - 1].trim() !== '') {
+    return customNames[roundNum - 1].trim()
+  }
+
   const gap = maxRound - roundNum
   if (gap === 0) return 'Championship'
   if (gap === 1) return 'Semifinals'

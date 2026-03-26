@@ -1,15 +1,12 @@
-// src/entities/group/model/queries.ts
-
-import { useQuery, useMutation, useQueryClient, type QueryClient, type QueryKey } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { unwrap }  from '../../../shared/lib/unwrap'
 import * as api    from '../api'
 import type { Group, GroupMember, Profile } from '../../../shared/types'
 
 // FIX 1: Import useAuth to grab the profile ID for our mobile speed fix
 import { useAuth } from '../../../features/auth'
-
-const REALTIME_DEBOUNCE_MS = 150
-const invalidateTimers = new Map<string, ReturnType<typeof setTimeout>>()
+// FIX A-02: Import global safeInvalidate instead of recreating it
+import { safeInvalidate } from '../../../shared/lib/queryUtils'
 
 export const groupKeys = {
   all:        ['groups']                                       as const,
@@ -17,22 +14,6 @@ export const groupKeys = {
   userGroups: (userId?: string) => ['groups', 'user', userId]  as const,
   details:    (id: string) => ['groups', 'detail', id]         as const,
   members:    (id: string) => ['groups', 'members', id]        as const,
-}
-
-function safeInvalidate(qc: QueryClient, queryKey: QueryKey): void {
-  const keyStr = JSON.stringify(queryKey)
-  if (qc.isMutating() > 0) {
-    if (invalidateTimers.has(keyStr)) {
-      clearTimeout(invalidateTimers.get(keyStr)!)
-    }
-    const timer = setTimeout(() => {
-      void qc.invalidateQueries({ queryKey })
-      invalidateTimers.delete(keyStr)
-    }, REALTIME_DEBOUNCE_MS)
-    invalidateTimers.set(keyStr, timer)
-  } else {
-    void qc.invalidateQueries({ queryKey })
-  }
 }
 
 export function useUserGroupsQuery() {

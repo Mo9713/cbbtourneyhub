@@ -176,7 +176,16 @@ export default function BracketView({
     theme,
   }), [isLocked, adminOverride, readOnly, ownerName, handlePick, isSurvivor, handleSurvivorPick, allTournamentPicks, isTournamentOver, tournament, theme])
 
-  if (!tournament || !profile) return null
+  // FIX U-03: Render friendly empty state instead of null flash
+  if (!tournament || !profile) {
+    return (
+      <div className={`w-full h-full flex flex-col items-center justify-center p-8 ${theme.appBg}`}>
+        <p className="text-sm font-bold uppercase tracking-widest text-slate-500 opacity-50">
+          Tournament Not Found
+        </p>
+      </div>
+    )
+  }
 
   return (
     <BracketViewProvider {...bracketViewValue}>

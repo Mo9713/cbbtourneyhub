@@ -1,5 +1,3 @@
-// src/features/survivor/ui/SurvivorGameCard.tsx
-
 import { Check, Ban, Flame } from 'lucide-react'
 import { useTheme }          from '../../../shared/lib/theme'
 import { isTeamMatch }       from '../../../shared/lib/bracketMath'
@@ -39,8 +37,6 @@ export function SurvivorGameCard({
 }: Props) {
   const theme = useTheme()
 
-  // MASKING LOGIC: If a snooper is looking at a round that has not locked yet, hide the pick.
-  // A round is active/open if game.round_num >= activeRound (where activeRound > 0).
   const isSecret = readOnly && !adminOverride && activeRound > 0 && game.round_num >= activeRound
   const effectivePick = isSecret ? undefined : currentPick
 
@@ -53,7 +49,6 @@ export function SurvivorGameCard({
     inKey:       'data-in1' | 'data-in2',
     slot:        'team1' | 'team2',
   ) => {
-    // FIX: Bulletproof check blocks "TBD", null, and standard "Winner of..." placeholders
     if (!teamName || teamName === 'TBD' || teamName.toLowerCase().includes('winner')) {
       return (
         <div className={`relative flex items-center px-3 py-2 text-xs ${theme.textMuted} opacity-50 min-h-[32px]`}>
@@ -80,7 +75,6 @@ export function SurvivorGameCard({
       (isPickingLocked && !game.actual_winner)  ? 'locked'        :
       'default'
 
-    // FIX: Admin Override forces teams to become interactive again
     const isInteractive = canPick && teamState !== 'burned'
 
     const bgClass = {
@@ -102,24 +96,17 @@ export function SurvivorGameCard({
       teamState === 'winner-picked' ? 'Correct pick!'                          :
       undefined
 
+    // FIX U-01: Swapped `div role="button"` for native `<button>`
     return (
-      <div
-        role="button"
-        tabIndex={isInteractive ? 0 : -1}
-        aria-disabled={!isInteractive}
+      <button
+        type="button"
+        disabled={!isInteractive}
         title={titleAttr}
         onClick={() => {
           if (!isInteractive) return
           onMakePick(game.id, isPicked ? null : slot, game.round_num)
         }}
-        onKeyDown={(e) => {
-          if (!isInteractive) return
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault()
-            onMakePick(game.id, isPicked ? null : slot, game.round_num)
-          }
-        }}
-        className={`relative flex items-center px-3 py-2 text-xs transition-colors select-none min-h-[32px] ${bgClass}`}
+        className={`w-full relative flex items-center text-left px-3 py-2 text-xs transition-colors select-none min-h-[32px] outline-none focus-visible:ring-2 focus-visible:ring-amber-500 ${bgClass}`}
       >
         <div className="absolute inset-y-0 left-0 flex flex-col justify-center pointer-events-none z-10">
           <div {...{ [inKey]: game.id }} className="w-0 h-0" aria-hidden />
@@ -137,7 +124,7 @@ export function SurvivorGameCard({
         {teamState === 'loser-picked'  && <Ban    size={14} className="ml-1 shrink-0 text-rose-500" />}
         {teamState === 'burned'        && <Flame  size={12} className="ml-1 shrink-0 text-amber-500/70" />}
         {teamState === 'picked'        && <Check  size={14} className="ml-1 shrink-0 text-amber-500" />}
-      </div>
+      </button>
     )
   }
 

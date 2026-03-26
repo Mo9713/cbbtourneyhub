@@ -5,13 +5,16 @@ import type { ActiveView, ToastMsg, ConfirmModalCfg } from '../types'
 let _toastId = 0
 
 export interface UIStore {
-  // Navigation & Context
   activeView:           ActiveView
   setActiveView:        (v: ActiveView) => void
   activeGroupId:        string | null
   setActiveGroup:       (id: string | null) => void
   selectedTournamentId: string | null
   selectTournament:     (id: string | null) => void
+
+  // Ticker State
+  tickerSegmentIndex:    number
+  setTickerSegmentIndex: (index: number) => void
 
   // Creation modal (Tournament)
   showAddTournament:  boolean
@@ -26,23 +29,19 @@ export interface UIStore {
   openJoinGroup:     () => void
   closeJoinGroup:    () => void
 
-  // Invite-link auto-join
-  pendingInviteCode:    string | null
+  pendingInviteCode:     string | null
   setPendingInviteCode: (code: string | null) => void
 
-  // Snoop
   snoopTargetId: string | null
-  snoopTournamentId?: string | null // ── ADD THIS ──
-  openSnoop:     (id: string, tournamentId?: string) => void // ── UPDATE THIS ──
+  snoopTournamentId?: string | null
+  openSnoop:     (id: string, tournamentId?: string) => void
   closeSnoop:    () => void
 
-  // Confirm
   confirmModal:    ConfirmModalCfg | null
   setConfirmModal: (cfg: ConfirmModalCfg | null) => void
 
-  // Toasts
-  toasts:      ToastMsg[]
-  pushToast:   (text: string, type?: ToastMsg['type']) => void
+  toasts:       ToastMsg[]
+  pushToast:    (text: string, type?: ToastMsg['type']) => void
   removeToast: (id: number) => void
 }
 
@@ -53,6 +52,10 @@ export const useUIStore = create<UIStore>((set) => ({
   setActiveGroup:       (id) => set({ activeGroupId: id }),
   selectedTournamentId: null,
   selectTournament:     (id) => set({ selectedTournamentId: id }),
+
+  // Ticker Initial State
+  tickerSegmentIndex: 0,
+  setTickerSegmentIndex: (index) => set({ tickerSegmentIndex: index }),
 
   showAddTournament:  false,
   openAddTournament:  () => set({ showAddTournament: true }),
@@ -65,7 +68,7 @@ export const useUIStore = create<UIStore>((set) => ({
   openJoinGroup:     () => set({ isJoinGroupOpen: true }),
   closeJoinGroup:    () => set({ isJoinGroupOpen: false }),
 
-  pendingInviteCode:    null,
+  pendingInviteCode:     null,
   setPendingInviteCode: (code) => set({ pendingInviteCode: code }),
 
   snoopTargetId: null,

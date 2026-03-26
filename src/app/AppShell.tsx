@@ -1,14 +1,16 @@
-//src/app/AppShell.tsx
-import { useCallback, useEffect, useRef }   from 'react' // ── ADDED useRef ──
+import { useCallback, useEffect, useRef }   from 'react'
 import { SnoopModal }                       from '../widgets/snoop-modal'
 import { AddTournamentModal }               from '../features/tournament'
 import { CreateGroupModal, JoinGroupModal } from '../features/group-management'
 import { Navbar }                           from '../widgets/navbar'
+import { Ticker }                           from '../widgets/ticker/ui/Ticker'
 import { Toaster, ConfirmModal }            from '../shared/ui'
 import { useTheme }                         from '../shared/lib/theme'
 import { useRealtimeSync }                  from './hooks/useRealtimeSync'
 import { useHashRouter }                    from './hooks/useHashRouter'
 import { useUIStore }                       from '../shared/store/uiStore'
+import { useTournamentListQuery }           from '../entities/tournament/model/queries'
+import { useLeaderboardRaw }                from '../entities/leaderboard/model/queries'
 import { useCreateTournamentMutation }      from '../entities/tournament/model/queries'
 import { useJoinGroupMutation }             from '../entities/group'
 import ViewRouter                           from './ViewRouter'
@@ -27,23 +29,22 @@ export default function AppShell() {
     setPendingInviteCode,
   } = useUIStore()
 
+  // ── Global Data Fetching for the Ticker ──
+  const { data: allTournaments } = useTournamentListQuery()
+  const { data: rawData }        = useLeaderboardRaw()
+
   const createTournamentM = useCreateTournamentMutation()
   const joinGroupM        = useJoinGroupMutation()
 
   useRealtimeSync()
   useHashRouter()
 
-  // ── THE EXECUTION GUARD ──
-  // This prevents the infinite loop by ensuring we only try to join once.
   const joinAttempted = useRef(false)
 
   useEffect(() => {
     const storedInvite = localStorage.getItem('tourneyhub-invite')
-    
-    // Only proceed if we have a code AND we haven't tried joining in this session yet
     if (storedInvite && !joinAttempted.current) {
-      joinAttempted.current = true // Lock it immediately
-      
+      joinAttempted.current = true 
       pushToast(`Joining group ${storedInvite}...`, 'info')
 
       joinGroupM.mutate(storedInvite, {
@@ -53,13 +54,11 @@ export default function AppShell() {
           useUIStore.getState().setActiveView('group')
         },
         onError: (err: any) => {
-          // Ignore if already a member, otherwise show error
           if (!err.message?.toLowerCase().includes('already a member')) {
             pushToast(err.message || 'Failed to join.', 'error')
           }
         },
         onSettled: () => {
-          // Clean up localStorage so it doesn't trigger on future refreshes
           localStorage.removeItem('tourneyhub-invite')
           setPendingInviteCode(null)
         }
@@ -90,13 +89,19 @@ export default function AppShell() {
 
   return (
     <div className={`flex flex-col h-screen w-screen overflow-hidden ${theme.appBg} text-slate-900 dark:text-white transition-colors duration-300`}>
+      
+      {/* ── GLOBAL TICKER ABOVE NAVBAR ── */}
+      {rawData && allTournaments && (
+        <Ticker rawData={rawData} allTournaments={allTournaments} />
+      )}
+
       <Navbar />
       
       <main className="flex-1 overflow-y-auto scrollbar-thin relative min-h-0">
         <ViewRouter />
       </main>
 
-      {/* ── Global Overlays ── */}
+      {/* Global Overlays */}
       {snoopTargetId && (
         <SnoopModal 
           targetId={snoopTargetId} 
@@ -104,24 +109,19 @@ export default function AppShell() {
           onClose={closeSnoop} 
         />
       )}
-
       {showAddTournament && (
         <AddTournamentModal 
           onClose={closeAddTournament} 
           onCreate={handleCreateTournament} 
         />
       )}
-
       {isCreateGroupOpen && (
         <CreateGroupModal onClose={closeCreateGroup} />
       )}
-
       {isJoinGroupOpen && (
         <JoinGroupModal onClose={closeJoinGroup} />
       )}
-
       {confirmModal && <ConfirmModal {...confirmModal} />}
-      
       <Toaster toasts={toasts} />
     </div>
   )

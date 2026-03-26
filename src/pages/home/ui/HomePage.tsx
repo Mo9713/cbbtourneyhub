@@ -1,28 +1,31 @@
 import { useMemo, useState, useEffect, useCallback, useRef } from 'react'
 import {
   Plus, UserPlus, Trophy, Users, Shield, ArrowRight,
-  Activity, AlertCircle, Play, CheckCircle, Zap, LayoutGrid,
-  BookOpen, Target, TrendingUp, Clock
+  Zap, LayoutGrid
 } from 'lucide-react'
 import { useAuth }                     from '../../../features/auth'
 import { useUIStore }                  from '../../../shared/store/uiStore'
 import { useTournamentListQuery }      from '../../../entities/tournament/model/queries'
 import { useUserGroupsQuery }          from '../../../entities/group'
 import { useLeaderboardRaw }           from '../../../entities/leaderboard/model/queries'
-import { getEffectiveStatus }          from '../../../entities/tournament/model/selectors'
+import { isPicksLocked }               from '../../../shared/lib/time'
 import { useTheme }                    from '../../../shared/lib/theme'
 import { StandardTournamentCard, SurvivorTournamentCard } from '../../../entities/tournament'
 import { useTournamentProgress }       from '../../../entities/tournament/model/hooks'
 import { useStabilizedLoading }        from '../../../shared/lib/useStabilizedLoading'
+import { computeLeaderboard }          from '../../../features/leaderboard/model/selectors'
 import type { Tournament, Group }      from '../../../shared/types'
+
+// FSD WIDGETS & FEATURES
+import { HomeHero }   from '../../../widgets/home-hero/ui/HomeHero'
+import { MobileFab }  from '../../../widgets/mobile-fab/ui/MobileFab'
+import { RulesModal } from '../../../features/rules-modal/ui/RulesModal'
 
 function ProgressReporter({ tournament, onStatus }: { tournament: Tournament, onStatus: (id: string, isComplete: boolean) => void }) {
   const progress = useTournamentProgress(tournament)
-  
   useEffect(() => {
     onStatus(tournament.id, progress.isComplete)
   }, [tournament.id, progress.isComplete, onStatus])
-
   return null
 }
 
@@ -37,12 +40,11 @@ export default function HomePage() {
   const setActiveGroup    = useUIStore(s => s.setActiveGroup)
   const setActiveView     = useUIStore(s => s.setActiveView)
 
-  // ── FIX: isLoading prevents realtime flashing ──
   const { data: allTournaments, isLoading: isLoadingTourneys } = useTournamentListQuery()
   const { data: groups,         isLoading: isLoadingGroups }   = useUserGroupsQuery()
   const { data: rawData,        isLoading: isLoadingBoard }    = useLeaderboardRaw()
 
-  const isAdmin = profile?.is_admin
+  const isAdmin = profile?.is_admin ?? false
 
   const [currentTime, setCurrentTime] = useState(Date.now())
   useEffect(() => {
@@ -52,6 +54,7 @@ export default function HomePage() {
 
   const [showAllTourneys, setShowAllTourneys] = useState(false)
   const [completionMap, setCompletionMap] = useState<Record<string, boolean>>({})
+  const [showRulesModal, setShowRulesModal] = useState(false)
 
   const handleBannerStatus = useCallback((id: string, isComplete: boolean) => {
     setCompletionMap(prev => {
@@ -60,15 +63,49 @@ export default function HomePage() {
     })
   }, [])
 
-  const openTournaments   = useMemo(() => (allTournaments || []).filter(
-    (t: Tournament) => getEffectiveStatus(t, currentTime) === 'open',
-  ), [allTournaments, currentTime])
+  const openTournaments = useMemo(() => (allTournaments || []).filter(
+    (t: Tournament) => t.status === 'open' && !isPicksLocked(t, isAdmin),
+  ), [allTournaments, currentTime, isAdmin])
 
   const activeTournaments = useMemo(() => (allTournaments || []).filter(
-    (t: Tournament) => getEffectiveStatus(t, currentTime) === 'locked',
-  ), [allTournaments, currentTime])
+    (t: Tournament) => t.status !== 'completed' && t.status !== 'draft' && (t.status === 'locked' || (t.status === 'open' && isPicksLocked(t, isAdmin))),
+  ), [allTournaments, currentTime, isAdmin])
+
+  const completedTournaments = useMemo(() => (allTournaments || []).filter(
+    (t: Tournament) => t.status === 'completed'
+  ), [allTournaments])
 
   const displayedTournaments = showAllTourneys ? (allTournaments || []) : (allTournaments || []).slice(0, 4)
+
+  const userStats = useMemo(() => {
+    if (!rawData || !allTournaments || !profile) return {}
+    const stats: Record<string, { rank: number; totalPlayers: number; score: number; seedScore: number; isEliminated: boolean; firstPlaceScore: number; firstPlaceSeed: number }> = {}
+
+    allTournaments.forEach((t: Tournament) => {
+      const tMap = new Map([[t.id, t]])
+      const games = rawData.allGames.filter(g => g.tournament_id === t.id)
+      const gameIds = new Set(games.map(g => g.id))
+      const picks = rawData.allPicks.filter(p => gameIds.has(p.game_id))
+      const pickUserIds = new Set(picks.map(p => p.user_id))
+      const activeProfiles = rawData.allProfiles.filter(p => pickUserIds.has(p.id))
+
+      const board = computeLeaderboard(picks, games, rawData.allGames, activeProfiles, tMap)
+      const userIndex = board.findIndex(e => e.profile.id === profile.id)
+      
+      if (board.length > 0) {
+        stats[t.id] = {
+          rank: userIndex !== -1 ? userIndex + 1 : 0,
+          totalPlayers: board.length,
+          score: userIndex !== -1 ? board[userIndex].points : 0,
+          seedScore: userIndex !== -1 ? board[userIndex].seedScore : 0,
+          isEliminated: userIndex !== -1 ? board[userIndex].isEliminated : false,
+          firstPlaceScore: board[0].points,
+          firstPlaceSeed: board[0].seedScore
+        }
+      }
+    })
+    return stats
+  }, [rawData, allTournaments, profile])
 
   const navigateToBracket = useCallback((tId: string) => {
     selectTournament(tId)
@@ -98,7 +135,6 @@ export default function HomePage() {
   const allPicksComplete = openTournaments.length > 0 && incompleteTournaments.length === 0
 
   const isDataLoading = isLoadingTourneys || isLoadingGroups || isLoadingBoard || !allTournaments || !groups || !rawData || !profile || isCalculatingProgress;
-  // ── SMART LOADING: 150ms ──
   const showSkeleton = useStabilizedLoading(isDataLoading, 150);
 
   if (showSkeleton || !allTournaments || !groups || !rawData || !profile) {
@@ -109,7 +145,6 @@ export default function HomePage() {
             <ProgressReporter key={`reporter-${t.id}`} tournament={t} onStatus={handleBannerStatus} />
           ))}
         </div>
-
         <div className={`w-full h-full flex flex-col overflow-y-auto p-4 md:p-8 ${theme.appBg}`}>
           <div className="max-w-7xl mx-auto w-full space-y-8 pb-12 animate-in fade-in duration-300">
             <div className="w-full h-[320px] rounded-[2rem] bg-slate-200 dark:bg-slate-800/50 animate-pulse border border-slate-300 dark:border-slate-800" />
@@ -143,93 +178,26 @@ export default function HomePage() {
   }
 
   return (
-    <div className={`w-full h-full flex flex-col overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-700 ${theme.appBg} transition-colors duration-300`}>
+    <div className={`w-full h-full flex flex-col overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-700 ${theme.appBg} transition-colors duration-300 relative`}>
       
       {openTournaments.map(t => (
         <ProgressReporter key={`reporter-${t.id}`} tournament={t} onStatus={handleBannerStatus} />
       ))}
 
-      <div className="max-w-7xl mx-auto w-full space-y-8 pb-12 p-4 md:p-8">
+      <div className="max-w-7xl mx-auto w-full space-y-8 pb-32 md:pb-12 p-4 md:p-8">
 
-        <div className={`relative w-full rounded-[2rem] overflow-hidden shadow-xl border transition-all duration-500 ${
-          allPicksComplete 
-            ? 'bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800' 
-            : 'bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-500/20 shadow-amber-500/5'
-        }`}>
-          <div className={`absolute top-0 right-0 w-96 h-96 blur-3xl rounded-full -translate-y-1/2 translate-x-1/3 pointer-events-none transition-colors duration-1000 ${
-            allPicksComplete ? 'bg-emerald-500/10' : 'bg-amber-500/20'
-          }`} />
-          <div className={`absolute bottom-0 left-0 w-96 h-96 blur-3xl rounded-full translate-y-1/2 -translate-x-1/3 pointer-events-none transition-colors duration-1000 ${
-            allPicksComplete ? 'bg-blue-500/10' : 'bg-orange-500/10'
-          }`} />
-          
-          <div className="relative z-10 px-8 py-10 md:py-14 flex flex-col lg:flex-row lg:items-center justify-between gap-8">
-            <div className="flex flex-col max-w-2xl">
-              
-              <div className="flex items-center gap-3 mb-4">
-                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-inner ${
-                  allPicksComplete ? 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-600' : 'bg-amber-100 dark:bg-amber-500/20 text-amber-600 animate-pulse'
-                }`}>
-                  {allPicksComplete ? <CheckCircle size={20} /> : <AlertCircle size={20} />}
-                </div>
-                <span className={`text-xs font-black uppercase tracking-[0.2em] ${allPicksComplete ? 'text-emerald-600' : 'text-amber-600'}`}>
-                  {allTournaments.length === 0 ? 'Status: Standby' : allPicksComplete ? 'Status: All Set' : 'Status: Action Required'}
-                </span>
-              </div>
-
-              <h1 className="text-4xl md:text-5xl font-display font-black text-slate-800 dark:text-white tracking-tight leading-tight">
-                {allTournaments.length === 0 ? (
-                  <>Welcome to the Madness</>
-                ) : allPicksComplete ? (
-                  <>All your picks are locked in.</>
-                ) : (
-                  <>Picks not completed!</>
-                )}
-              </h1>
-
-              <p className="mt-4 text-slate-500 dark:text-slate-400 font-medium text-lg">
-                {allTournaments.length === 0
-                  ? "Join a group or wait for a tournament to be assigned."
-                  : allPicksComplete 
-                  ? "No action required." 
-                  : `You have ${incompleteTournaments.length} tournament${incompleteTournaments.length > 1 ? 's' : ''} waiting for your picks.`}
-              </p>
-
-              {!allPicksComplete && allTournaments.length > 0 && (
-                <div className="mt-8 flex flex-wrap gap-2">
-                  {incompleteTournaments.map(t => (
-                    <button
-                      key={t.id}
-                      onClick={() => scrollToCard(t.id)}
-                      className="flex items-center gap-2 px-4 py-2.5 bg-amber-500 text-white rounded-xl text-sm font-black hover:bg-amber-600 transition-all hover:scale-105 shadow-lg shadow-amber-500/25"
-                    >
-                      {t.name} <ArrowRight size={14} />
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="flex gap-3 md:gap-4 overflow-x-auto pb-2 -mb-2 scrollbar-none snap-x">
-              {[
-                { label: 'Open', val: openTournaments.length, color: 'text-emerald-500', icon: <Activity size={16} /> },
-                { label: 'Active', val: activeTournaments.length, color: 'text-blue-500', icon: <Play size={16} /> },
-                { label: 'Groups', val: groups.length, color: 'text-amber-500', icon: <Users size={16} /> }
-              ].map((stat) => (
-                <div key={stat.label} className="snap-start bg-slate-50/50 dark:bg-slate-900/50 backdrop-blur-md border border-slate-200/50 dark:border-slate-700/50 rounded-[1.5rem] p-6 shadow-sm min-w-[120px] flex flex-col items-center text-center">
-                  <div className={`flex items-center gap-2 ${stat.color} mb-2`}>
-                    {stat.icon}
-                    <span className="text-[10px] font-bold uppercase tracking-wider">{stat.label}</span>
-                  </div>
-                  <span className="text-4xl font-black text-slate-900 dark:text-white leading-none">{stat.val}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
+        <HomeHero 
+          allTournaments={allTournaments}
+          openTournaments={openTournaments}
+          activeTournaments={activeTournaments}
+          completedTournaments={completedTournaments}
+          incompleteTournaments={incompleteTournaments}
+          allPicksComplete={allPicksComplete}
+          onOpenRules={() => setShowRulesModal(true)}
+          onScrollToCard={scrollToCard}
+        />
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
-
           <div className="lg:col-span-2 space-y-6">
             <div className="flex items-center gap-3 border-b border-slate-200 dark:border-slate-800 pb-3">
               <LayoutGrid className={theme.accent} size={20} />
@@ -258,8 +226,8 @@ export default function HomePage() {
                       }`}
                     >
                       {t.game_type === 'survivor' 
-                        ? <SurvivorTournamentCard tournament={t} isAdmin={isAdmin ?? false} onSelect={(tourney) => navigateToBracket(tourney.id)} variant="compact" />
-                        : <StandardTournamentCard tournament={t} isAdmin={isAdmin ?? false} onSelect={(tourney) => navigateToBracket(tourney.id)} variant="compact" />
+                        ? <SurvivorTournamentCard tournament={t} isAdmin={isAdmin} onSelect={(tourney) => navigateToBracket(tourney.id)} variant="compact" userStat={userStats[t.id]} />
+                        : <StandardTournamentCard tournament={t} isAdmin={isAdmin} onSelect={(tourney) => navigateToBracket(tourney.id)} variant="compact" userStat={userStats[t.id]} />
                       }
                     </div>
                   ))}
@@ -273,53 +241,6 @@ export default function HomePage() {
                     {showAllTourneys ? 'Show Less' : `View All ${allTournaments.length} Tournaments`}
                   </button>
                 )}
-
-                <div className={`mt-2 p-6 md:p-8 rounded-3xl border flex flex-col gap-6 ${theme.panelBg} ${theme.borderBase}`}>
-                  <div className="flex items-center gap-3 mb-1">
-                    <BookOpen size={24} className={theme.accent} />
-                    <h4 className={`text-xl font-black uppercase tracking-widest ${theme.textBase}`}>How to Play Survivor</h4>
-                  </div>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="flex items-start gap-4">
-                      <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${theme.bgMd}`}>
-                        <Target size={18} className={theme.accent} />
-                      </div>
-                      <div>
-                        <span className={`text-sm font-bold uppercase tracking-wider ${theme.textBase}`}>Rules</span>
-                        <p className={`text-xs leading-relaxed mt-1.5 ${theme.textMuted}`}>
-                          Pick one team to win each round. If they lose, you're eliminated. <strong>You can only pick a team once per tournament.</strong> Survive to the end!
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-start gap-4">
-                      <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${theme.bgMd}`}>
-                        <TrendingUp size={18} className={theme.accent} />
-                      </div>
-                      <div>
-                        <span className={`text-sm font-bold uppercase tracking-wider ${theme.textBase}`}>Seed Scores</span>
-                        <p className={`text-xs leading-relaxed mt-1.5 ${theme.textMuted}`}>
-                          In case all players advance through the final round or all remaining players get eliminated in the same round, the <strong>Seed Score</strong> breaks the tie. Correctly picking a team adds their seed value to your score. Highest Seed Score wins the tiebreaker.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start gap-4 mt-2">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${theme.bgMd}`}>
-                      <Clock size={18} className={theme.accent} />
-                    </div>
-                    <div>
-                      <span className={`text-sm font-bold uppercase tracking-wider ${theme.textBase}`}>Deadlines</span>
-                      <p className={`text-xs leading-relaxed mt-1.5 ${theme.textMuted}`}>
-                        Picks lock exactly when the first game of the round tips off. Once a round locks, you can make picks for the following round as soon as your team advances.
-                      </p>
-                    </div>
-                  </div>
-
-                </div>
-
               </div>
             )}
           </div>
@@ -361,7 +282,7 @@ export default function HomePage() {
               )}
             </div>
 
-            <div className={`p-6 rounded-3xl border shadow-sm ${theme.panelBg} ${theme.borderBase}`}>
+            <div className={`hidden sm:block p-6 rounded-3xl border shadow-sm ${theme.panelBg} ${theme.borderBase}`}>
               <div className="flex items-center gap-2 mb-5 text-slate-900 dark:text-white">
                 <Zap size={18} className={theme.accent} />
                 <h2 className="text-lg font-display font-black uppercase tracking-wider">Quick Actions</h2>
@@ -399,7 +320,7 @@ export default function HomePage() {
             </div>
 
             {isAdmin && (
-              <div className="flex items-center justify-center gap-2 py-3">
+              <div className="hidden sm:flex items-center justify-center gap-2 py-3">
                 <Shield size={12} className="text-slate-400" />
                 <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Admin Privileges Active</span>
               </div>
@@ -407,6 +328,15 @@ export default function HomePage() {
           </div>
         </div>
       </div>
+
+      <MobileFab 
+        isAdmin={isAdmin}
+        openJoinGroup={openJoinGroup}
+        openCreateGroup={openCreateGroup}
+        openAddTournament={openAddTournament}
+      />
+
+      <RulesModal isOpen={showRulesModal} onClose={() => setShowRulesModal(false)} />
     </div>
   )
 }

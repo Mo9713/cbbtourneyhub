@@ -1,4 +1,3 @@
-// src/entities/pick/model/queries.ts
 //
 // ── Query Key Contract ────────────────────────────────────────
 // useMyPicks registers its observer under the COMPOUND key:
@@ -171,13 +170,10 @@ export function useMakePick() {
     },
 
     onSettled: (_data, _err, vars) => {
-      setTimeout(() => {
-        if (qc.isMutating({ mutationKey: ['makePick'] }) === 0) {
-          qc.invalidateQueries({ queryKey: pickKeys.mine(vars.tournamentId) })
-          qc.invalidateQueries({ queryKey: pickKeys.allMine() })
-          qc.invalidateQueries({ queryKey: ['leaderboard', 'raw'] }) // Instant Standings updates!
-        }
-      }, 50)
+      // FIX B-01: Replace fragile setTimeout with safeInvalidate
+      safeInvalidate(qc, pickKeys.mine(vars.tournamentId))
+      safeInvalidate(qc, pickKeys.allMine())
+      safeInvalidate(qc, ['leaderboard', 'raw'])
     },
   })
 }

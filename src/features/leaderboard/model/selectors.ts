@@ -1,5 +1,3 @@
-// src/features/leaderboard/model/selectors.ts
-
 import {
   deriveEffectiveNames,
   calculateLocalScore,
@@ -7,6 +5,7 @@ import {
   isMassRevivalRound,
 }                          from '../../../shared/lib/bracketMath'
 import type { Pick, Game, Profile, Tournament } from '../../../shared/types'
+import type { LeaderboardRaw }                  from '../../../entities/leaderboard/api'
 
 export interface LeaderboardEntry {
   profile:         Profile
@@ -16,17 +15,12 @@ export interface LeaderboardEntry {
   maxPossible:     number
   isEliminated:    boolean
   seedScore:       number
-  // FIX M-NEW-2: User's predicted combined championship score, for display.
-  // null when the tournament does not require a tiebreaker or the user
-  // did not submit one.
   tiebreakerScore: number | null
 }
 
 interface InternalEntry extends LeaderboardEntry {
   _eliminatedInSurvivorTids: Set<string>
   _firstElimRoundByTid:      Map<string, number>
-  // FIX M-NEW-2: Absolute delta |predicted - actual| for sort purposes.
-  // null means tiebreaker is unavailable or the game has not resolved.
   _tiebreakerDelta:          number | null
 }
 
@@ -40,7 +34,16 @@ export function computeLeaderboard(
 
   const scores: Record<string, InternalEntry> = {}
 
-  allProfiles.forEach(p => {
+  // ── NON-PARTICIPANT FILTER ──────────────────────────────────
+  // If a user has made 0 picks across the scoped tournaments, they
+  // should not appear on the leaderboard at all.
+  // However, if they made a pick in R1 but missed R2, they WILL have
+  // picks in `allPicks`, meaning they bypass this filter and get
+  // correctly eliminated by the Ghost Loophole pass below.
+  const activeUserIds = new Set(allPicks.map(p => p.user_id))
+  const activeProfiles = allProfiles.filter(p => activeUserIds.has(p.id))
+
+  activeProfiles.forEach(p => {
     scores[p.id] = {
       profile:                   p,
       points:                    0,
@@ -49,10 +52,10 @@ export function computeLeaderboard(
       maxPossible:               0,
       isEliminated:              false,
       seedScore:                 0,
-      tiebreakerScore:           null, // FIX M-NEW-2
+      tiebreakerScore:           null, 
       _eliminatedInSurvivorTids: new Set(),
       _firstElimRoundByTid:      new Map(),
-      _tiebreakerDelta:          null, // FIX M-NEW-2
+      _tiebreakerDelta:          null, 
     }
   })
 
@@ -123,7 +126,7 @@ export function computeLeaderboard(
       const effNames = deriveEffectiveNames(tGames, tPicks)
       const s        = calculateLocalScore(tGames, tPicks, effNames, tournament)
 
-      internalEntry.points     += s.current
+      internalEntry.points      += s.current
       internalEntry.maxPossible += s.max
 
       for (const pick of tPicks) {
@@ -131,8 +134,6 @@ export function computeLeaderboard(
         if (game?.actual_winner) {
           let pStr      = pick.predicted_winner
           const eff     = effNames[game.id]
-          // FIX N-NEW-2: Capture the winner seed alongside the pick string
-          // so we can accumulate seedScore for standard bracket correct picks.
           let winnerSeed: number | null = null
 
           if (eff) {
@@ -147,8 +148,6 @@ export function computeLeaderboard(
 
           if (isTeamMatch(pStr, game.actual_winner)) {
             internalEntry.correct += 1
-            // FIX N-NEW-2: Accumulate seed score for standard brackets.
-            // Higher seed = bigger upset = meaningful tiebreaker signal.
             internalEntry.seedScore += Number(winnerSeed) || 0
           }
         }
@@ -156,14 +155,45 @@ export function computeLeaderboard(
     }
   }
 
-  // ── REVIVE_ALL POST-PROCESSING PASS ──────────────────────────────
-  // FIX M-NEW-3: The mass-revival evaluation now delegates to the shared
-  // isMassRevivalRound utility from bracketMath instead of re-implementing
-  // the active-picker / eliminated counting logic inline. This ensures
-  // the leaderboard and the survivor selector (getIsEliminated) use
-  // identical logic and cannot silently diverge after future edits.
+  // ── GHOST LOOPHOLE PASS (No-Pick Elimination) ────────────────
   for (const [tid, tournament] of tournamentMap.entries()) {
-    if (tournament.game_type !== 'survivor')                     continue
+    if (tournament.game_type !== 'survivor') continue
+
+    const tGames          = filteredGames.filter(g => g.tournament_id === tid)
+    const sortedRoundNums = [...new Set(tGames.map(g => g.round_num))].sort(
+      (a, b) => a - b,
+    )
+
+    const pickedRoundsByUser = new Map<string, Set<number>>()
+    for (const pick of allPicks) {
+      const game = tGames.find(g => g.id === pick.game_id)
+      if (!game) continue
+      const existing = pickedRoundsByUser.get(pick.user_id) ?? new Set<number>()
+      existing.add(game.round_num)
+      pickedRoundsByUser.set(pick.user_id, existing)
+    }
+
+    for (const [uid, entry] of Object.entries(scores)) {
+      if (entry._eliminatedInSurvivorTids.has(tid)) continue
+
+      const pickedRounds = pickedRoundsByUser.get(uid) ?? new Set<number>()
+
+      for (const r of sortedRoundNums) {
+        const roundGames = tGames.filter(g => g.round_num === r)
+        if (!roundGames.every(g => !!g.actual_winner)) break
+        
+        if (!pickedRounds.has(r)) {
+          entry._eliminatedInSurvivorTids.add(tid)
+          entry._firstElimRoundByTid.set(tid, r)
+          break
+        }
+      }
+    }
+  }
+
+  // ── REVIVE_ALL POST-PROCESSING PASS ──────────────────────────────
+  for (const [tid, tournament] of tournamentMap.entries()) {
+    if (tournament.game_type !== 'survivor')                    continue
     if (tournament.survivor_elimination_rule !== 'revive_all')   continue
 
     const tournamentGames    = filteredGames.filter(g => g.tournament_id === tid)
@@ -181,12 +211,9 @@ export function computeLeaderboard(
     const cumulativeEliminated = new Set<string>()
 
     for (const [_round, roundGames] of sortedRounds) {
-      // Stop processing at the first incomplete round.
       if (!roundGames.every(g => !!g.actual_winner)) break
 
-      // FIX M-NEW-3: Use isMassRevivalRound from shared/lib/bracketMath.
       if (isMassRevivalRound(roundGames, allTournamentPicks, cumulativeEliminated)) {
-        // Mass revival — undo elimination flags for everyone in this round.
         for (const pick of allTournamentPicks) {
           if (!new Set(roundGames.map(g => g.id)).has(pick.game_id)) continue
           if (cumulativeEliminated.has(pick.user_id))                 continue
@@ -194,7 +221,6 @@ export function computeLeaderboard(
           scores[pick.user_id]?._firstElimRoundByTid.delete(tid)
         }
       } else {
-        // Normal round — mark anyone who lost as cumulatively eliminated.
         const roundGameIds = new Set(roundGames.map(g => g.id))
         for (const pick of allTournamentPicks) {
           if (!roundGameIds.has(pick.game_id))        continue
@@ -214,9 +240,6 @@ export function computeLeaderboard(
   }
 
   // ── TIEBREAKER PASS (Standard Brackets, requires_tiebreaker = true) ──
-  // FIX M-NEW-2: Populate tiebreakerScore (user's prediction) and
-  // _tiebreakerDelta (|predicted - actual|) for each user. Delta is only
-  // computable once the championship game has both team scores set.
   for (const [tid, tournament] of tournamentMap.entries()) {
     if (tournament.game_type === 'survivor') continue
     if (!tournament.requires_tiebreaker)     continue
@@ -230,7 +253,6 @@ export function computeLeaderboard(
       tGames.find(g => g.round_num === maxRound)
     if (!champGame) continue
 
-    // Actual combined score — only valid when both team scores are present.
     const actualCombined =
       champGame.team1_score != null && champGame.team2_score != null
         ? (Number(champGame.team1_score) || 0) + (Number(champGame.team2_score) || 0)
@@ -243,10 +265,8 @@ export function computeLeaderboard(
       const entry = scores[pick.user_id]
       if (!entry) continue
 
-      // Store the user's predicted combined score for display in the UI.
       entry.tiebreakerScore = pick.tiebreaker_score
 
-      // Compute delta only once the game has actual scores to compare against.
       if (actualCombined != null) {
         entry._tiebreakerDelta = Math.abs(pick.tiebreaker_score - actualCombined)
       }
@@ -265,14 +285,10 @@ export function computeLeaderboard(
 
   const eliminationApplies = viewSurvivorTids.size > 0 && viewStandardTids.size === 0
 
-  // Sort internal entries first (before stripping private fields) so the
-  // _tiebreakerDelta internal field is available to the comparator.
   const sortedInternal = Object.values(scores).sort((a, b) => {
     if (a.isEliminated !== b.isEliminated) return a.isEliminated ? 1 : -1
     if (b.points       !== a.points)       return b.points - a.points
 
-    // FIX M-NEW-2: Tiebreaker sort — lower absolute delta = closer to actual
-    // score = better rank. Null delta (no pick or game not scored) goes last.
     const aDelta = a._tiebreakerDelta
     const bDelta = b._tiebreakerDelta
     if (aDelta !== bDelta) {
@@ -282,8 +298,6 @@ export function computeLeaderboard(
       else if (aDelta !== bDelta) return aDelta - bDelta
     }
 
-    // FIX N-NEW-2: seedScore is now meaningful for standard brackets too,
-    // so this tier correctly differentiates users tied on points.
     if (b.seedScore !== a.seedScore) return b.seedScore - a.seedScore
 
     return b.correct - a.correct
@@ -309,19 +323,22 @@ export function computeLeaderboard(
   })
 }
 
-export function selectGroupLeaderboards(rawData: any, tournaments: Tournament[], members: any[]) {
+export function selectGroupLeaderboards(
+  rawData:     LeaderboardRaw,
+  tournaments: Tournament[],
+  members:     Array<{ user_id: string }>,
+) {
   if (!rawData || !tournaments.length) return { standard: [], survivor: [] }
   const standardTourneys = tournaments.filter(t => t.game_type !== 'survivor')
   const survivorTourneys = tournaments.filter(t => t.game_type === 'survivor')
-  const memberUserIds = new Set(members.map(m => m.user_id))
-  const groupProfiles = rawData.allProfiles.filter((p: Profile) => memberUserIds.has(p.id))
+  const memberUserIds    = new Set(members.map(m => m.user_id))
+  const groupProfiles    = rawData.allProfiles.filter((p: Profile) => memberUserIds.has(p.id))
 
   const getBoard = (tList: Tournament[]) => {
-    const tMap = new Map(tList.map(t => [t.id, t]))
-    const games = rawData.allGames.filter((g: Game) => tMap.has(g.tournament_id))
-    // FIX: Typed 'g' as Game
+    const tMap    = new Map(tList.map(t => [t.id, t]))
+    const games   = rawData.allGames.filter((g: Game) => tMap.has(g.tournament_id))
     const gameIds = new Set(games.map((g: Game) => g.id))
-    const picks = rawData.allPicks.filter((p: Pick) => gameIds.has(p.game_id))
+    const picks   = rawData.allPicks.filter((p: Pick) => gameIds.has(p.game_id))
     return computeLeaderboard(picks, games, rawData.allGames, groupProfiles, tMap)
   }
 
