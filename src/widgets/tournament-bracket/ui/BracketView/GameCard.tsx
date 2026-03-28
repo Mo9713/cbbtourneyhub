@@ -1,5 +1,3 @@
-// src/widgets/tournament-bracket/ui/BracketView/GameCard.tsx
-
 import { useBracketView } from './BracketViewContext'
 import { isTeamMatch }    from '../../../../shared/lib/bracketMath'
 import type { Game, Pick } from '../../../../shared/types'
@@ -79,17 +77,24 @@ export default function GameCard({
         {rows.map(({ slotKey, actual, predicted, seed, score, inKey }, idx) => {
           const isTBD = isTBDName(predicted)
 
-          const slotName = game[`${slotKey}_name` as keyof Game] as string | undefined
-          const isWinner = hasWinner && !isTBD && isTeamMatch(slotName, game.actual_winner)
+          // ── FIX: Ghost vs Actual Elimination Logic ──
+          const actualTeamPlayed = !isTBD && !!actual && isTeamMatch(predicted, actual)
+          const predictedTeamWon = hasWinner && !isTBD && isTeamMatch(predicted, game.actual_winner)
           
           const isPicked     = !isTBD && userPick?.predicted_winner === slotKey
-          const isEliminated = !isTBD && !isWinner && eliminatedTeams.has(predicted)
+          const isEliminated = !isTBD && eliminatedTeams.has(predicted)
 
-          const isIncorrectAdvancement = isEliminated && actual !== predicted
-          const shouldStrikeThrough = isEliminated && (isPicked || isIncorrectAdvancement)
-          const shouldFade = isEliminated && !shouldStrikeThrough
+          // A "Ghost" is a team that was predicted to be here, but lost in a previous round
+          const isGhost = isEliminated && !actualTeamPlayed
 
-          const rowBg = isWinner
+          // Strikethrough ONLY in cascading rounds (Ghost rounds)
+          const shouldStrikeThrough = isGhost
+          
+          // Fade out in the round they actually played and lost
+          const shouldFade = isEliminated && !isGhost
+
+          // We highlight the background green ONLY if the predicted team won the game
+          const rowBg = predictedTeamWon
             ? 'bg-emerald-50 dark:bg-[#022c22]'
             : shouldFade
               ? 'bg-slate-100/50 dark:bg-black/30'
@@ -97,12 +102,12 @@ export default function GameCard({
                 ? `${theme.bgMd}` 
                 : ''
                 
-          const rowRingCls = isWinner ? 'ring-2 ring-inset ring-emerald-500 z-10' : ''
+          const rowRingCls = predictedTeamWon ? 'ring-2 ring-inset ring-emerald-500 z-10' : ''
 
           let nameClass: string
           let seedColorCls: string
 
-          if (isWinner) {
+          if (predictedTeamWon) {
             nameClass    = 'text-emerald-600 dark:text-emerald-400 font-black'
             seedColorCls = 'text-emerald-600 dark:text-emerald-400'
           } else if (shouldStrikeThrough) {
@@ -119,14 +124,15 @@ export default function GameCard({
             seedColorCls = 'text-slate-400 dark:text-slate-500'
           }
 
-          const scoreCls = isWinner ? 'text-emerald-600 dark:text-emerald-400 font-black' : 'text-slate-600 dark:text-slate-400'
+          const scoreCls = predictedTeamWon ? 'text-emerald-600 dark:text-emerald-400 font-black' : 'text-slate-600 dark:text-slate-400'
           
           const canPick = !isTBD && (adminOverride || (!isLocked && !readOnly))
 
-          const showCheck = isWinner && isPicked
-          const showX     = isEliminated && isPicked
-          const showDot   = !showCheck && !showX && isPicked && !isWinner && !isEliminated
-          const showActualAdvancing = !isTBD && actual && actual !== predicted && !isTBDName(actual)
+          // ── Clean Icon Logic ──
+          const showCheck = isPicked && predictedTeamWon
+          const showX     = isPicked && hasWinner && actualTeamPlayed && !predictedTeamWon
+          const showDot   = isPicked && !showCheck && !showX && !isEliminated
+          const showActualAdvancing = !isTBD && !!actual && !actualTeamPlayed && !isTBDName(actual)
 
           return (
             <div

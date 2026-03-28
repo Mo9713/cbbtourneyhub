@@ -1,3 +1,4 @@
+// src/widgets/mobile-fab/ui/MobileFab.tsx
 import { useState } from 'react'
 import { Plus, UserPlus, Users } from 'lucide-react'
 
