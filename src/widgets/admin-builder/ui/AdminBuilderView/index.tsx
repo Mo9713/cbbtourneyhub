@@ -1,6 +1,8 @@
 import React, { useState, useMemo, useCallback } from 'react'
 import { useQueryClient }                 from '@tanstack/react-query'
+import { AlertTriangle }                  from 'lucide-react'
 
+import { supabase }                       from '../../../../shared/infra/supabaseClient'
 import {
   useGames,
   useUpdateTournamentMutation,
@@ -103,6 +105,39 @@ export default function AdminBuilderView() {
     })
   }, [tournament, games, deleteTournamentM, setConfirmModal, pushToast])
 
+  // ── EMERGENCY PICK NUKE ──
+  const handleClearLatePicks = useCallback(() => {
+    if (!tournament) return
+    const lateRoundGameIds = games.filter((g: Game) => g.round_num >= 5).map((g: Game) => g.id)
+    
+    if (lateRoundGameIds.length === 0) {
+      pushToast('No Round 5+ games found to clear.', 'error')
+      return
+    }
+
+    setConfirmModal({
+      title: 'Clear Final Four & Champ Picks?',
+      message: 'WARNING: This will delete EVERY users picks for Round 5 and Round 6. Use this only if you just structurally changed the Elite 8 matchups and need users to re-pick.',
+      dangerous: true,
+      confirmLabel: 'Nuke Picks',
+      onCancel: () => setConfirmModal(null),
+      onConfirm: async () => {
+        setConfirmModal(null)
+        try {
+          const { error } = await supabase
+            .from('picks')
+            .delete()
+            .in('game_id', lateRoundGameIds)
+
+          if (error) throw error
+          pushToast('Round 5 and 6 picks successfully cleared.', 'success')
+        } catch (err: any) {
+          pushToast(`Failed to clear picks: ${err.message}`, 'error')
+        }
+      }
+    })
+  }, [tournament, games, setConfirmModal, pushToast])
+
   const updateGame = useCallback(async (id: string, updates: Partial<Game>): Promise<string | null> => {
     const tid = tournament?.id
     if (!tid) return 'No tournament selected'
@@ -189,7 +224,6 @@ export default function AdminBuilderView() {
       .filter((g: Game) => g.next_game_id === targetId)
       .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
 
-    // FIX A-04: Prevents silent overwrite corruption if an admin accidentally points 3 games into one
     if (feeders.length >= 2) {
       pushToast('This game already has two feeders. Unlink one first.', 'error')
       setLinkingFromId(null)
@@ -295,33 +329,45 @@ export default function AdminBuilderView() {
         onUpdate={(upd) => updateTournament(upd as Partial<Tournament>)}
       />
 
-      {isBigDance && (
-        <div className="flex gap-1 px-4 pt-2 pb-0 border-b border-amber-500/10 flex-shrink-0 overflow-x-auto bg-slate-900/30">
-          <button
-            onClick={() => setSelectedRegion(null)}
-            className={`px-4 py-2 text-xs font-bold rounded-t-lg transition-all border-b-2 flex-shrink-0
-              ${!selectedRegion
-                ? 'border-amber-500 text-amber-400'
-                : 'text-slate-500 border-transparent hover:text-slate-300'
-              }`}
-          >
-            All
-          </button>
-          {BD_REGIONS.map((r) => (
+      <div className="flex flex-col px-4 pt-2 bg-slate-900/30 border-b border-amber-500/10 flex-shrink-0">
+        <div className="flex justify-end mb-2">
+           <button
+             onClick={handleClearLatePicks}
+             className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 border border-rose-500/30 rounded-lg text-xs font-bold transition-all"
+             title="Use this if you just changed the Elite 8 linkage to force users to repick"
+           >
+             <AlertTriangle size={14} /> Clear R5 & R6 Picks
+           </button>
+        </div>
+
+        {isBigDance && (
+          <div className="flex gap-1 overflow-x-auto">
             <button
-              key={r}
-              onClick={() => setSelectedRegion(r)}
+              onClick={() => setSelectedRegion(null)}
               className={`px-4 py-2 text-xs font-bold rounded-t-lg transition-all border-b-2 flex-shrink-0
-                ${selectedRegion === r
+                ${!selectedRegion
                   ? 'border-amber-500 text-amber-400'
                   : 'text-slate-500 border-transparent hover:text-slate-300'
                 }`}
             >
-              {r}
+              All
             </button>
-          ))}
-        </div>
-      )}
+            {BD_REGIONS.map((r) => (
+              <button
+                key={r}
+                onClick={() => setSelectedRegion(r)}
+                className={`px-4 py-2 text-xs font-bold rounded-t-lg transition-all border-b-2 flex-shrink-0
+                  ${selectedRegion === r
+                    ? 'border-amber-500 text-amber-400'
+                    : 'text-slate-500 border-transparent hover:text-slate-300'
+                  }`}
+              >
+                {r}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
 
       <AdminBracketGrid
         tournament={tournament}

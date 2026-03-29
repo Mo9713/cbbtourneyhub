@@ -57,10 +57,6 @@ export default function BracketView({
 
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null)
 
-  useEffect(() => {
-    setSelectedRegion(null)
-  }, [selectedTournamentId])
-
   const selectedTournament = useMemo(
     () => tournaments.find((t: Tournament) => t.id === selectedTournamentId) ?? null,
     [tournaments, selectedTournamentId],
@@ -88,6 +84,24 @@ export default function BracketView({
 
   const isSurvivor = tournament?.game_type === 'survivor'
   const isBigDance = useMemo(() => games.some((g: Game) => g.region), [games])
+
+  // ── AUTOMATIC PHASE DETECTION: Force Final Four Logic ──
+  const forceFinalFour = useMemo(() => {
+    if (isSurvivor || !games.length) return false;
+    const e8Games = games.filter(g => g.round_num === 4);
+    // CHANGED: Now uses .some() instead of .every()! 
+    // If EVEN ONE Elite 8 game is finished, and the tournament is open, it locks the UI.
+    const e8StartedOrDone = e8Games.length > 0 && e8Games.some(g => !!g.actual_winner);
+    return e8StartedOrDone && !isLocked;
+  }, [isSurvivor, games, isLocked]);
+
+  useEffect(() => {
+    if (forceFinalFour) {
+      setSelectedRegion('Final Four')
+    } else if (selectedRegion === 'Final Four' && !forceFinalFour && !isBigDance) {
+      setSelectedRegion(null)
+    }
+  }, [selectedTournamentId, forceFinalFour, isBigDance])
 
   const pickMap         = useMemo(() => buildPickMap(picks),                                     [picks])
   const rounds          = useMemo(() => sortedRounds(games, isBigDance ? selectedRegion : null), [games, isBigDance, selectedRegion])
@@ -184,9 +198,15 @@ export default function BracketView({
 
   const handlePick = useCallback(async (game: Game, team: string) => {
     if (!tournament || readOnly || (isLocked && !adminOverride)) return
+    
+    // Prevent changing previous rounds during the Final Four re-pick phase
+    if (forceFinalFour && game.round_num < 5 && !adminOverride) {
+      return;
+    }
+
     const existingPick = pickMap.get(game.id)
     await makePick({ game, team, tournamentId: tournament.id, games, existingPick, overrideUserId })
-  }, [tournament, readOnly, isLocked, adminOverride, pickMap, makePick, games, overrideUserId])
+  }, [tournament, readOnly, isLocked, adminOverride, pickMap, makePick, games, overrideUserId, forceFinalFour])
 
   const handleSurvivorPick = useCallback((
     gameId: string, teamName: string | null, roundNum: number,
@@ -279,18 +299,21 @@ export default function BracketView({
                 {isBigDance && (
                   <>
                     <button
-                      onClick={() => setSelectedRegion(null)}
-                      className={`px-3 sm:px-4 py-2.5 md:py-3 text-[11px] sm:text-xs font-bold rounded-t-xl transition-all border-b-[3px] flex-shrink-0
+                      disabled={forceFinalFour}
+                      onClick={() => !forceFinalFour && setSelectedRegion(null)}
+                      className={`px-3 sm:px-4 py-2.5 md:py-3 text-[11px] sm:text-xs font-bold rounded-t-xl transition-all border-b-[3px] flex-shrink-0 flex items-center gap-1
+                        ${forceFinalFour ? 'opacity-40 cursor-not-allowed' : ''}
                         ${!selectedRegion
                           ? `${theme.accent} border-current bg-amber-500/10`
                           : `${theme.textMuted} border-transparent hover:${theme.textBase} hover:bg-slate-800/50`
                         }`}
                     >
                       All
+                      {forceFinalFour && <Lock size={10} className="mb-[1px]" />}
                     </button>
                     {BD_REGIONS.map((r) => {
                       const isFF = r === 'Final Four'
-                      const isDisabled = isFF && !canPickFinalFour
+                      const isDisabled = forceFinalFour ? !isFF : (isFF && !canPickFinalFour)
                       return (
                         <button
                           key={r}
