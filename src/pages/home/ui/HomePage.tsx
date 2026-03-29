@@ -8,18 +8,20 @@ import { useUIStore }                  from '../../../shared/store/uiStore'
 import { useTournamentListQuery }      from '../../../entities/tournament/model/queries'
 import { useUserGroupsQuery }          from '../../../entities/group'
 import { useLeaderboardRaw }           from '../../../entities/leaderboard/model/queries'
-import { isPicksLocked }               from '../../../shared/lib/time'
+import { isPicksLocked, getActiveSurvivorRound } from '../../../shared/lib/time'
+import { getRoundLabel }               from '../../../shared/lib/helpers'
 import { useTheme }                    from '../../../shared/lib/theme'
 import { StandardTournamentCard, SurvivorTournamentCard } from '../../../entities/tournament'
 import { useTournamentProgress }       from '../../../entities/tournament/model/hooks'
 import { useStabilizedLoading }        from '../../../shared/lib/useStabilizedLoading'
 import { computeLeaderboard }          from '../../../features/leaderboard/model/selectors'
-import type { Tournament, Group }      from '../../../shared/types'
+import type { Tournament, Group, Pick, Game } from '../../../shared/types'
 
 // FSD WIDGETS & FEATURES
 import { HomeHero }   from '../../../widgets/home-hero/ui/HomeHero'
 import { MobileFab }  from '../../../widgets/mobile-fab/ui/MobileFab'
 import { RulesModal } from '../../../features/rules-modal/ui/RulesModal'
+import SnoopModal     from '../../../widgets/snoop-modal/ui/SnoopModal'
 
 function ProgressReporter({ tournament, onStatus }: { tournament: Tournament, onStatus: (id: string, isComplete: boolean) => void }) {
   const progress = useTournamentProgress(tournament)
@@ -55,6 +57,7 @@ export default function HomePage() {
   const [showAllTourneys, setShowAllTourneys] = useState(false)
   const [completionMap, setCompletionMap] = useState<Record<string, boolean>>({})
   const [showRulesModal, setShowRulesModal] = useState(false)
+  const [showSurvivorHistory, setShowSurvivorHistory] = useState(false)
 
   const handleBannerStatus = useCallback((id: string, isComplete: boolean) => {
     setCompletionMap(prev => {
@@ -77,30 +80,78 @@ export default function HomePage() {
 
   const displayedTournaments = showAllTourneys ? (allTournaments || []) : (allTournaments || []).slice(0, 4)
 
+  // ── HAS PICKABLE GAMES LOGIC (Prevents asking for picks when no teams have advanced) ──
+  const pickableMap = useMemo(() => {
+    const map: Record<string, boolean> = {}
+    if (!rawData || !allTournaments) return map
+    openTournaments.forEach(t => {
+      const tGames = rawData.allGames.filter((g: Game) => g.tournament_id === t.id)
+      if (t.game_type === 'survivor') {
+        const activeRd = getActiveSurvivorRound(t)
+        const roundGames = tGames.filter((g: Game) => g.round_num === activeRd)
+        map[t.id] = roundGames.some((g: Game) =>
+          (g.team1_name && g.team1_name !== 'TBD' && !g.team1_name.toLowerCase().includes('winner')) ||
+          (g.team2_name && g.team2_name !== 'TBD' && !g.team2_name.toLowerCase().includes('winner'))
+        )
+      } else {
+         const unplayed = tGames.filter((g: Game) => !g.actual_winner)
+         const activeRd = unplayed.length > 0 ? Math.min(...unplayed.map((g: Game) => g.round_num)) : 1
+         const roundGames = tGames.filter((g: Game) => g.round_num === activeRd)
+         map[t.id] = roundGames.some((g: Game) =>
+          (g.team1_name && g.team1_name !== 'TBD' && !g.team1_name.toLowerCase().includes('winner')) ||
+          (g.team2_name && g.team2_name !== 'TBD' && !g.team2_name.toLowerCase().includes('winner'))
+        )
+      }
+    })
+    return map
+  }, [openTournaments, rawData, allTournaments])
+
   const userStats = useMemo(() => {
     if (!rawData || !allTournaments || !profile) return {}
-    const stats: Record<string, { rank: number; totalPlayers: number; score: number; seedScore: number; isEliminated: boolean; firstPlaceScore: number; firstPlaceSeed: number }> = {}
+    const stats: Record<string, any> = {}
 
     allTournaments.forEach((t: Tournament) => {
       const tMap = new Map([[t.id, t]])
-      const games = rawData.allGames.filter(g => g.tournament_id === t.id)
-      const gameIds = new Set(games.map(g => g.id))
-      const picks = rawData.allPicks.filter(p => gameIds.has(p.game_id))
-      const pickUserIds = new Set(picks.map(p => p.user_id))
-      const activeProfiles = rawData.allProfiles.filter(p => pickUserIds.has(p.id))
+      const games = rawData.allGames.filter((g: Game) => g.tournament_id === t.id)
+      const gameIds = new Set(games.map((g: Game) => g.id))
+      const picks = rawData.allPicks.filter((p: Pick) => gameIds.has(p.game_id))
+      const pickUserIds = new Set(picks.map((p: Pick) => p.user_id))
+      const activeProfiles = rawData.allProfiles.filter((p: any) => pickUserIds.has(p.id))
 
       const board = computeLeaderboard(picks, games, rawData.allGames, activeProfiles, tMap)
       const userIndex = board.findIndex(e => e.profile.id === profile.id)
+      
+      let prevRoundPick = null;
+      let prevRoundLabel = '';
+
+      if (t.game_type === 'survivor') {
+        const activeRound = getActiveSurvivorRound(t)
+        const prevRound = activeRound > 1 ? activeRound - 1 : 0
+        if (prevRound > 0) {
+           const pick = picks.find((p: Pick) => {
+              const g = rawData.allGames.find((game: Game) => game.id === p.game_id);
+              return g?.round_num === prevRound && g?.tournament_id === t.id && p.user_id === profile.id;
+           });
+           if (pick) {
+              const g = rawData.allGames.find((game: Game) => game.id === pick.game_id);
+              prevRoundPick = pick.predicted_winner === 'team1' ? g?.team1_name : (pick.predicted_winner === 'team2' ? g?.team2_name : pick.predicted_winner);
+           }
+           prevRoundLabel = getRoundLabel(prevRound, 6, t.round_names ?? null);
+        }
+      }
       
       if (board.length > 0) {
         stats[t.id] = {
           rank: userIndex !== -1 ? userIndex + 1 : 0,
           totalPlayers: board.length,
           score: userIndex !== -1 ? board[userIndex].points : 0,
+          maxPoints: userIndex !== -1 ? board[userIndex].maxPossible : 0,
           seedScore: userIndex !== -1 ? board[userIndex].seedScore : 0,
           isEliminated: userIndex !== -1 ? board[userIndex].isEliminated : false,
           firstPlaceScore: board[0].points,
-          firstPlaceSeed: board[0].seedScore
+          firstPlaceSeed: board[0].seedScore,
+          prevRoundPick,
+          prevRoundLabel
         }
       }
     })
@@ -131,8 +182,12 @@ export default function HomePage() {
   }, [])
 
   const isCalculatingProgress = openTournaments.length > 0 && openTournaments.some(t => completionMap[t.id] === undefined)
-  const incompleteTournaments = openTournaments.filter(t => completionMap[t.id] === false)
+  const incompleteTournaments = openTournaments.filter(t => completionMap[t.id] === false && pickableMap[t.id])
   const allPicksComplete = openTournaments.length > 0 && incompleteTournaments.length === 0
+  const hasSurvivor = allTournaments?.some(t => t.game_type === 'survivor') ?? false
+  const waitingForTeams = openTournaments.length > 0 && incompleteTournaments.length === 0 && openTournaments.some(t => completionMap[t.id] === false && !pickableMap[t.id])
+
+  const survivorTourneyId = allTournaments?.find(t => t.game_type === 'survivor')?.id
 
   const isDataLoading = isLoadingTourneys || isLoadingGroups || isLoadingBoard || !allTournaments || !groups || !rawData || !profile || isCalculatingProgress;
   const showSkeleton = useStabilizedLoading(isDataLoading, 150);
@@ -158,7 +213,7 @@ export default function HomePage() {
                 <div className="w-48 h-8 bg-slate-200 dark:bg-slate-800/50 rounded-lg animate-pulse" />
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                   {[...Array(4)].map((_, i) => (
-                    <div key={i} className="h-[180px] bg-slate-200 dark:bg-slate-800/50 rounded-2xl animate-pulse border border-slate-300 dark:border-slate-800" />
+                    <div key={i} className="h-[260px] bg-slate-200 dark:bg-slate-800/50 rounded-2xl animate-pulse border border-slate-300 dark:border-slate-800" />
                   ))}
                 </div>
               </div>
@@ -193,8 +248,13 @@ export default function HomePage() {
           completedTournaments={completedTournaments}
           incompleteTournaments={incompleteTournaments}
           allPicksComplete={allPicksComplete}
+          hasSurvivor={hasSurvivor}
+          survivorPrevPick={userStats[survivorTourneyId || '']?.prevRoundPick}
+          survivorPrevRoundLabel={userStats[survivorTourneyId || '']?.prevRoundLabel}
+          waitingForTeams={waitingForTeams}
           onOpenRules={() => setShowRulesModal(true)}
           onScrollToCard={scrollToCard}
+          onViewSurvivorPicks={() => setShowSurvivorHistory(true)}
         />
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
@@ -337,6 +397,7 @@ export default function HomePage() {
       />
 
       <RulesModal isOpen={showRulesModal} onClose={() => setShowRulesModal(false)} />
+      {showSurvivorHistory && <SnoopModal targetId={profile.id} initialTid={survivorTourneyId} onClose={() => setShowSurvivorHistory(false)} />}
     </div>
   )
 }

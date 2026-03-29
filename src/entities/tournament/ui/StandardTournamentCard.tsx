@@ -1,4 +1,4 @@
-import { Play } from 'lucide-react'
+import { Play, AlertCircle, CheckCircle } from 'lucide-react'
 import { useTheme } from '../../../shared/lib/theme'
 import { isPicksLocked } from '../../../shared/lib/time'
 import { statusLabel, statusIcon } from '../../../shared/lib/helpers'
@@ -13,7 +13,7 @@ interface Props {
   onSelect: (t: Tournament) => void
   timezone?: string | null
   variant?: 'compact' | 'full' 
-  userStat?: { rank: number; totalPlayers: number; score: number; firstPlaceScore: number } | null
+  userStat?: { rank: number; totalPlayers: number; score: number; firstPlaceScore: number; maxPoints?: number } | null
 }
 
 export function StandardTournamentCard({ tournament, isAdmin, onSelect, timezone = null, variant = 'compact', userStat }: Props) {
@@ -46,9 +46,9 @@ export function StandardTournamentCard({ tournament, isAdmin, onSelect, timezone
   return (
     <button
       onClick={() => onSelect(tournament)}
-      className={`text-left p-5 rounded-2xl border transition-all hover:scale-[1.02] active:scale-[0.99] w-full flex flex-col ${variant === 'compact' ? 'h-[180px]' : ''} ${cardClasses}`}
+      className={`text-left p-5 rounded-2xl border transition-all hover:scale-[1.02] active:scale-[0.99] w-full flex flex-col h-full min-h-[260px] ${cardClasses}`}
     >
-      <div className="flex items-start justify-between gap-3 w-full mb-2">
+      <div className="flex items-start justify-between gap-3 w-full mb-2 flex-shrink-0">
         <h3 className={`font-display text-xl font-bold uppercase tracking-wide leading-tight line-clamp-2 ${theme.textBase}`}>
           {tournament.name}
         </h3>
@@ -73,64 +73,77 @@ export function StandardTournamentCard({ tournament, isAdmin, onSelect, timezone
       )}
 
       {variant === 'compact' && (
-        <div className={`mt-auto w-full pt-4 border-t flex flex-col justify-center min-h-[44px] ${isCompleted ? 'border-violet-500/20' : 'border-slate-200 dark:border-slate-800/50'}`}>
-          {showPickBar ? (
-            <TournamentProgressBar compact={true} {...progress} />
+        <div className={`mt-auto w-full pt-4 flex flex-col justify-center gap-3`}>
+          {showPickBar && (
+            <div className="flex flex-col gap-2 w-full">
+              <div className="flex items-center justify-between text-[9px] font-black uppercase tracking-widest text-amber-600 dark:text-amber-500">
+                <span className="flex items-center gap-1"><AlertCircle size={10} /> Next Round Open</span>
+                <span>Needs Pick</span>
+              </div>
+              <TournamentProgressBar compact={true} {...progress} />
+            </div>
+          )}
+
+          {userStat ? (
+            <div className={`flex flex-col gap-2.5 pt-3 border-t border-slate-200 dark:border-slate-800/50 ${showPickBar ? 'mt-1' : ''}`}>
+              
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Rank</span>
+                <span className="text-xs font-black text-amber-500">#{userStat.rank} <span className="text-[9px] text-slate-400">/ {userStat.totalPlayers}</span></span>
+              </div>
+              
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Current Pts</span>
+                <span className={`text-sm font-black ${theme.textBase}`}>{userStat.score}</span>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Max Pts</span>
+                <span className={`text-xs font-black ${theme.textBase}`}>{userStat.maxPoints ?? 0}</span>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">1st Place Pts</span>
+                <span className={`text-xs font-black ${theme.textMuted}`}>{userStat.firstPlaceScore}</span>
+              </div>
+
+              <div className="flex items-center justify-between mt-1 pt-2 border-t border-slate-200/50 dark:border-slate-700/50">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500 flex items-center gap-1.5">
+                  <CheckCircle size={12} className="text-emerald-500" /> Champ Pick
+                </span>
+                <span className="text-[11px] font-black text-emerald-600 dark:text-emerald-400 truncate max-w-[120px]">{progress.pickTeamName || 'None'}</span>
+              </div>
+
+            </div>
           ) : (
             <>
-              {(displayStatus === 'active' || displayStatus === 'completed') && userStat ? (
-                <div className="flex flex-col gap-1.5 px-3 bg-slate-100 dark:bg-slate-800/50 rounded-lg py-2 border border-slate-200 dark:border-slate-700/50 shadow-inner">
-                  <div className="flex items-center justify-between w-full">
-                    <div className="flex items-center gap-1">
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Rank:</span>
-                      <span className="text-xs font-black text-amber-500">#{userStat.rank}<span className="text-[9px] text-slate-400 font-bold ml-0.5">/{userStat.totalPlayers}</span></span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Pts:</span>
-                      <span className={`text-xs font-black ${theme.textBase}`}>{userStat.score}</span>
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between w-full border-t border-slate-200 dark:border-slate-700/50 pt-1.5">
-                     <div className="flex items-center gap-1.5">
-                       <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Champ:</span>
-                       <span className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 truncate max-w-[80px]">{progress.pickTeamName || 'None'}</span>
-                     </div>
-                     <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400">1st Place: {userStat.firstPlaceScore}</span>
-                  </div>
-                </div>
-              ) : displayStatus === 'active' && !userStat ? (
-                <div className="flex items-center justify-between px-3 bg-slate-100 dark:bg-slate-800/50 rounded-lg py-2 border border-slate-200 dark:border-slate-700/50 shadow-inner">
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Picks Locked</span>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Champ:</span>
-                    <span className="text-[11px] font-black text-emerald-600 dark:text-emerald-400 truncate max-w-[100px]">{progress.pickTeamName || 'None'}</span>
-                  </div>
-                </div>
-              ) : null}
-              {displayStatus === 'draft' && isAdmin && <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 text-center">Draft</p>}
+              {displayStatus === 'draft' && isAdmin && <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 text-center mt-2">Draft</p>}
+              {displayStatus === 'completed' && !userStat && <p className="text-[10px] font-bold uppercase tracking-widest text-violet-500 dark:text-violet-400 text-center mt-2">Results final</p>}
             </>
           )}
         </div>
       )}
 
+      {/* ── FULL VARIANT (For Group Dashboard) ── */}
       {variant === 'full' && (
-        <div className="mt-3 w-full pt-3 flex flex-col border-t border-slate-200 dark:border-slate-800/50 text-[10px] sm:text-[11px] uppercase tracking-widest font-bold">
-           <div className="flex w-full justify-between items-center mb-2">
+        <div className="mt-auto w-full pt-4 flex flex-col border-t border-slate-200 dark:border-slate-800/50 gap-3">
+           <div className="flex w-full justify-between items-center text-[10px] uppercase tracking-widest font-bold">
               <span className="text-slate-500">Status</span>
               <span className={displayStatus === 'open' ? 'text-emerald-600 dark:text-emerald-500 font-black shadow-[0_0_8px_rgba(16,185,129,0.8)]' : displayStatus === 'completed' ? 'text-violet-500 dark:text-violet-400 font-black' : displayStatus === 'draft' ? 'text-amber-500 font-black' : 'text-blue-500 dark:text-blue-400 font-black'}>
                 {displayStatus === 'active' ? 'Active (Locked)' : displayStatus === 'open' ? 'Open' : displayStatus === 'completed' ? 'Finished' : 'Draft'}
               </span>
            </div>
+           
            {showPickBar && <TournamentProgressBar {...progress} />}
-           {displayStatus === 'active' && (
-             <div className="flex items-center justify-between px-3 mt-2 bg-slate-100 dark:bg-slate-800/50 rounded-lg py-2 border border-slate-200 dark:border-slate-700/50 shadow-inner">
-               <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Picks Locked</span>
-               <div className="flex items-center gap-1.5">
-                 <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Champ:</span>
-                 <span className="text-xs font-black text-emerald-600 dark:text-emerald-400">{progress.pickTeamName || 'None'}</span>
-               </div>
-             </div>
-           )}
+           
+           <div className="flex items-center justify-between mt-2 pt-3 border-t border-slate-200/50 dark:border-slate-700/50">
+             <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500 flex items-center gap-1.5">
+               <CheckCircle size={12} className="text-emerald-500" /> Champ Pick
+             </span>
+             <span className={`text-[11px] font-black truncate max-w-[120px] ${progress.pickTeamName ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'}`}>
+               {progress.pickTeamName || 'None'}
+             </span>
+           </div>
         </div>
       )}
     </button>

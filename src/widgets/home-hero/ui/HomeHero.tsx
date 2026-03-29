@@ -1,4 +1,4 @@
-import { ArrowRight, Activity, Lock, Trophy, CheckCircle, AlertCircle, HelpCircle } from 'lucide-react'
+import { ArrowRight, Activity, Lock, Trophy, CheckCircle, AlertCircle, HelpCircle, History } from 'lucide-react'
 import type { Tournament } from '../../../shared/types'
 
 interface Props {
@@ -8,15 +8,41 @@ interface Props {
   completedTournaments: Tournament[]
   incompleteTournaments: Tournament[]
   allPicksComplete: boolean
+  hasSurvivor: boolean
+  survivorPrevPick?: string | null
+  survivorPrevRoundLabel?: string
+  waitingForTeams?: boolean
   onOpenRules: () => void
   onScrollToCard: (id: string) => void
+  onViewSurvivorPicks: () => void
 }
 
 export function HomeHero({
   allTournaments, openTournaments, activeTournaments, completedTournaments,
-  incompleteTournaments, allPicksComplete, onOpenRules, onScrollToCard
+  incompleteTournaments, allPicksComplete, hasSurvivor, 
+  survivorPrevPick, survivorPrevRoundLabel, waitingForTeams,
+  onOpenRules, onScrollToCard, onViewSurvivorPicks
 }: Props) {
   
+  let heroMessage = "Join a group or wait for a tournament to be assigned.";
+  if (allTournaments.length > 0) {
+    if (allPicksComplete) {
+      if (waitingForTeams) {
+         heroMessage = "You're all set for now! Waiting for teams to advance before the next round of picks opens.";
+      } else if (survivorPrevRoundLabel) {
+         heroMessage = `Your ${survivorPrevRoundLabel} pick is securely locked. Kick back and enjoy the games!`;
+      } else {
+         heroMessage = "Your picks are safely locked in. Kick back and enjoy the games!";
+      }
+    } else {
+      if (survivorPrevRoundLabel) {
+         heroMessage = `Your ${survivorPrevRoundLabel} pick is locked. You have ${incompleteTournaments.length} tournament${incompleteTournaments.length > 1 ? 's' : ''} ready for the next round.`;
+      } else {
+         heroMessage = `You have ${incompleteTournaments.length} tournament${incompleteTournaments.length > 1 ? 's' : ''} ready for the next round.`;
+      }
+    }
+  }
+
   return (
     <div className={`relative w-full rounded-[2rem] overflow-hidden shadow-xl border transition-all duration-500 ${
       allPicksComplete 
@@ -47,7 +73,7 @@ export function HomeHero({
               {allPicksComplete ? <CheckCircle size={20} /> : <AlertCircle size={20} />}
             </div>
             <span className={`text-xs font-black uppercase tracking-[0.2em] ${allPicksComplete ? 'text-emerald-600' : 'text-amber-600'}`}>
-              {allTournaments.length === 0 ? 'Status: Standby' : allPicksComplete ? 'Status: All Set' : 'Status: Action Required'}
+              {allTournaments.length === 0 ? 'Status: Standby' : allPicksComplete ? 'Status: All Set' : 'Status: Next Round Open'}
             </span>
           </div>
 
@@ -55,33 +81,47 @@ export function HomeHero({
             {allTournaments.length === 0 ? (
               <>Welcome to the Madness</>
             ) : allPicksComplete ? (
-              <>All your picks are locked in.</>
+              <>All Set For Now.</>
             ) : (
-              <>Picks not completed!</>
+              <>Upcoming Picks Open!</>
             )}
           </h1>
 
-          <p className="mt-4 text-slate-500 dark:text-slate-400 font-medium text-lg">
-            {allTournaments.length === 0
-              ? "Join a group or wait for a tournament to be assigned."
-              : allPicksComplete 
-              ? "No action required." 
-              : `You have ${incompleteTournaments.length} tournament${incompleteTournaments.length > 1 ? 's' : ''} waiting for your picks.`}
-          </p>
+          <div className="mt-6 flex flex-col gap-5">
+            {/* ── PEACE OF MIND BADGE: PROMINENT ROW ── */}
+            {survivorPrevRoundLabel && (
+              <div className="flex items-center gap-3 text-slate-700 dark:text-slate-300 font-medium bg-slate-100/80 dark:bg-slate-800/80 w-fit px-5 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm backdrop-blur-md">
+                <Lock size={18} className="text-amber-500" />
+                <span className="text-sm font-bold uppercase tracking-widest text-slate-500">{survivorPrevRoundLabel} Pick:</span>
+                <span className="text-base font-black text-slate-900 dark:text-white">{survivorPrevPick || 'None'}</span>
+              </div>
+            )}
+            
+            <p className="text-slate-500 dark:text-slate-400 font-medium text-lg leading-relaxed">
+              {heroMessage}
+            </p>
+          </div>
 
-          {!allPicksComplete && allTournaments.length > 0 && (
-            <div className="mt-8 flex flex-wrap gap-2">
-              {incompleteTournaments.map(t => (
-                <button
-                  key={t.id}
-                  onClick={() => onScrollToCard(t.id)}
-                  className="flex items-center gap-2 px-4 py-2.5 bg-amber-500 text-white rounded-xl text-sm font-black hover:bg-amber-600 transition-all hover:scale-105 shadow-lg shadow-amber-500/25"
-                >
-                  {t.name} <ArrowRight size={14} />
-                </button>
-              ))}
-            </div>
-          )}
+          <div className="mt-8 flex flex-wrap gap-3">
+            {!allPicksComplete && allTournaments.length > 0 && incompleteTournaments.map(t => (
+              <button
+                key={t.id}
+                onClick={() => onScrollToCard(t.id)}
+                className="flex items-center gap-2 px-4 py-2.5 bg-amber-500 text-white rounded-xl text-sm font-black hover:bg-amber-600 transition-all hover:scale-105 shadow-lg shadow-amber-500/25"
+              >
+                {t.name}: Make Pick <ArrowRight size={14} />
+              </button>
+            ))}
+            
+            {hasSurvivor && (
+              <button
+                onClick={onViewSurvivorPicks}
+                className="flex items-center gap-2 px-4 py-2.5 bg-slate-800 dark:bg-slate-100 text-white dark:text-slate-900 rounded-xl text-sm font-black hover:scale-105 transition-all shadow-lg"
+              >
+                <History size={16} /> My Survivor Picks
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="flex gap-3 md:gap-4 overflow-x-auto pb-2 -mb-2 scrollbar-none snap-x">
