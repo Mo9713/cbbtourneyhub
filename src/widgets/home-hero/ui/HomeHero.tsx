@@ -24,9 +24,15 @@ export function HomeHero({
   onOpenRules, onScrollToCard, onViewSurvivorPicks
 }: Props) {
   
+  // 1. Determine if everything is finished
+  const isTournamentOver = allTournaments.length > 0 && completedTournaments.length === allTournaments.length;
+
   let heroMessage = "Join a group or wait for a tournament to be assigned.";
+  
   if (allTournaments.length > 0) {
-    if (allPicksComplete) {
+    if (isTournamentOver) {
+      heroMessage = "The tournaments have concluded. Check the standings page to see how you finished!";
+    } else if (allPicksComplete) {
       if (waitingForTeams) {
          heroMessage = "You're all set for now! Waiting for teams to advance before the next round of picks opens.";
       } else if (survivorPrevRoundLabel) {
@@ -45,15 +51,15 @@ export function HomeHero({
 
   return (
     <div className={`relative w-full rounded-[2rem] overflow-hidden shadow-xl border transition-all duration-500 ${
-      allPicksComplete 
+      allPicksComplete || isTournamentOver
         ? 'bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800' 
         : 'bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-500/20 shadow-amber-500/5'
     }`}>
       <div className={`absolute top-0 right-0 w-96 h-96 blur-3xl rounded-full -translate-y-1/2 translate-x-1/3 pointer-events-none transition-colors duration-1000 ${
-        allPicksComplete ? 'bg-emerald-500/10' : 'bg-amber-500/20'
+        allPicksComplete || isTournamentOver ? 'bg-emerald-500/10' : 'bg-amber-500/20'
       }`} />
       <div className={`absolute bottom-0 left-0 w-96 h-96 blur-3xl rounded-full translate-y-1/2 -translate-x-1/3 pointer-events-none transition-colors duration-1000 ${
-        allPicksComplete ? 'bg-blue-500/10' : 'bg-orange-500/10'
+        allPicksComplete || isTournamentOver ? 'bg-blue-500/10' : 'bg-orange-500/10'
       }`} />
       
       <button 
@@ -68,18 +74,26 @@ export function HomeHero({
         <div className="flex flex-col max-w-2xl">
           <div className="flex items-center gap-3 mb-4 w-full">
             <div className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-inner ${
-              allPicksComplete ? 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-600' : 'bg-amber-100 dark:bg-amber-500/20 text-amber-600 animate-pulse'
+              isTournamentOver ? 'bg-violet-100 dark:bg-violet-500/20 text-violet-600' :
+              allPicksComplete ? 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-600' : 
+              'bg-amber-100 dark:bg-amber-500/20 text-amber-600 animate-pulse'
             }`}>
-              {allPicksComplete ? <CheckCircle size={20} /> : <AlertCircle size={20} />}
+              {isTournamentOver ? <Trophy size={20} /> : allPicksComplete ? <CheckCircle size={20} /> : <AlertCircle size={20} />}
             </div>
-            <span className={`text-xs font-black uppercase tracking-[0.2em] ${allPicksComplete ? 'text-emerald-600' : 'text-amber-600'}`}>
-              {allTournaments.length === 0 ? 'Status: Standby' : allPicksComplete ? 'Status: All Set' : 'Status: Next Round Open'}
+            <span className={`text-xs font-black uppercase tracking-[0.2em] ${
+              isTournamentOver ? 'text-violet-600' :
+              allPicksComplete ? 'text-emerald-600' : 
+              'text-amber-600'
+            }`}>
+              {allTournaments.length === 0 ? 'Status: Standby' : isTournamentOver ? 'Status: Tournament Complete' : allPicksComplete ? 'Status: All Set' : 'Status: Next Round Open'}
             </span>
           </div>
 
           <h1 className="text-4xl md:text-5xl font-display font-black text-slate-800 dark:text-white tracking-tight leading-tight">
             {allTournaments.length === 0 ? (
               <>Welcome to the Madness</>
+            ) : isTournamentOver ? (
+              <>That's a Wrap!</>
             ) : allPicksComplete ? (
               <>All Set For Now.</>
             ) : (
@@ -88,7 +102,6 @@ export function HomeHero({
           </h1>
 
           <div className="mt-6 flex flex-col gap-5">
-            {/* ── PEACE OF MIND BADGE: PROMINENT ROW ── */}
             {survivorPrevRoundLabel && (
               <div className="flex items-center gap-3 text-slate-700 dark:text-slate-300 font-medium bg-slate-100/80 dark:bg-slate-800/80 w-fit px-5 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm backdrop-blur-md">
                 <Lock size={18} className="text-amber-500" />
@@ -103,7 +116,7 @@ export function HomeHero({
           </div>
 
           <div className="mt-8 flex flex-wrap gap-3">
-            {!allPicksComplete && allTournaments.length > 0 && incompleteTournaments.map(t => (
+            {!isTournamentOver && !allPicksComplete && allTournaments.length > 0 && incompleteTournaments.map(t => (
               <button
                 key={t.id}
                 onClick={() => onScrollToCard(t.id)}

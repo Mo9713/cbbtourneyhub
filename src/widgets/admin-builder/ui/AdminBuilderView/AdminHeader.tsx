@@ -186,14 +186,25 @@ export default function AdminHeader({
               </button>
             )}
 
-            {/* Mark as Finished — only show on 'locked' to prevent double-fire */}
-            {tournament.status === 'locked' && (
+            {/* Mark as Finished — show if locked OR time locked */}
+            {(tournament.status === 'locked' || (tournament.status === 'open' && isTimeLocked)) && (
               <button
                 onClick={onComplete}
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-600/80 hover:bg-violet-600 text-white border border-violet-500/40 rounded-lg text-xs font-bold transition-all"
                 title="Mark this tournament as finished. Renders a permanent 'Finished' badge for all participants."
               >
                 <CheckCircle2 size={11} /> Mark as Finished
+              </button>
+            )}
+
+            {/* Revert to Locked — show if completed */}
+            {tournament.status === 'completed' && (
+              <button
+                onClick={onLock}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-600 hover:bg-slate-500 text-white border border-slate-500/40 rounded-lg text-xs font-bold transition-all"
+                title="Revert to Locked status"
+              >
+                <Lock size={11} /> Revert to Locked
               </button>
             )}
 
